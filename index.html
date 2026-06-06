@@ -1234,12 +1234,17 @@
     const opts = menuOptions();
     menuSel = clamp(menuSel,0,opts.length-1);
     for (let i=0;i<opts.length;i++){
-      const y=MENU_Y0+i*MENU_DY, sel=i===menuSel, label=(sel?"▶ ":"  ")+opts[i];
-      const sub=ttSub(label, 2+i); if (sub===null) continue;             // print options one by one
+      const y=MENU_Y0+i*MENU_DY, sel=i===menuSel;
+      const sub=ttSub(opts[i], 2+i); if (sub===null) continue;           // print options one by one (centered text only)
       ctx.font=ttFont(26);
-      if (sel){ ctx.fillStyle=TTX.yellow; ctx.fillRect(VW/2-MENU_BW/2, y-28, MENU_BW, MENU_BH); }   // inverse-video selection
-      ctx.fillStyle = sel ? "#06070b" : MENU_OPTCOL[i%MENU_OPTCOL.length]; ctx.textAlign="left";
-      ctx.fillText(sub, VW/2 - ctx.measureText(label).width/2, y);
+      if (sel){                                                            // white outline selection box
+        ctx.strokeStyle="rgba(255,255,255,0.75)"; ctx.lineWidth=2;
+        ctx.strokeRect(VW/2-MENU_BW/2+1, y-27, MENU_BW-2, MENU_BH-2);
+        ctx.textAlign="left"; ctx.fillStyle=TTX.white;
+        ctx.fillText("▶", VW/2-MENU_BW/2+14, y);                         // arrow pinned to left edge of box
+      }
+      ctx.fillStyle=MENU_OPTCOL[i%MENU_OPTCOL.length];
+      ctx.textAlign="center"; ctx.fillText(sub, VW/2, y);                 // option text perfectly centred
     }
     ctx.textAlign="center";
     if (ttDone(2+opts.length) && !TOUCH){ ctx.font=ttFont(14); ctx.fillStyle=TTX.grey;
@@ -1280,7 +1285,7 @@
     }
     ctx.textAlign="left";
   }
-  const CLUB_X0=70, CLUB_CW=400;     // club-select 2-column geometry (shared by drawClubSelect + clubHit)
+  const CLUB_X0=62, CLUB_CW=400;     // club-select 2-column geometry (shared by drawClubSelect + clubHit)
   function drawClubSelect(){
     if (!TEAMS.length){ ctx.textAlign="center"; ttPrint("LOADING CLUBS…",0,200,TTX.cyan,0,{size:16,center:true}); ctx.textAlign="left"; return; }
     ttBar("SCORDAGOL   CHOOSE YOUR CLUB", 0, 12, VW, 30, TTX.blue, TTX.white, {size:17});
@@ -1291,7 +1296,7 @@
     TEAMS.forEach((t,i)=>{
       if (ttSub(t.name, i)===null) return;                         // print clubs in order
       const col=Math.floor(i/rows), row=i%rows, cx=x0+col*cw, cy=y0+row*ch, sel=i===menuSel, mid=cy+ch/2;
-      if (sel){ ctx.fillStyle=TTX.yellow; ctx.fillRect(cx,cy,cw-6,ch-3); }     // inverse-video selection
+      if (sel){ ctx.strokeStyle="rgba(255,255,255,0.75)"; ctx.lineWidth=1.5; ctx.strokeRect(cx+0.75,cy+0.75,cw-7.5,ch-4.5); }
       // kit swatch: striped -> vertical bars; contrasting sleeves -> side bars; accent -> half-and-half; else solid
       const sw=20, sx=cx+7, sy=mid-sw/2;
       ctx.fillStyle=PAL[t.shirt]||"#888"; ctx.fillRect(sx,sy,sw,sw);
@@ -1308,7 +1313,7 @@
       }
       ctx.strokeStyle="rgba(0,0,0,0.6)"; ctx.lineWidth=1; ctx.strokeRect(sx,sy,sw,sw);
       ctx.font=ttFont(14); ctx.textAlign="left"; ctx.textBaseline="middle";
-      ctx.fillStyle = sel ? "#06070b" : TTX.cyan;
+      ctx.fillStyle=TTX.cyan;
       ctx.fillText(t.name, sx+sw+8, mid+1); ctx.textBaseline="alphabetic";
     });
     ctx.textAlign="center"; ctx.font=ttFont(13); ctx.fillStyle=TTX.grey;
@@ -1320,20 +1325,20 @@
     if (!TEAMS.length || !CAR){ ctx.textAlign="center"; ttPrint("LOADING…",0,200,TTX.cyan,0,{size:16,center:true}); ctx.textAlign="left"; return; }
     const tbl = standings(), mypos = myPosition();
     // ---- header: white SCORDAGOL logo panel + blue CAREER MODE bar (same height, touching) ----
-    const HBY=4, HBH=52, LOGOW=262;
+    const HBY=4, HBH=36, LOGOW=262;
     ctx.fillStyle="#06070b"; ctx.fillRect(0,HBY,VW,HBH);
     ctx.fillStyle="#ffffff"; ctx.fillRect(0,HBY,LOGOW,HBH);
-    drawLogo(LOGOW/2, 0, LOGOW-26, {cy:HBY+HBH/2, maxH:HBH-10, depth:1});
-    ttBar("CAREER MODE", LOGOW, HBY, VW-LOGOW, HBH, TTX.blue, TTX.yellow, {size:26});
-    ctx.textAlign="right"; ctx.font=ttFont(15); ctx.fillStyle=TTX.white;
-    ctx.fillText("MD "+(CAR.idx+1)+"/"+CAR.fixtures.length, VW-16, HBY+HBH/2+6); ctx.textAlign="left";
-    // ---- title row (bigger, clear of the header bar) ----
-    ctx.font=ttFont(21); ctx.fillStyle=TTX.green; ctx.textAlign="left"; ctx.fillText("PREMIER LEAGUE TABLE", 16, 82);
-    ctx.textAlign="right"; ctx.font=ttFont(18); ctx.fillStyle=TTX.cyan; ctx.fillText("SEASON "+CAR.season, VW-16, 82); ctx.textAlign="left";
+    drawLogo(LOGOW/2, 0, LOGOW-26, {cy:HBY+HBH/2, maxH:HBH-6, depth:1});
+    ttBar("CAREER MODE", LOGOW, HBY, VW-LOGOW, HBH, TTX.blue, TTX.yellow, {size:20});
+    ctx.textAlign="right"; ctx.font=ttFont(12); ctx.fillStyle=TTX.white;
+    ctx.fillText("MD "+(CAR.idx+1)+"/"+CAR.fixtures.length, VW-16, HBY+HBH/2+5); ctx.textAlign="left";
+    // ---- title row ----
+    ctx.font=ttFont(18); ctx.fillStyle=TTX.green; ctx.textAlign="left"; ctx.fillText("PREMIER LEAGUE TABLE", 16, 60);
+    ctx.textAlign="right"; ctx.font=ttFont(15); ctx.fillStyle=TTX.cyan; ctx.fillText("SEASON "+CAR.season, VW-16, 60); ctx.textAlign="left";
     // ---- two columns of 10 — pos · team · W D L PL PT (centred stat columns; headings sit above their data) ----
-    const colX=[58,498], blockW=368, top=118, rowH=18, hdrY=108, NAMEX=30;
+    const colX=[58,498], blockW=368, top=86, rowH=20, hdrY=74, NAMEX=30;
     const CEN={ W:120, D:94, L:68, PL:40, PT:12 };   // centre of each stat column, px left of the block's right edge
-    ctx.font=ttFont(12); ctx.fillStyle="#aab4c0"; ctx.textBaseline="alphabetic";
+    ctx.font=ttFont(13); ctx.fillStyle="#aab4c0"; ctx.textBaseline="alphabetic";
     for (const x of colX){ const xr=x+blockW;
       ctx.textAlign="left";   ctx.fillText("P", x, hdrY); ctx.fillText("TEAM", x+NAMEX, hdrY);
       ctx.textAlign="center"; ctx.fillText("W", xr-CEN.W, hdrY); ctx.fillText("D", xr-CEN.D, hdrY);
@@ -1343,19 +1348,19 @@
     for (let i=0;i<tbl.length;i++){
       if (ttSub(tbl[i].name, i)===null) continue;
       const t=tbl[i], r=CAR.table[t.slug], mine=t.slug===CAR.slug;
-      const col=Math.floor(i/10), row=i%10, x=colX[col], xr=x+blockW, y=top+row*rowH+13;
-      if (mine){ ctx.fillStyle=TTX.yellow; ctx.fillRect(x-6,y-13,blockW+12,rowH); }
-      const dark=mine, base = dark ? "#06070b" : (i<4 ? TTX.green : (i>=17 ? TTX.red : TTX.white));
-      ctx.font=ttFont(13); ctx.textAlign="left";
-      ctx.fillStyle = dark ? "#06070b" : TTX.cyan; ctx.fillText(""+(i+1), x, y);
+      const col=Math.floor(i/10), row=i%10, x=colX[col], xr=x+blockW, y=top+row*rowH+14;
+      if (mine){ ctx.strokeStyle="rgba(255,255,255,0.55)"; ctx.lineWidth=1.5; ctx.strokeRect(x-6+0.75,y-14+0.75,blockW+12-1.5,rowH-1.5); }
+      const base = i<4 ? TTX.green : (i>=17 ? TTX.red : TTX.white);
+      ctx.font=ttFont(14); ctx.textAlign="left";
+      ctx.fillStyle=TTX.cyan; ctx.fillText(""+(i+1), x, y);
       let nm=t.name; while (nm.length>3 && ctx.measureText(nm).width > blockW-CEN.W-30){ nm=nm.slice(0,-1); }
-      ctx.fillStyle = base; ctx.fillText(nm, x+NAMEX, y);
-      ctx.font=ttFont(12); ctx.textAlign="center";
-      ctx.fillStyle = dark?"#06070b":TTX.green;  ctx.fillText(""+r.w,   xr-CEN.W,  y);
-      ctx.fillStyle = dark?"#06070b":TTX.grey;   ctx.fillText(""+r.d,   xr-CEN.D,  y);
-      ctx.fillStyle = dark?"#06070b":"#e08a8a";  ctx.fillText(""+r.l,   xr-CEN.L,  y);
-      ctx.fillStyle = dark?"#06070b":TTX.dim;    ctx.fillText(""+r.p,   xr-CEN.PL, y);
-      ctx.fillStyle = dark?"#06070b":TTX.yellow; ctx.fillText(""+r.pts, xr-CEN.PT, y);
+      ctx.fillStyle=base; ctx.fillText(nm, x+NAMEX, y);
+      ctx.font=ttFont(13); ctx.textAlign="center";
+      ctx.fillStyle=TTX.green;  ctx.fillText(""+r.w,   xr-CEN.W,  y);
+      ctx.fillStyle=TTX.grey;   ctx.fillText(""+r.d,   xr-CEN.D,  y);
+      ctx.fillStyle="#e08a8a";  ctx.fillText(""+r.l,   xr-CEN.L,  y);
+      ctx.fillStyle=TTX.dim;    ctx.fillText(""+r.p,   xr-CEN.PL, y);
+      ctx.fillStyle=TTX.yellow; ctx.fillText(""+r.pts, xr-CEN.PT, y);
       ctx.textAlign="left";
     }
     ctx.textAlign="left";
@@ -1456,18 +1461,18 @@
     inboxSel = clamp(inboxSel, 0, offers.length);
     for (let i=0;i<offers.length+1;i++){
       const y=y0+i*rowH, sel=i===inboxSel;
-      if (sel){ ctx.fillStyle=TTX.yellow; ctx.fillRect(8, y, VW-16, rowH-6); }
+      if (sel){ ctx.strokeStyle="rgba(255,255,255,0.7)"; ctx.lineWidth=1.5; ctx.strokeRect(8.75, y+0.75, VW-17.5, rowH-7.5); }
       if (i<offers.length){
         const o=offers[i];
-        ctx.font=ttFont(14,"bold "); ctx.fillStyle = sel?"#06070b":(o.read?TTX.dim:TTX.green);
+        ctx.font=ttFont(14,"bold "); ctx.fillStyle = o.read?TTX.dim:TTX.green;
         ctx.fillText(o.read?"  ":"●", 18, y+22);
-        ctx.fillStyle = sel?"#06070b":TTX.cyan; ctx.fillText(o.name+" FC", 44, y+20);
-        ctx.font=ttFont(14); ctx.fillStyle = sel?"#06070b":(o.read?TTX.grey:TTX.yellow);
+        ctx.fillStyle=TTX.cyan; ctx.fillText(o.name+" FC", 44, y+20);
+        ctx.font=ttFont(14); ctx.fillStyle = o.read?TTX.grey:TTX.yellow;
         ctx.fillText(o.subject, 232, y+20);
-        ctx.font=ttFont(10); ctx.fillStyle = sel?"#06070b":TTX.dim;
+        ctx.font=ttFont(10); ctx.fillStyle=TTX.dim;
         ctx.fillText("finished "+ord(o.pos)+"  ·  "+kitDesc(o.slug)+" kit", 44, y+34);
       } else {
-        ctx.font=ttFont(14,"bold "); ctx.fillStyle = sel?"#06070b":TTX.neon;
+        ctx.font=ttFont(14,"bold "); ctx.fillStyle=TTX.neon;
         ctx.fillText("» STAY  &  START NEXT SEASON", 24, y+25);
       }
       inboxRects.push({x:8, y:y, w:VW-16, h:rowH-6, i:i});
