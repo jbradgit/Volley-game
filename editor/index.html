@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="Cache-Control" content="no-store" />
+<title>SCORDAGOL Studio</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { min-height: 100%; background: #11141a; color: #e2e8ef;
+    font: 14px/1.5 "Segoe UI", system-ui, sans-serif; }
+  body { max-width: 920px; margin: 0 auto; padding: 40px 24px 60px; }
+  h1 { font-size: 26px; font-weight: 800; color: #34ff6e; letter-spacing: 2px; }
+  h1 small { display: block; color: #6b7682; font-size: 12px; font-weight: 600; letter-spacing: 1px; margin-top: 4px; }
+  p.lead { color: #9aa7b4; margin: 14px 0 28px; max-width: 640px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+  a.tool { display: block; text-decoration: none; color: inherit; background: #1b202a;
+    border: 1px solid #283040; border-radius: 8px; padding: 18px; transition: .15s; }
+  a.tool:hover { border-color: #34ff6e; transform: translateY(-2px); }
+  a.tool.soon { opacity: .55; pointer-events: none; }
+  a.tool .ico { font-size: 26px; }
+  a.tool h3 { font-size: 15px; margin: 8px 0 5px; }
+  a.tool p { font-size: 12.5px; color: #8a96a3; }
+  a.tool .tag { display: inline-block; margin-top: 10px; font-size: 10px; text-transform: uppercase;
+    letter-spacing: .5px; padding: 2px 7px; border-radius: 3px; background: #233; color: #5fd0ff; }
+  a.tool .tag.live { background: #143; color: #5fffa0; }
+  a.tool .tag.soon { background: #332; color: #e0c060; }
+  footer { margin-top: 34px; color: #5a6573; font-size: 12px; }
+  footer a { color: #8a96a3; }
+</style>
+</head>
+<body>
+  <h1>SCORDAGOL STUDIO<small>CONTENT &amp; ASSET TOOLS</small></h1>
+  <p class="lead">Everything you need to replace the original (copyrighted) art with your own, edit in-game text, and arrange menus — without touching game code.</p>
+
+  <div class="grid">
+    <a class="tool" href="dashboard.html">
+      <div class="ico">✅</div>
+      <h3>Asset checklist</h3>
+      <p>Every sprite/sound to replace for IP + new art needed. Track progress, click an item to edit it, mark it done.</p>
+      <span class="tag live">Live</span>
+    </a>
+    <a class="tool" href="region-editor.html">
+      <div class="ico">✎</div>
+      <h3>Region editor</h3>
+      <p>Trace a sprite into named kit regions (shirt/sleeves/shorts…) so it can be recoloured per club.</p>
+      <span class="tag live">Live</span>
+    </a>
+    <a class="tool" href="recolour-preview.html">
+      <div class="ico">🎨</div>
+      <h3>Recolour preview</h3>
+      <p>See a region-masked sprite recoloured across all clubs side by side.</p>
+      <span class="tag live">Live</span>
+    </a>
+    <a class="tool soon" href="#">
+      <div class="ico">🔤</div>
+      <h3>Text editor</h3>
+      <p>Every line of in-game text in one table — edit it yourself, preview on canvas, ready for translation.</p>
+      <span class="tag soon">Next</span>
+    </a>
+    <a class="tool soon" href="#">
+      <div class="ico">▦</div>
+      <h3>Layout / wireframe editor</h3>
+      <p>Drag menu &amp; HUD elements into place; hit-tests follow automatically.</p>
+      <span class="tag soon">Next</span>
+    </a>
+  </div>
+
+  <footer>
+    Serve over http (run <code>play.bat</code> / <code>serve.py</code>) — these tools fetch assets and break on <code>file://</code>.<br>
+    <a href="../index.html">▶ Play the game</a>
+  </footer>
+</body>
+</html>

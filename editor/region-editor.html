@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="Cache-Control" content="no-store" />
+<title>SCORDAGOL — Sprite Region Editor</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: #1a1d24; color: #e2e8ef;
+    font: 13px/1.4 "Segoe UI", system-ui, sans-serif; user-select: none; -webkit-user-select: none; }
+  body { display: grid; grid-template: "h h h" 44px "l m r" 1fr / 220px 1fr 280px; gap: 1px; background: #0a0c10; }
+
+  header { grid-area: h; display: flex; align-items: center; padding: 0 14px; gap: 10px; background: #161a22; flex-wrap: wrap; }
+  header h1 { font-size: 13px; font-weight: 800; color: #34ff6e; letter-spacing: 1px; }
+  header h1 small { color: #6b7682; font-weight: 600; font-size: 10px; margin-left: 6px; }
+  header .grow { flex: 1; }
+  header label.filebtn input { width: 0; height: 0; opacity: 0; position: absolute; }
+  button, header label.filebtn {
+    background: #2a3140; color: #e2e8ef; border: 1px solid #3d4555; border-radius: 4px;
+    padding: 4px 10px; font: 12px "Segoe UI", sans-serif; cursor: pointer; line-height: 1.4;
+  }
+  button:hover, header label.filebtn:hover { background: #3a4150; }
+  button.active { background: #34ff6e; color: #06321a; border-color: #34ff6e; font-weight: 700; }
+  button.primary { background: #34ff6e; color: #06321a; font-weight: 700; border-color: #34ff6e; }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+  aside { padding: 12px; overflow-y: auto; background: #161a22; }
+  aside h2 { font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px; color: #6b7682;
+    margin: 14px 0 6px; border-bottom: 1px solid #2a3140; padding-bottom: 4px; }
+  aside h2:first-child { margin-top: 0; }
+  .tools { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  label.slider { display: block; margin: 8px 0 4px; font-size: 11px; color: #9aa7b4; }
+  label.slider input { width: 100%; margin-top: 2px; }
+  label.slider .val { color: #ffe23d; font-weight: 700; }
+  .row { display: flex; align-items: center; gap: 6px; }
+
+  main { grid-area: m; position: relative; overflow: hidden;
+    background: repeating-conic-gradient(#c0c5cc 0% 25%, #d8dce1 25% 50%) 0/16px 16px; }
+  #display { position: absolute; image-rendering: pixelated; cursor: crosshair; touch-action: none; }
+  #display.pan { cursor: grab; }
+  #display.lasso { cursor: crosshair; }
+  #status { position: absolute; bottom: 8px; left: 8px; background: rgba(10,12,16,0.85);
+    padding: 4px 10px; border-radius: 4px; font: 11px monospace; color: #cfd8e2; pointer-events: none; }
+  #emptyHint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    pointer-events: none; color: #4a5560; font-size: 14px; text-align: center; padding: 20px; }
+  .hint { color: #6b7682; font-size: 11px; line-height: 1.5; }
+  .hint code { background: #0a0c10; padding: 0 4px; border-radius: 2px; color: #ffe23d; font-size: 10px; }
+
+  /* ---- LAYERS PANEL ---- */
+  #layers .layer { display: flex; align-items: center; gap: 4px; padding: 5px 4px;
+    border: 2px solid transparent; border-radius: 4px; margin-bottom: 2px; background: #20242c; }
+  #layers .layer.active { background: #2a3140; border-color: #34ff6e; }
+  #layers .layer.locked .ico-lock { color: #ffe23d; }
+  #layers .ico { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+    background: transparent; border: 1px solid transparent; border-radius: 3px; cursor: pointer; padding: 0;
+    color: #6b7682; font-size: 14px; }
+  #layers .ico:hover { background: #3a4150; }
+  #layers .ico.on { color: #cfd8e2; }
+  #layers .swatch { width: 22px; height: 22px; border: 1px solid rgba(255,255,255,0.2); border-radius: 3px; cursor: pointer; flex: 0 0 22px; padding: 0; }
+  #layers .name { flex: 1; background: transparent; border: 0; color: #e2e8ef; font: 13px "Segoe UI"; padding: 4px 4px; outline: none; cursor: text; min-width: 0; }
+  #layers .name:focus { background: #0a0c10; border-radius: 3px; }
+  #layers .del { color: #ff5252; font-weight: 700; }
+  #addLayer { width: 100%; margin-top: 6px; }
+  #colorpick { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
+
+  .swatch-active { box-shadow: 0 0 0 1px #34ff6e inset; }
+
+  /* small icon shapes via unicode */
+</style>
+</head>
+<body>
+
+<header>
+  <h1>SCORDAGOL · REGION EDITOR <small>v2</small></h1>
+  <label class="filebtn">Open source… <input type="file" id="loadSrc" accept="image/*"></label>
+  <button id="loadPreset" title="Fetch ../assets/striker_Liverpool_k0.png">Liverpool striker</button>
+  <label class="filebtn">Open project… <input type="file" id="loadProj" accept="application/json"></label>
+  <button id="saveProj" class="primary">⬇ Save project</button>
+  <button id="previewBtn" title="See the new sprite (loops filled per team, outlines black) on the pitch">▶ Preview in game</button>
+  <button id="regionMap" title="Flat view: each closed loop auto-filled, outlines stamped black — the new sprite (toggle)">▦ Region map</button>
+  <span class="grow"></span>
+  <button id="undoBtn" title="Undo (Ctrl+Z)">↶ Undo</button>
+  <button id="redoBtn" title="Redo (Ctrl+Y)">↷ Redo</button>
+</header>
+
+<!-- ====== LEFT: tools ====== -->
+<aside>
+  <h2>Tools</h2>
+  <div class="tools">
+    <button data-tool="brush"  class="active">Brush · B</button>
+    <button data-tool="erase">Erase · E</button>
+    <button data-tool="fill">Fill · F</button>
+    <button data-tool="trace">Trace · T</button>
+    <button data-tool="pick">Pick · I</button>
+  </div>
+
+  <label class="slider">Brush size: <span class="val" id="brushSizeLabel">1</span> px
+    <input id="brushSize" type="range" min="1" max="20" value="1"></label>
+
+  <h2>Trace · auto-detect</h2>
+  <p class="hint" style="margin-bottom:6px">
+    Lasso an area → editor finds dark source pixels inside (≤ threshold) and paints them onto the active layer as a starting outline.
+  </p>
+  <label class="slider">Dark threshold: <span class="val" id="detectThreshLabel">80</span>
+    <input id="detectThresh" type="range" min="10" max="200" value="80"></label>
+
+  <h2>Active layer colour</h2>
+  <p class="hint">While editing an unlocked layer the display tints it with this colour so your trace stands out against the source's dark lines. Click the swatch to change it.</p>
+  <div class="row" style="margin-top:6px">
+    <button id="editSwatch" class="swatch" style="background:#39ff14; width:28px; height:22px; border-radius:3px" title="Click to change"></button>
+    <span class="hint">neon green default</span>
+  </div>
+
+  <h2>Workflow</h2>
+  <ol class="hint" style="padding-left:18px; line-height:1.7">
+    <li>Open a sprite (it's only a tracing backdrop — not used in the game).</li>
+    <li>Select a layer (Shirt by default). Press <code>B</code>/<code>T</code> and draw its outline as a <strong>closed loop</strong>.</li>
+    <li>Repeat for every region. Each region is one layer with its own closed loop.</li>
+    <li>Hit <strong>▦ Region map</strong> — every loop is auto-filled and your outlines stamp black. No manual Fill needed.</li>
+    <li><strong>▶ Preview in game</strong> and cycle teams to check the fills.</li>
+    <li><code>Ctrl+S</code> saves the project (just the outlines — fills are derived).</li>
+  </ol>
+  <p class="hint" style="margin-top:8px">
+    <strong style="color:#34ff6e">The only rule:</strong> each region's outline must be a <strong>closed loop</strong> (no gaps) so its
+    inside can be filled. Thickness/precision don't matter — the line itself becomes the black outline. A gap = the fill
+    leaks out (you'll see it instantly on the Region map). <code>F</code> (Fill) is still there for the old shaded pipeline.
+  </p>
+</aside>
+
+<!-- ====== MIDDLE: canvas ====== -->
+<main id="wrap">
+  <canvas id="display"></canvas>
+  <div id="status">no image loaded</div>
+  <div id="emptyHint">No source image loaded.<br>Open one with <em>Open source…</em>, or click <em>Liverpool striker</em>.<br><br>(For the preset, serve via <code>serve.py</code> from the project root and open <code>http://localhost:5577/editor/region-editor.html</code>.)</div>
+</main>
+
+<!-- ====== RIGHT: layers + view ====== -->
+<aside>
+  <h2>Layers</h2>
+  <div id="layers"></div>
+  <button id="addLayer">+ Add layer</button>
+
+  <h2>View</h2>
+  <label class="slider">Source opacity: <span class="val" id="srcOpLabel">100</span>%
+    <input id="srcOpacity" type="range" min="0" max="100" value="100"></label>
+  <label class="slider">Layer opacity: <span class="val" id="maskOpLabel">85</span>%
+    <input id="maskOpacity" type="range" min="0" max="100" value="85"></label>
+  <label><input type="checkbox" id="showGrid"> Pixel grid (zoom ≥ 6)</label>
+
+  <h2>How layers work</h2>
+  <p class="hint">
+    Each layer is one region (Shirt, Sleeves, …). Click a layer to make it the <strong>active</strong> one — that's where your strokes go.
+    Click 👁 to hide a layer, 🔒 to lock it, the colour box to recolour it, or the name to rename. Overlapping pixels resolve top-down (top layer wins).
+  </p>
+</aside>
+
+<!-- ====== IN-GAME PREVIEW OVERLAY ====== -->
+<div id="previewModal" style="display:none; position:fixed; inset:0; z-index:50;
+     background:rgba(8,10,14,0.96); flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:20px;">
+  <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; justify-content:center;">
+    <strong style="color:#34ff6e; letter-spacing:1px;">IN-GAME PREVIEW</strong>
+    <label style="color:#9aa7b4;">Team
+      <select id="previewTeam" style="background:#2a3140; color:#e2e8ef; border:1px solid #3d4555; border-radius:4px; padding:4px 8px; font:12px 'Segoe UI';"></select>
+    </label>
+    <span id="previewInfo" style="color:#6b7682; font:11px monospace;"></span>
+    <button id="previewClose">✕ Close (Esc)</button>
+  </div>
+  <canvas id="previewCanvas" style="background:#0a0c10; border:1px solid #2a3140; border-radius:6px; max-width:92vw; max-height:74vh;"></canvas>
+  <p style="color:#6b7682; font-size:11px; max-width:680px; text-align:center;">
+    This is the <strong>new sprite</strong> — each closed outline auto-filled with the team's colour, your drawn outlines stamped black on top. The original art is not used. Drawn at the exact game placement (131×191 logical, origin 101.2,126.5, feet at y=300).
+  </p>
+</div>
+
+<!-- hidden native colour picker, reused for layer + edit colour -->
+<input type="color" id="colorpick" />
+
+<script>
+"use strict";
+(function () {
+
+  // =================== STATE ===================
+  const display = document.getElementById("display");
+  const dctx    = display.getContext("2d");
+  const srcC    = document.createElement("canvas"); const sctx = srcC.getContext("2d");
+
+  // each layer is { id, name, color (#rrggbb), visible, locked, canvas, ctx }
+  const layers = [];
+  let activeIdx = 0, nextId = 1;
+  let sourceName = null;
+  let hasSource = false;   // true once a real image is loaded (srcC defaults to 300×150)
+
+  // tools + brush
+  let tool = "brush";
+  let brushSize = 1;
+  let detectThresh = 80;
+  let editColor = "#39ff14";
+
+  // view
+  let srcOpacity = 1.0, maskOpacity = 0.85, showGrid = false;
+  let regionMapView = false;     // flat opaque region map (no source, no neon active layer)
+  let panX = 40, panY = 40, Z = 4;
+
+  // input state
+  let dragging = false, panning = false, dragLast = null, spaceDown = false;
+  let lastSpritePx = null;
+  let lassoPts = null;          // array of {x,y} sprite px during trace
+  let pickingFor = null;        // 'editColor' | 'layer:<id>' — which colour-pick target
+
+  // history (per-action snapshots: array of { layerId, before:Canvas })
+  const undoStack = [], redoStack = [], HISTORY_MAX = 30;
+
+  // reusable scratch canvas for tinting
+  const scratch = document.createElement("canvas"), scctx = scratch.getContext("2d");
+
+  // =================== HELPERS ===================
+  const $ = id => document.getElementById(id);
+  const cssToRGB = hex => { const n = parseInt(hex.slice(1), 16); return [(n>>16)&255, (n>>8)&255, n&255]; };
+  const rgbToCSS = (r,g,b) => "#" + ((1<<24)|(r<<16)|(g<<8)|b).toString(16).slice(1);
+  function makeCanvas(w, h) { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; }
+  function activeLayer() { return layers[activeIdx] || null; }
+  function setStatus(msg) { $("status").textContent = msg; }
+
+  function snapshotLayer(layer) {
+    const c = makeCanvas(layer.canvas.width, layer.canvas.height);
+    c.getContext("2d").drawImage(layer.canvas, 0, 0);
+    return c;
+  }
+  function pushHistory(layer) {
+    if (!layer) return;
+    undoStack.push({ layerId: layer.id, before: snapshotLayer(layer) });
+    if (undoStack.length > HISTORY_MAX) undoStack.shift();
+    redoStack.length = 0;
+    refreshUndoButtons();
+  }
+  function refreshUndoButtons() {
+    $("undoBtn").disabled = undoStack.length === 0;
+    $("redoBtn").disabled = redoStack.length === 0;
+  }
+  function findLayerById(id) { return layers.find(l => l.id === id); }
+  // multi-layer history: snapshot every given layer in ONE undo step (used by Auto-fill)
+  function pushHistoryMulti(layerList) {
+    const parts = layerList.filter(Boolean).map(l => ({ layerId: l.id, before: snapshotLayer(l) }));
+    if (!parts.length) return;
+    undoStack.push({ multi: parts });
+    if (undoStack.length > HISTORY_MAX) undoStack.shift();
+    redoStack.length = 0;
+    refreshUndoButtons();
+  }
+  // restore an entry (single or multi); returns the inverse entry capturing the pre-restore state
+  function restoreEntry(entry) {
+    const parts = entry.multi || [entry];
+    const inverse = [];
+    for (const p of parts) {
+      const layer = findLayerById(p.layerId); if (!layer) continue;
+      inverse.push({ layerId: layer.id, before: snapshotLayer(layer) });
+      layer.canvas.width = p.before.width; layer.canvas.height = p.before.height;
+      layer.ctx = layer.canvas.getContext("2d"); layer.ctx.drawImage(p.before, 0, 0);
+    }
+    return entry.multi ? { multi: inverse } : inverse[0];
+  }
+  function undo() {
+    const entry = undoStack.pop(); if (!entry) return refreshUndoButtons();
+    redoStack.push(restoreEntry(entry)); invalidateDerived(); render(); refreshUndoButtons();
+  }
+  function redo() {
+    const entry = redoStack.pop(); if (!entry) return refreshUndoButtons();
+    undoStack.push(restoreEntry(entry)); invalidateDerived(); render(); refreshUndoButtons();
+  }
+
+  // =================== LAYERS ===================
+  const DEFAULT_LAYERS = [
+    { name: "Shirt",   color: "#cc0000" },
+    { name: "Sleeves", color: "#ffffff" },
+    { name: "Shorts",  color: "#003399" },
+    { name: "Socks",   color: "#ffd633" },
+    { name: "Boots",   color: "#222222" },
+    { name: "Hair",    color: "#774422" },
+    { name: "Skin",    color: "#f0c89c" },
+  ];
+
+  function newLayer(name, color) {
+    const w = srcC.width || 1, h = srcC.height || 1;
+    const layer = {
+      id: nextId++, name, color,
+      visible: true, locked: false,
+      canvas: makeCanvas(w, h), ctx: null
+    };
+    layer.ctx = layer.canvas.getContext("2d");
+    return layer;
+  }
+  function resetLayersToDefault() {
+    layers.length = 0;
+    for (const d of DEFAULT_LAYERS) layers.push(newLayer(d.name, d.color));
+    activeIdx = 0;
+  }
+  function resizeAllLayers(w, h) {
+    for (const layer of layers) {
+      const old = layer.canvas;
+      if (old.width === w && old.height === h) continue;
+      const nc = makeCanvas(w, h); nc.getContext("2d").drawImage(old, 0, 0);
+      layer.canvas = nc; layer.ctx = nc.getContext("2d");
+    }
+  }
+  function addLayer() {
+    layers.push(newLayer("Layer " + (layers.length + 1), randColor()));
+    activeIdx = layers.length - 1;
+    invalidateDerived(); renderLayersPanel(); render();
+  }
+  function removeLayer(idx) {
+    if (idx < 0 || idx >= layers.length) return;
+    if (!confirm(`Delete layer "${layers[idx].name}"?`)) return;
+    // also drop history involving this layer (cheap: just clear it)
+    const removedId = layers[idx].id;
+    for (let i = undoStack.length - 1; i >= 0; i--) if (undoStack[i].layerId === removedId) undoStack.splice(i,1);
+    for (let i = redoStack.length - 1; i >= 0; i--) if (redoStack[i].layerId === removedId) redoStack.splice(i,1);
+    layers.splice(idx, 1);
+    if (activeIdx >= layers.length) activeIdx = layers.length - 1;
+    invalidateDerived(); renderLayersPanel(); render(); refreshUndoButtons();
+  }
+  function randColor() {
+    const r = 80 + ((Math.random() * 175) | 0), g = 80 + ((Math.random() * 175) | 0), b = 80 + ((Math.random() * 175) | 0);
+    return rgbToCSS(r, g, b);
+  }
+
+  // ---- layers panel UI (rebuilt from scratch each change) ----
+  function renderLayersPanel() {
+    const root = $("layers"); root.innerHTML = "";
+    layers.forEach((layer, idx) => {
+      const row = document.createElement("div");
+      row.className = "layer" + (idx === activeIdx ? " active" : "") + (layer.locked ? " locked" : "");
+
+      const vis = document.createElement("button");
+      vis.className = "ico" + (layer.visible ? " on" : "");
+      vis.textContent = layer.visible ? "●" : "○"; vis.title = "Show/hide layer";
+      vis.onclick = e => { e.stopPropagation(); layer.visible = !layer.visible; invalidateDerived(); renderLayersPanel(); render(); };
+      row.appendChild(vis);
+
+      const lock = document.createElement("button");
+      lock.className = "ico ico-lock" + (layer.locked ? " on" : "");
+      lock.textContent = layer.locked ? "🔒" : "🔓"; lock.title = "Lock to prevent edits";
+      lock.onclick = e => { e.stopPropagation(); layer.locked = !layer.locked; renderLayersPanel(); render(); };
+      row.appendChild(lock);
+
+      const sw = document.createElement("button");
+      sw.className = "swatch"; sw.style.background = layer.color; sw.title = "Click to change colour";
+      sw.onclick = e => { e.stopPropagation(); openColorPicker("layer:" + layer.id, layer.color); };
+      row.appendChild(sw);
+
+      const name = document.createElement("input");
+      name.className = "name"; name.value = layer.name;
+      name.onfocus = e => e.target.select();
+      name.onchange = () => { layer.name = name.value.trim() || layer.name; renderLayersPanel(); };
+      name.onkeydown = e => { if (e.key === "Enter") name.blur(); if (e.key === "Escape") { name.value = layer.name; name.blur(); } e.stopPropagation(); };
+      row.appendChild(name);
+
+      const del = document.createElement("button");
+      del.className = "ico del"; del.textContent = "✕"; del.title = "Delete layer";
+      del.onclick = e => { e.stopPropagation(); removeLayer(idx); };
+      row.appendChild(del);
+
+      row.onclick = () => { activeIdx = idx; renderLayersPanel(); render(); };
+      root.appendChild(row);
+    });
+  }
+
+  // ---- native colour picker plumbing ----
+  function openColorPicker(target, initial) {
+    pickingFor = target;
+    const picker = $("colorpick");
+    picker.value = initial;
+    // safari needs the input attached + click in a user gesture; we are inside a click already
+    picker.click();
+  }
+  $("colorpick").addEventListener("input", () => {
+    const c = $("colorpick").value;
+    if (pickingFor === "editColor") {
+      editColor = c; $("editSwatch").style.background = c; render();
+    } else if (pickingFor && pickingFor.startsWith("layer:")) {
+      const id = +pickingFor.slice(6); const layer = findLayerById(id);
+      if (layer) { layer.color = c; invalidateDerived(); renderLayersPanel(); render(); }
+    }
+  });
+  $("editSwatch").onclick = () => openColorPicker("editColor", editColor);
+
+  // =================== TOOLS ===================
+  function setTool(t) {
+    tool = t;
+    document.querySelectorAll("[data-tool]").forEach(b => b.classList.toggle("active", b.dataset.tool === t));
+    display.classList.toggle("lasso", t === "trace");
+    setStatus(statusMsg());
+  }
+  document.querySelectorAll("[data-tool]").forEach(b => b.onclick = () => setTool(b.dataset.tool));
+
+  // ---- sliders ----
+  function bind(id, labelId, setter, mul = 1) {
+    const el = $(id), lbl = $(labelId);
+    el.oninput = () => { const v = +el.value; setter(v * mul); lbl.textContent = v; };
+  }
+  bind("brushSize",   "brushSizeLabel",   v => brushSize = v);
+  bind("detectThresh","detectThreshLabel",v => detectThresh = v);
+  bind("maskOpacity", "maskOpLabel", v => { maskOpacity = v; render(); }, 0.01);
+  bind("srcOpacity",  "srcOpLabel",  v => { srcOpacity  = v; render(); }, 0.01);
+  $("showGrid").onchange = e => { showGrid = e.target.checked; render(); };
+
+  // ---- file loading ----
+  $("loadSrc").onchange = e => { const f = e.target.files[0]; if (f) loadSourceImage(f); };
+  $("loadPreset").onclick = async () => {
+    try {
+      const res = await fetch("../assets/striker_Liverpool_k0.png");
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      loadSourceImage(await res.blob(), "striker_Liverpool_k0.png");
+    } catch (e) {
+      alert("Couldn't load the preset.\n\nThis editor must be served over http (not file://). Run serve.py from the project root, then open:\n  http://localhost:5577/editor/region-editor.html\n\n(" + e.message + ")");
+    }
+  };
+  $("loadProj").onchange = e => { const f = e.target.files[0]; if (f) loadProject(f); };
+  $("saveProj").onclick = saveProject;
+  $("addLayer").onclick = addLayer;
+  $("undoBtn").onclick = undo;
+  $("redoBtn").onclick = redo;
+
+  // ---- deep-link from the asset checklist: region-editor.html?asset=striker_k0.png ----
+  (async () => {
+    const want = new URLSearchParams(location.search).get("asset");
+    if (!want) return;
+    try {
+      const res = await fetch("../assets/" + want);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      await loadSourceImage(await res.blob(), want.replace(/^.*\//, ""));
+    } catch (e) {
+      alert("Checklist asked to open '" + want + "' but it couldn't be loaded.\nServe over http (serve.py / play.bat), not file://.\n\n(" + e.message + ")");
+    }
+  })();
+
+  async function loadSourceImage(file, name) {
+    let img;
+    try { img = await loadImage(URL.createObjectURL(file)); }
+    catch (e) { alert("Could not decode that file as an image."); return false; }
+    srcC.width = img.naturalWidth; srcC.height = img.naturalHeight;
+    sctx.clearRect(0, 0, srcC.width, srcC.height); sctx.drawImage(img, 0, 0);
+    sourceName = name || file.name || "sprite";
+    hasSource = true;
+    if (layers.length === 0) resetLayersToDefault();
+    resizeAllLayers(srcC.width, srcC.height);
+    undoStack.length = redoStack.length = 0; refreshUndoButtons();
+    $("emptyHint").style.display = "none";
+    invalidateDerived(); fitToView(); renderLayersPanel(); render();
+    return true;
+  }
+
+  // ---- save / load project ----
+  function saveProject() {
+    if (!hasSource) { alert("Load a source image first."); return; }
+    const data = {
+      version: 2,
+      source: sourceName || "sprite",
+      size: [srcC.width, srcC.height],
+      editColor,
+      layers: layers.map(l => ({
+        name: l.name, color: l.color, visible: l.visible, locked: l.locked,
+        mask: l.canvas.toDataURL("image/png")
+      }))
+    };
+    const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = (sourceName ? sourceName.replace(/\.[^.]+$/, "") : "sprite") + "_regions.json";
+    a.click();
+  }
+  function loadProject(file) {
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const data = JSON.parse(reader.result);
+        if (!data || !Array.isArray(data.layers)) throw new Error("not a project file");
+        // a project is just region masks — it needs its source image underneath.
+        // if none is loaded yet, try to auto-fetch the one it was traced over.
+        if (!hasSource) {
+          let ok = false;
+          if (data.source) {
+            try {
+              const res = await fetch("../assets/" + data.source);
+              if (res.ok) ok = await loadSourceImage(await res.blob(), data.source);
+            } catch (e) { /* fall through to prompt */ }
+          }
+          if (!ok) {
+            alert('Load the source image first, then open this project.\n\n' +
+                  'This project was traced over "' + (data.source || "(unknown)") + '".\n' +
+                  'Use “Open source…”, or the “Liverpool striker” button, then open the project again.');
+            return;
+          }
+        }
+        if (data.size && (data.size[0] !== srcC.width || data.size[1] !== srcC.height)) {
+          if (!confirm(`Project canvas size ${data.size[0]}×${data.size[1]} differs from source ${srcC.width}×${srcC.height}. Load anyway?`)) return;
+        }
+        if (data.editColor) { editColor = data.editColor; $("editSwatch").style.background = editColor; }
+        layers.length = 0;
+        for (const ld of data.layers) {
+          const layer = newLayer(ld.name || "Layer", ld.color || "#ffffff");
+          layer.visible = ld.visible !== false;
+          layer.locked  = !!ld.locked;
+          if (ld.mask) {
+            const img = await loadImage(ld.mask);
+            layer.canvas.width = img.naturalWidth; layer.canvas.height = img.naturalHeight;
+            layer.ctx = layer.canvas.getContext("2d");
+            layer.ctx.drawImage(img, 0, 0);
+          }
+          layers.push(layer);
+        }
+        if (layers.length === 0) resetLayersToDefault();
+        activeIdx = 0;
+        undoStack.length = redoStack.length = 0; refreshUndoButtons();
+        invalidateDerived(); renderLayersPanel(); render();
+      } catch (e) { alert("Couldn't load project: " + e.message); }
+    };
+    reader.readAsText(file);
+  }
+  function loadImage(src) { return new Promise((resolve, reject) => {
+    const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = src;
+  }); }
+
+  // =================== RENDER ===================
+  const wrap = $("wrap");
+  function fitToView() {
+    const w = wrap.clientWidth, h = wrap.clientHeight;
+    if (!srcC.width || !srcC.height) return;
+    Z = Math.max(1, Math.min(Math.floor((w / srcC.width) * 0.9), Math.floor((h / srcC.height) * 0.9)));
+    panX = Math.round((w - srcC.width * Z) / 2);
+    panY = Math.round((h - srcC.height * Z) / 2);
+  }
+  function resizeDisplay() {
+    display.width = wrap.clientWidth; display.height = wrap.clientHeight;
+    display.style.width = wrap.clientWidth + "px"; display.style.height = wrap.clientHeight + "px";
+    render();
+  }
+  window.addEventListener("resize", resizeDisplay);
+
+  // tint a layer canvas with a given css colour and return a reusable scratch canvas with the result
+  function tintLayer(layer, cssColor) {
+    if (scratch.width !== layer.canvas.width || scratch.height !== layer.canvas.height) {
+      scratch.width = layer.canvas.width; scratch.height = layer.canvas.height;
+    }
+    scctx.globalCompositeOperation = "source-over";
+    scctx.clearRect(0, 0, scratch.width, scratch.height);
+    scctx.fillStyle = cssColor;
+    scctx.fillRect(0, 0, scratch.width, scratch.height);
+    scctx.globalCompositeOperation = "destination-in";
+    scctx.drawImage(layer.canvas, 0, 0);
+    scctx.globalCompositeOperation = "source-over";
+    return scratch;
+  }
+
+  function render() {
+    if (!display.width) return;
+    dctx.imageSmoothingEnabled = false;
+    dctx.clearRect(0, 0, display.width, display.height);
+    if (!srcC.width) return;
+
+    if (regionMapView) {
+      // FLAT VIEW: the "new sprite" — each closed loop auto-filled with its layer colour,
+      // the drawn outlines stamped black on top. This is what the game will use.
+      const rc = getRegionMapCanvas();
+      if (rc) dctx.drawImage(rc, panX, panY, srcC.width * Z, srcC.height * Z);
+    } else {
+      // EDIT VIEW: source backdrop + the raw drawn outlines (active layer in neon).
+      dctx.globalAlpha = srcOpacity;
+      dctx.drawImage(srcC, panX, panY, srcC.width * Z, srcC.height * Z);
+      dctx.globalAlpha = maskOpacity;
+      for (let i = 0; i < layers.length; i++) {
+        const layer = layers[i]; if (!layer.visible) continue;
+        const editing = (i === activeIdx && !layer.locked);
+        const tint = tintLayer(layer, editing ? editColor : layer.color);
+        dctx.drawImage(tint, panX, panY, layer.canvas.width * Z, layer.canvas.height * Z);
+      }
+      dctx.globalAlpha = 1;
+    }
+
+    // pixel grid
+    if (showGrid && Z >= 6) {
+      dctx.strokeStyle = "rgba(0,0,0,0.18)"; dctx.lineWidth = 1; dctx.beginPath();
+      const x1 = panX + srcC.width * Z, y1 = panY + srcC.height * Z;
+      for (let x = 0; x <= srcC.width;  x++) { const px = panX + x * Z + 0.5; dctx.moveTo(px, panY); dctx.lineTo(px, y1); }
+      for (let y = 0; y <= srcC.height; y++) { const py = panY + y * Z + 0.5; dctx.moveTo(panX, py); dctx.lineTo(x1, py); }
+      dctx.stroke();
+    }
+
+    // live lasso preview
+    if (lassoPts && lassoPts.length > 1) {
+      dctx.strokeStyle = editColor; dctx.lineWidth = 2; dctx.setLineDash([6, 4]);
+      dctx.beginPath();
+      dctx.moveTo(panX + lassoPts[0].x * Z + 0.5, panY + lassoPts[0].y * Z + 0.5);
+      for (let i = 1; i < lassoPts.length; i++)
+        dctx.lineTo(panX + lassoPts[i].x * Z + 0.5, panY + lassoPts[i].y * Z + 0.5);
+      dctx.stroke();
+      dctx.setLineDash([]);
+    }
+  }
+
+  // =================== INPUT ===================
+  function evToSpritePx(e) {
+    const r = display.getBoundingClientRect();
+    return { x: Math.floor((e.clientX - r.left - panX) / Z), y: Math.floor((e.clientY - r.top - panY) / Z) };
+  }
+  const inBounds = p => p.x >= 0 && p.y >= 0 && p.x < srcC.width && p.y < srcC.height;
+  function statusMsg() {
+    const l = activeLayer();
+    return `tool ${tool}  ·  zoom ${Z}×  ·  active: ${l ? l.name + (l.locked ? " 🔒" : "") : "—"}`;
+  }
+
+  // ---- core brush + line ----
+  function paintAt(layer, p) {
+    if (!inBounds(p)) return;
+    const s = Math.max(1, brushSize), half = Math.floor(s / 2);
+    if (tool === "erase") layer.ctx.clearRect(p.x - half, p.y - half, s, s);
+    else { layer.ctx.fillStyle = "#ffffff"; layer.ctx.fillRect(p.x - half, p.y - half, s, s); }
+  }
+  function lineBrush(layer, a, b) {
+    const dx = Math.abs(b.x - a.x), dy = Math.abs(b.y - a.y);
+    const sx = a.x < b.x ? 1 : -1, sy = a.y < b.y ? 1 : -1;
+    let x = a.x, y = a.y, err = dx - dy;
+    for (;;) {
+      paintAt(layer, { x, y });
+      if (x === b.x && y === b.y) break;
+      const e2 = 2 * err;
+      if (e2 > -dy) { err -= dy; x += sx; }
+      if (e2 <  dx) { err += dx; y += sy; }
+    }
+  }
+
+  // ---- mask-aware fill, scoped to active layer ----
+  // Spreads through pixels where SOURCE is non-transparent AND the ACTIVE layer is currently empty.
+  // Stops at any pixel that's in ANOTHER (non-active) layer (so other regions act as walls too).
+  function fillAt(layer, p) {
+    if (!inBounds(p)) return;
+    const w = srcC.width, h = srcC.height;
+    const sd = sctx.getImageData(0, 0, w, h).data;
+    const ad = layer.ctx.getImageData(0, 0, w, h), a = ad.data;
+    // build a "wall" mask: pixel-in-another-layer => wall
+    const wall = new Uint8Array(w * h);
+    for (const other of layers) {
+      if (other === layer) continue;
+      const od = other.canvas.getContext("2d").getImageData(0, 0, w, h).data;
+      for (let k = 0; k < w * h; k++) if (od[k * 4 + 3] >= 30) wall[k] = 1;
+    }
+    const k0 = (p.y * w + p.x) * 4;
+    if (sd[k0 + 3] < 30) return;
+    if (a[k0 + 3] >= 30) return;
+    if (wall[p.y * w + p.x]) return;
+    const seen = new Uint8Array(w * h), stack = [p.x, p.y];
+    while (stack.length) {
+      const y = stack.pop(), x = stack.pop();
+      if (x < 0 || y < 0 || x >= w || y >= h) continue;
+      const idx = y * w + x;
+      if (seen[idx]) continue; seen[idx] = 1;
+      const j = idx * 4;
+      if (sd[j + 3] < 30) continue;
+      if (a[j + 3] >= 30) continue;
+      if (wall[idx]) continue;
+      a[j] = 255; a[j + 1] = 255; a[j + 2] = 255; a[j + 3] = 255;
+      stack.push(x + 1, y, x - 1, y, x, y + 1, x, y - 1);
+    }
+    layer.ctx.putImageData(ad, 0, 0);
+    invalidateDerived();
+  }
+
+  // ---- trace tool: lasso + auto-detect dark inside ----
+  function completeLasso() {
+    if (!lassoPts || lassoPts.length < 3) { lassoPts = null; render(); return; }
+    const layer = activeLayer(); if (!layer || layer.locked) { lassoPts = null; render(); return; }
+    pushHistory(layer);
+    const w = srcC.width, h = srcC.height;
+    // bounding box of the lasso (clamped to canvas)
+    let minX = w, minY = h, maxX = 0, maxY = 0;
+    for (const pt of lassoPts) {
+      if (pt.x < minX) minX = pt.x; if (pt.x > maxX) maxX = pt.x;
+      if (pt.y < minY) minY = pt.y; if (pt.y > maxY) maxY = pt.y;
+    }
+    minX = Math.max(0, minX); minY = Math.max(0, minY);
+    maxX = Math.min(w - 1, maxX); maxY = Math.min(h - 1, maxY);
+    // rasterize the closed polygon to a small mask using a temp canvas
+    const lw = maxX - minX + 1, lh = maxY - minY + 1;
+    if (lw <= 0 || lh <= 0) { lassoPts = null; render(); return; }
+    const tmp = makeCanvas(lw, lh), tctx = tmp.getContext("2d");
+    tctx.fillStyle = "#fff"; tctx.beginPath();
+    tctx.moveTo(lassoPts[0].x - minX, lassoPts[0].y - minY);
+    for (let i = 1; i < lassoPts.length; i++) tctx.lineTo(lassoPts[i].x - minX, lassoPts[i].y - minY);
+    tctx.closePath(); tctx.fill();
+    const insideMask = tctx.getImageData(0, 0, lw, lh).data;
+    // for each pixel inside lasso AND source-dark, paint to active layer
+    const sd = sctx.getImageData(0, 0, w, h).data;
+    const ad = layer.ctx.getImageData(0, 0, w, h), a = ad.data;
+    for (let y = 0; y < lh; y++) for (let x = 0; x < lw; x++) {
+      if (insideMask[(y * lw + x) * 4 + 3] < 128) continue;          // not inside lasso
+      const X = x + minX, Y = y + minY;
+      const j = (Y * w + X) * 4;
+      if (sd[j + 3] < 30) continue;                                  // source transparent
+      if (Math.max(sd[j], sd[j + 1], sd[j + 2]) >= detectThresh) continue; // not dark enough
+      a[j] = 255; a[j + 1] = 255; a[j + 2] = 255; a[j + 3] = 255;
+    }
+    layer.ctx.putImageData(ad, 0, 0);
+    invalidateDerived();
+    lassoPts = null;
+    render();
+  }
+
+  // ---- pick: which layer owns this pixel? activate it ----
+  function pickAt(p) {
+    if (!inBounds(p)) return;
+    // top-down: last drawn (highest index) wins
+    for (let i = layers.length - 1; i >= 0; i--) {
+      const layer = layers[i];
+      const a = layer.ctx.getImageData(p.x, p.y, 1, 1).data;
+      if (a[3] >= 30) { activeIdx = i; renderLayersPanel(); render(); return; }
+    }
+  }
+
+  // ---- pointer events ----
+  display.addEventListener("pointerdown", e => {
+    if (!hasSource) return;
+    display.setPointerCapture(e.pointerId);
+    if (spaceDown || e.button === 1) { panning = true; dragLast = { x: e.clientX, y: e.clientY }; return; }
+    const p = evToSpritePx(e);
+
+    if (tool === "trace") { lassoPts = [p]; dragging = true; render(); return; }
+    if (tool === "pick")  { pickAt(p); return; }
+
+    const layer = activeLayer();
+    if (!layer)           { setStatus("no active layer — add one in the layers panel"); return; }
+    if (layer.locked)     { setStatus(`"${layer.name}" is locked — unlock to edit`); return; }
+    pushHistory(layer);   // single snapshot for the whole stroke / fill action
+    dragging = true; lastSpritePx = p;
+    if (tool === "brush" || tool === "erase") paintAt(layer, p);
+    else if (tool === "fill") fillAt(layer, p);
+    render();
+  });
+  display.addEventListener("pointermove", e => {
+    if (panning) {
+      panX += e.clientX - dragLast.x; panY += e.clientY - dragLast.y;
+      dragLast = { x: e.clientX, y: e.clientY }; render(); return;
+    }
+    const p = evToSpritePx(e);
+    setStatus((inBounds(p) ? `px ${p.x},${p.y}` : "—") + "  ·  " + statusMsg());
+    if (!dragging) return;
+    if (tool === "trace") {
+      // append unique sprite-pixel points (skip repeats)
+      const last = lassoPts[lassoPts.length - 1];
+      if (!last || last.x !== p.x || last.y !== p.y) lassoPts.push(p);
+      render(); return;
+    }
+    const layer = activeLayer();
+    if (!layer || layer.locked) return;
+    if (tool === "brush" || tool === "erase") {
+      if (lastSpritePx) lineBrush(layer, lastSpritePx, p); else paintAt(layer, p);
+      lastSpritePx = p; render();
+    }
+  });
+  display.addEventListener("pointerup", () => {
+    if (tool === "trace" && dragging && lassoPts) completeLasso();
+    if (dragging) invalidateDerived();
+    dragging = panning = false; dragLast = null; lastSpritePx = null;
+    if (regionMapView) render();   // refresh the derived map after an edit
+  });
+  display.addEventListener("pointercancel", () => {
+    dragging = panning = false; dragLast = null; lastSpritePx = null; lassoPts = null; render();
+  });
+  display.addEventListener("wheel", e => {
+    e.preventDefault();
+    if (!srcC.width) return;
+    const oldZ = Z, dir = e.deltaY < 0 ? +1 : -1;
+    Z = Math.max(1, Math.min(32, Z + dir));
+    if (Z === oldZ) return;
+    const r = display.getBoundingClientRect(), cx = e.clientX - r.left, cy = e.clientY - r.top;
+    const sx = (cx - panX) / oldZ, sy = (cy - panY) / oldZ;
+    panX = cx - sx * Z; panY = cy - sy * Z;
+    render();
+  }, { passive: false });
+
+  // =================== KEYBOARD ===================
+  const toolKey = { KeyB: "brush", KeyE: "erase", KeyF: "fill", KeyT: "trace", KeyI: "pick" };
+  window.addEventListener("keydown", e => {
+    if (e.code === "Escape" && $("previewModal").style.display !== "none") { closePreview(); return; }
+    if (e.target.tagName === "INPUT") return;
+    if (e.code === "Space") { e.preventDefault(); spaceDown = true; display.classList.add("pan"); return; }
+    if ((e.ctrlKey || e.metaKey) && e.code === "KeyZ") { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+    if ((e.ctrlKey || e.metaKey) && e.code === "KeyY") { e.preventDefault(); redo(); return; }
+    if ((e.ctrlKey || e.metaKey) && e.code === "KeyS") { e.preventDefault(); saveProject(); return; }
+    if (toolKey[e.code]) { setTool(toolKey[e.code]); return; }
+    // 1..9 → select layer
+    const n = parseInt(e.key, 10);
+    if (n >= 1 && n <= layers.length) { activeIdx = n - 1; renderLayersPanel(); render(); }
+  });
+  window.addEventListener("keyup", e => {
+    if (e.code === "Space") { spaceDown = false; if (!panning) display.classList.remove("pan"); }
+  });
+
+  // =================== DERIVE REGIONS (auto-fill each closed loop) ===================
+  // The new-sprite model: every drawn outline is a closed loop; we fill the geometric INSIDE
+  // of each loop automatically. The drawn outlines are the BLACK line-work; the interiors are
+  // the per-team fills. The source image is only a tracing backdrop and is NOT used here.
+  let derivedCache = null;
+  function invalidateDerived() { derivedCache = null; }
+
+  // geometric inside of one closed loop: flood from the loop's (expanded) bbox border across
+  // non-outline pixels; whatever the flood can't reach is enclosed = the fill area.
+  function loopInteriorMask(mask, W, H) {
+    const N = W * H, inside = new Uint8Array(N);
+    let minX = W, minY = H, maxX = 0, maxY = 0, cnt = 0;
+    const wall = new Uint8Array(N);
+    for (let i = 0; i < N; i++) {
+      if (mask[i * 4 + 3] >= 30) {
+        wall[i] = 1; cnt++;
+        const x = i % W, y = (i / W) | 0;
+        if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y;
+      }
+    }
+    if (!cnt) return inside;
+    const x0 = Math.max(0, minX - 1), y0 = Math.max(0, minY - 1), x1 = Math.min(W - 1, maxX + 1), y1 = Math.min(H - 1, maxY + 1);
+    const seen = new Uint8Array(N), st = [];
+    for (let x = x0; x <= x1; x++) { for (const y of [y0, y1]) { const i = y * W + x; if (!wall[i] && !seen[i]) { seen[i] = 1; st.push(i); } } }
+    for (let y = y0; y <= y1; y++) { for (const x of [x0, x1]) { const i = y * W + x; if (!wall[i] && !seen[i]) { seen[i] = 1; st.push(i); } } }
+    while (st.length) {
+      const i = st.pop(), x = i % W, y = (i / W) | 0;
+      if (x + 1 <= x1) { const n = i + 1; if (!seen[n] && !wall[n]) { seen[n] = 1; st.push(n); } }
+      if (x - 1 >= x0) { const n = i - 1; if (!seen[n] && !wall[n]) { seen[n] = 1; st.push(n); } }
+      if (y + 1 <= y1) { const n = i + W; if (!seen[n] && !wall[n]) { seen[n] = 1; st.push(n); } }
+      if (y - 1 >= y0) { const n = i - W; if (!seen[n] && !wall[n]) { seen[n] = 1; st.push(n); } }
+    }
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const i = y * W + x; if (!wall[i] && !seen[i]) inside[i] = 1; }
+    return inside;
+  }
+
+  // owner[] = region index per pixel (interior ∪ its own outline); ink[] = 1 where any outline is drawn.
+  function deriveRegions() {
+    if (derivedCache) return derivedCache;
+    if (!srcC.width) return null;
+    const W = srcC.width, H = srcC.height, N = W * H;
+    const owner = new Int16Array(N).fill(-1), ink = new Uint8Array(N);
+    const masks = layers.map(L => L.canvas.getContext("2d").getImageData(0, 0, W, H).data);
+    for (let k = 0; k < layers.length; k++) {
+      if (!layers[k].visible) continue;
+      const m = masks[k]; for (let i = 0; i < N; i++) if (m[i * 4 + 3] >= 30) ink[i] = 1;
+    }
+    for (let k = 0; k < layers.length; k++) {
+      if (!layers[k].visible) continue;
+      const m = masks[k], inside = loopInteriorMask(m, W, H);
+      for (let i = 0; i < N; i++) if (owner[i] === -1 && (inside[i] || m[i * 4 + 3] >= 30)) owner[i] = k;
+    }
+    derivedCache = { owner, ink, W, H, mapCanvas: null };
+    return derivedCache;
+  }
+
+  // flat region map: interiors in each layer's colour, drawn outlines stamped black
+  function getRegionMapCanvas() {
+    const d = deriveRegions(); if (!d) return null;
+    if (d.mapCanvas) return d.mapCanvas;
+    const { owner, ink, W, H } = d;
+    const cols = layers.map(L => cssToRGB(L.color));
+    const img = new ImageData(W, H), a = img.data;
+    for (let i = 0; i < W * H; i++) {
+      const j = i * 4;
+      if (ink[i]) { a[j] = a[j + 1] = a[j + 2] = 16; a[j + 3] = 255; continue; }
+      const k = owner[i]; if (k === -1) { a[j + 3] = 0; continue; }
+      a[j] = cols[k][0]; a[j + 1] = cols[k][1]; a[j + 2] = cols[k][2]; a[j + 3] = 255;
+    }
+    const c = makeCanvas(W, H); c.getContext("2d").putImageData(img, 0, 0);
+    d.mapCanvas = c; return c;
+  }
+
+  // =================== IN-GAME PREVIEW ===================
+  // exact game placement (from index.html drawStriker)
+  const PV_OX = 101.2, PV_OY = 126.5, PV_W = 131, PV_H = 191, PV_MANY = 300, PV_MANX = 250;
+  const PITCH_W = 550, PITCH_H = 400;
+  let teamsData = null, pitchImg = null;
+  const NONKIT = { Boots: "#1a1a1a", Hair: "#774422", Skin: "#f0c89c" };
+  const KITSLOT = { Shirt: "shirt", Sleeves: "sleeves", Shorts: "shorts", Socks: "socks", "Sock Tops": "socks_top", Cuffs: "stripe" };
+
+  function teamColourFor(team, layerName) {
+    const slot = KITSLOT[layerName];
+    if (slot && team && team[slot] && teamsData.palette[team[slot]]) return teamsData.palette[team[slot]];
+    if (NONKIT[layerName]) return NONKIT[layerName];
+    return null;
+  }
+
+  // the NEW sprite for a team: each loop's interior flat-filled with the team colour,
+  // the drawn outlines stamped black on top. Source image is not used.
+  function recolourStriker(team) {
+    const d = deriveRegions(); if (!d) return makeCanvas(1, 1);
+    const { owner, ink, W, H } = d;
+    const cols = layers.map(L => cssToRGB(teamColourFor(team, L.name) || L.color));
+    const out = new ImageData(W, H), od = out.data;
+    for (let i = 0; i < W * H; i++) {
+      const j = i * 4;
+      if (ink[i]) { od[j] = od[j + 1] = od[j + 2] = 16; od[j + 3] = 255; continue; }  // black outline
+      const k = owner[i];
+      if (k === -1) { od[j + 3] = 0; continue; }                                       // not part of sprite
+      od[j] = cols[k][0]; od[j + 1] = cols[k][1]; od[j + 2] = cols[k][2]; od[j + 3] = 255;
+    }
+    const c = makeCanvas(W, H); c.getContext("2d").putImageData(out, 0, 0); return c;
+  }
+
+  function drawPreview() {
+    const cv = $("previewCanvas"), g = cv.getContext("2d");
+    cv.width = PITCH_W; cv.height = PITCH_H;
+    g.imageSmoothingEnabled = true;
+    g.clearRect(0, 0, PITCH_W, PITCH_H);
+    if (pitchImg) g.drawImage(pitchImg, 0, 0, PITCH_W, PITCH_H);
+    else { g.fillStyle = "#2f7d32"; g.fillRect(0, 0, PITCH_W, PITCH_H); }
+    const slug = $("previewTeam").value;
+    const team = teamsData && teamsData.teams.find(t => t.slug === slug);
+    const sprite = recolourStriker(team);
+    g.drawImage(sprite, PV_MANX - PV_OX, PV_MANY - PV_OY, PV_W, PV_H);
+    $("previewInfo").textContent = "new sprite from outlines · " + srcC.width + "×" + srcC.height + " → 131×191 @ game scale";
+  }
+
+  async function openPreview() {
+    if (!hasSource) { alert("Load a source image first (or open a project — it loads the source for you)."); return; }
+    try {
+      if (!teamsData) teamsData = await fetch("../assets/teams.json").then(r => r.json());
+      if (!pitchImg) pitchImg = await loadImage("../assets/pitch_hd.png").catch(() => null);
+    } catch (e) { /* pitch optional */ }
+    if (!teamsData) { alert("Couldn't load ../assets/teams.json (serve over http, not file://)."); return; }
+    const sel = $("previewTeam");
+    if (!sel.options.length) {
+      for (const t of teamsData.teams) {
+        const o = document.createElement("option"); o.value = t.slug; o.textContent = t.name; sel.appendChild(o);
+      }
+      const lv = teamsData.teams.find(t => /liverpool/i.test(t.slug) || /liverpool/i.test(t.name));
+      sel.value = lv ? lv.slug : teamsData.teams[0].slug;
+    }
+    $("previewModal").style.display = "flex";
+    drawPreview();
+  }
+  function closePreview() { $("previewModal").style.display = "none"; }
+  $("previewBtn").onclick = openPreview;
+  $("previewClose").onclick = closePreview;
+  $("previewTeam").onchange = drawPreview;
+  $("previewModal").addEventListener("pointerdown", e => { if (e.target === $("previewModal")) closePreview(); });
+
+  // region-map toggle
+  $("regionMap").onclick = () => {
+    regionMapView = !regionMapView;
+    $("regionMap").classList.toggle("active", regionMapView);
+    render();
+  };
+
+  // =================== INIT ===================
+  resetLayersToDefault();
+  renderLayersPanel();
+  refreshUndoButtons();
+  resizeDisplay();
+})();
+</script>
+</body>
+</html>
