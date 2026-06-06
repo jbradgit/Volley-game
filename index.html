@@ -1884,6 +1884,7 @@
   canvas.addEventListener("pointerup",(e)=>{
     e.preventDefault();
     if(dragging){ dragging=false; if(state===ST.SERVE && !kicked && !paused) triggerKick(); }   // ...release to shoot
+    else if(TOUCH && state===ST.NAME){ kbdOpen(nameBuf); }  // touchend: re-focus hidden input so iOS keyboard appears
   },{passive:false});
   canvas.addEventListener("pointercancel",()=>{ dragging=false; });
 
