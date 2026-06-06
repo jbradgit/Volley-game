@@ -409,6 +409,7 @@
   let mouseTargetX=null;          // striker target x (null = not steering)
   let dragStartFieldX=null, dragManStartX=null;   // relative-drag anchor (touch only)
   let touchPauseResumeRect=null, touchPauseForfeitRect=null;   // tap zones on pause overlay
+  let touchBackBtn=null;
   let manKicking=false, manKickT=0;
   let defenders = [];
   let keeperPose = { x:KEEPER_START_X, dir:"up", anim:"idle", frame:1 };
@@ -932,6 +933,15 @@
     ctx.font=ttFont(8); ctx.fillStyle="rgba(255,255,255,0.55)"; ctx.textAlign="right";
     ctx.fillText("P", bx+bw-3, by+bh-2); ctx.textAlign="left";
   }
+  function drawTouchBack(label){
+    if(!TOUCH){ touchBackBtn=null; return; }
+    const bw=90,bh=26,bx=8,by=SH-48;
+    ctx.fillStyle="rgba(6,10,20,0.82)"; ctx.fillRect(bx,by,bw,bh);
+    ctx.strokeStyle="rgba(255,255,255,0.35)"; ctx.lineWidth=1; ctx.strokeRect(bx+0.5,by+0.5,bw-1,bh-1);
+    ctx.font=ttFont(11); ctx.fillStyle="rgba(255,255,255,0.75)"; ctx.textAlign="center";
+    ctx.fillText(label||"← BACK",bx+bw/2,by+18); ctx.textAlign="left";
+    touchBackBtn={x:bx,y:by,w:bw,h:bh};
+  }
   function canCheckout(){ return (state===ST.SERVE||state===ST.FLIGHT||state===ST.RESULT) && M.attempts>0 && M.score>=M.winTarget; }
   function checkoutEarly(){ paused=false; sfx.whistle(); endMatch(); }   // bank the win now, skip remaining balls
 
@@ -1333,12 +1343,12 @@
     ctx.textAlign="right"; ctx.font=ttFont(12); ctx.fillStyle=TTX.white;
     ctx.fillText("MD "+(CAR.idx+1)+"/"+CAR.fixtures.length, VW-16, HBY+HBH/2+5); ctx.textAlign="left";
     // ---- title row ----
-    ctx.font=ttFont(18); ctx.fillStyle=TTX.green; ctx.textAlign="left"; ctx.fillText("PREMIER LEAGUE TABLE", 16, 60);
-    ctx.textAlign="right"; ctx.font=ttFont(15); ctx.fillStyle=TTX.cyan; ctx.fillText("SEASON "+CAR.season, VW-16, 60); ctx.textAlign="left";
+    ctx.font=ttFont(20); ctx.fillStyle=TTX.green; ctx.textAlign="left"; ctx.fillText("PREMIER LEAGUE TABLE", 16, 68);
+    ctx.textAlign="right"; ctx.font=ttFont(16); ctx.fillStyle=TTX.cyan; ctx.fillText("SEASON "+CAR.season, VW-16, 68); ctx.textAlign="left";
     // ---- two columns of 10 — pos · team · W D L PL PT (centred stat columns; headings sit above their data) ----
-    const colX=[58,498], blockW=368, top=86, rowH=20, hdrY=74, NAMEX=30;
+    const colX=[58,498], blockW=368, top=98, rowH=22, hdrY=84, NAMEX=30;
     const CEN={ W:120, D:94, L:68, PL:40, PT:12 };   // centre of each stat column, px left of the block's right edge
-    ctx.font=ttFont(13); ctx.fillStyle="#aab4c0"; ctx.textBaseline="alphabetic";
+    ctx.font=ttFont(14); ctx.fillStyle="#aab4c0"; ctx.textBaseline="alphabetic";
     for (const x of colX){ const xr=x+blockW;
       ctx.textAlign="left";   ctx.fillText("P", x, hdrY); ctx.fillText("TEAM", x+NAMEX, hdrY);
       ctx.textAlign="center"; ctx.fillText("W", xr-CEN.W, hdrY); ctx.fillText("D", xr-CEN.D, hdrY);
@@ -1348,14 +1358,14 @@
     for (let i=0;i<tbl.length;i++){
       if (ttSub(tbl[i].name, i)===null) continue;
       const t=tbl[i], r=CAR.table[t.slug], mine=t.slug===CAR.slug;
-      const col=Math.floor(i/10), row=i%10, x=colX[col], xr=x+blockW, y=top+row*rowH+14;
-      if (mine){ ctx.strokeStyle="rgba(255,255,255,0.55)"; ctx.lineWidth=1.5; ctx.strokeRect(x-6+0.75,y-14+0.75,blockW+12-1.5,rowH-1.5); }
+      const col=Math.floor(i/10), row=i%10, x=colX[col], xr=x+blockW, y=top+row*rowH+16;
+      if (mine){ ctx.strokeStyle="rgba(255,255,255,0.55)"; ctx.lineWidth=1.5; ctx.strokeRect(x-6+0.75,y-16+0.75,blockW+12-1.5,rowH-1.5); }
       const base = i<4 ? TTX.green : (i>=17 ? TTX.red : TTX.white);
-      ctx.font=ttFont(14); ctx.textAlign="left";
+      ctx.font=ttFont(15); ctx.textAlign="left";
       ctx.fillStyle=TTX.cyan; ctx.fillText(""+(i+1), x, y);
       let nm=t.name; while (nm.length>3 && ctx.measureText(nm).width > blockW-CEN.W-30){ nm=nm.slice(0,-1); }
       ctx.fillStyle=base; ctx.fillText(nm, x+NAMEX, y);
-      ctx.font=ttFont(13); ctx.textAlign="center";
+      ctx.font=ttFont(14); ctx.textAlign="center";
       ctx.fillStyle=TTX.green;  ctx.fillText(""+r.w,   xr-CEN.W,  y);
       ctx.fillStyle=TTX.grey;   ctx.fillText(""+r.d,   xr-CEN.D,  y);
       ctx.fillStyle="#e08a8a";  ctx.fillText(""+r.l,   xr-CEN.L,  y);
@@ -1741,18 +1751,18 @@
         ctx.textAlign="left";
       } else { touchPauseResumeRect=null; touchPauseForfeitRect=null; }
       ctx.restore();   // end field-centring translate
-    } else if (state===ST.OVER) { ttClear(); drawOver(); }
-    else if (state===ST.MENU) { ttClear(); drawMenu(); }
-    else if (state===ST.NAME) { ttClear(); drawName(); }
-    else if (state===ST.CLUBSEL) { ttClear(); drawClubSelect(); }
-    else if (state===ST.TABLE) { ttClear(); drawTable(); }
-    else if (state===ST.SEASONEND) { ttClear(); drawSeasonEnd(); }
-    else if (state===ST.INBOX) { ttClear(); drawInbox(); }
-    else if (state===ST.EMAIL) { ttClear(); drawEmail(); }
-    else if (state===ST.DAILYBOARD) { ttClear(); drawDailyBoard(); }
-    else if (state===ST.HORSESETUP) { ttClear(); drawHorseSetup(); }
-    else if (state===ST.HORSEPASS) { ttClear(); drawHorsePass(); }
-    else if (state===ST.HORSEEND) { ttClear(); drawHorseEnd(); }
+    } else if (state===ST.OVER) { ttClear(); drawOver(); drawTouchBack("← MENU"); }
+    else if (state===ST.MENU) { ttClear(); drawMenu(); touchBackBtn=null; }
+    else if (state===ST.NAME) { ttClear(); drawName(); drawTouchBack("← BACK"); }
+    else if (state===ST.CLUBSEL) { ttClear(); drawClubSelect(); drawTouchBack("← BACK"); }
+    else if (state===ST.TABLE) { ttClear(); drawTable(); drawTouchBack("← MENU"); }
+    else if (state===ST.SEASONEND) { ttClear(); drawSeasonEnd(); drawTouchBack("← MENU"); }
+    else if (state===ST.INBOX) { ttClear(); drawInbox(); drawTouchBack("← BACK"); }
+    else if (state===ST.EMAIL) { ttClear(); drawEmail(); drawTouchBack("← BACK"); }
+    else if (state===ST.DAILYBOARD) { ttClear(); drawDailyBoard(); drawTouchBack("← MENU"); }
+    else if (state===ST.HORSESETUP) { ttClear(); drawHorseSetup(); drawTouchBack("← MENU"); }
+    else if (state===ST.HORSEPASS) { ttClear(); drawHorsePass(); drawTouchBack("← MENU"); }
+    else if (state===ST.HORSEEND) { ttClear(); drawHorseEnd(); drawTouchBack("← MENU"); }
   }
 
   // ---- input ----
@@ -1911,7 +1921,7 @@
     const p=evToLogical(e);
     if(state===ST.MENU){ const i=menuHit(p.x,p.y); if(i>=0) menuSel=i; }
     else if(state===ST.CLUBSEL){ const i=clubHit(p.x,p.y); if(i>=0) menuSel=i; }
-    else if(inPlay(state) && (dragging || e.pointerType==="mouse")){
+    else if((inPlay(state)||state===ST.RESULT) && (dragging || e.pointerType==="mouse")){
       e.preventDefault();
       if (e.pointerType==="mouse"){
         mouseTargetX=manTargetFromPointer(p.x-OX);   // mouse: absolute aim
@@ -1932,10 +1942,15 @@
       if(touchPauseForfeitRect){ const r=touchPauseForfeitRect; if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h){ forfeit(); return; } }
       return;
     }
+    if(TOUCH && touchBackBtn){ const r=touchBackBtn; if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h){ goBack(); return; } }
     if(state===ST.MENU){ const i=menuHit(p.x,p.y); if(i>=0){ menuSel=i; pressSelect(); } }
-    else if(state===ST.CLUBSEL){ const i=clubHit(p.x,p.y); if(i>=0){ menuSel=i; pressSelect(); } }
+    else if(state===ST.CLUBSEL){
+      if(TOUCH && performance.now()-stateEnterAt<600) return;
+      const i=clubHit(p.x,p.y);
+      if(i>=0){ if(TOUCH && i!==menuSel){ menuSel=i; } else { menuSel=i; pressSelect(); } }
+    }
     else if(state===ST.HORSESETUP){ const f=horseFieldHit(p); if(f>=0){ hField=f; kbdOpen(hSetup[hField]); } else kbdOpen(hSetup[hField]); }
-    else if(inPlay(state)){
+    else if(inPlay(state)||state===ST.RESULT){
       if(canCheckout() && p.y<42 && p.x<360){ checkoutEarly(); return; }   // tap the banner (view top-left) to bank the win
       dragging=true;
       try{ canvas.setPointerCapture(e.pointerId); }catch(_){}   // keep pointermove firing even off-canvas
