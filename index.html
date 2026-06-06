@@ -576,8 +576,9 @@
     const L = leftFooted ? input.right : input.left;
     if (R && manX<MAN_MAX_X) manX=Math.min(MAN_MAX_X, manX+5);
     else if (L && manX>MAN_MIN_X) manX=Math.max(MAN_MIN_X, manX-5);
-    else if (mouseTargetX!=null){ const d=mouseTargetX-manX, step=18;   // ease toward finger/cursor (snappy for touch)
-      if (Math.abs(d)>2) manX=clamp(manX+Math.max(-step,Math.min(step,d)), MAN_MIN_X, MAN_MAX_X); }
+    else if (mouseTargetX!=null){ const d=mouseTargetX-manX, maxStep=18;
+      const move=Math.sign(d)*Math.min(maxStep,Math.abs(d)*0.4);
+      if (Math.abs(move)>0.5) manX=clamp(manX+move, MAN_MIN_X, MAN_MAX_X); }
   }
   // ---- 28 Hz frame: striker movement + animations; drives the 14 Hz logic loop ----
   function swfFrame() {
