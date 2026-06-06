@@ -1170,7 +1170,19 @@
     ctx.fillStyle="#f6eb61"; ctx.font="bold 17px Trebuchet MS";
     ctx.fillText("Anfield Edition · Liverpool FC", SW/2, 140);
     ctx.fillStyle="#fff"; ctx.font="14px Trebuchet MS";
-    const lines=[
+    const lines= TOUCH ? [
+      "You have 10 balls to beat the keeper.",
+      "SWIPE left/right to position your player.",
+      "LIFT YOUR FINGER to volley — there's a slight wind-up,",
+      "so swipe just before the ball reaches you.",
+      "",
+      "Where you meet the ball sets its direction;",
+      "the ball's height sets the loft. Aim past the keeper!",
+      "",
+      "GOAL +4000 (free ball) · SAVE +300 · WOODWORK +150 · CONTACT +100",
+      "Let the ball bounce first and points are HALVED.",
+      "Beat the WIN target to take the three points."
+    ] : [
       "You have 10 balls to beat the keeper.",
       "◄ ► position your player under the incoming cross.",
       "Press SPACE to volley — there's a slight wind-up,",
@@ -1186,7 +1198,7 @@
     lines.forEach((l,i)=>ctx.fillText(l, SW/2, 180+i*24));
     const pulse=0.55+0.45*Math.sin(performance.now()/250);
     ctx.globalAlpha=pulse; ctx.fillStyle="#f6eb61"; ctx.font="bold 22px Trebuchet MS";
-    ctx.fillText("Press SPACE to kick off", SW/2, 470); ctx.globalAlpha=1;
+    ctx.fillText(TOUCH ? "TAP TO KICK OFF" : "Press SPACE to kick off", SW/2, 470); ctx.globalAlpha=1;
     if (M.best>0){ ctx.fillStyle="#9aa7b4"; ctx.font="13px Trebuchet MS"; ctx.fillText("Best score: "+M.best, SW/2, 498); }
   }
 
@@ -1202,7 +1214,7 @@
       ctx.font=ttFont(24); ctx.fillStyle=TTX.white; ctx.fillText("SCORE  "+M.score, VW/2, 252);
       ctx.font=ttFont(15); ctx.fillStyle=TTX.cyan; ctx.fillText("GOALS "+M.goals+"   WIN TARGET WAS "+M.winTarget, VW/2, 288);
       if (M.score>=M.best && M.score>0){ ctx.fillStyle=TTX.green; ctx.font=ttFont(18); ctx.fillText("★ NEW BEST! ★", VW/2, 322); }
-      if (ttCursorOn()){ ctx.fillStyle=TTX.yellow; ctx.font=ttFont(20); ctx.fillText("SPACE TO RETURN TO MENU", VW/2, 400); }
+      if (ttCursorOn()){ ctx.fillStyle=TTX.yellow; ctx.font=ttFont(20); ctx.fillText(TOUCH?"TAP TO RETURN TO MENU":"SPACE TO RETURN TO MENU", VW/2, 400); }
     }
     ctx.textAlign="left";
   }
@@ -1230,7 +1242,7 @@
       ctx.fillText(sub, VW/2 - ctx.measureText(label).width/2, y);
     }
     ctx.textAlign="center";
-    if (ttDone(2+opts.length)){ ctx.font=ttFont(14); ctx.fillStyle=TTX.grey;
+    if (ttDone(2+opts.length) && !TOUCH){ ctx.font=ttFont(14); ctx.fillStyle=TTX.grey;
       ctx.fillText("↑ ↓ CHOOSE    SPACE / CLICK SELECT    F FULLSCREEN", VW/2, 458); }
     // roster status — so a failed deploy isn't a silent dead-end (options need the roster)
     if (!TEAMS.length){
@@ -1238,11 +1250,18 @@
       if (rosterStatus==="error"){ ctx.fillStyle=TTX.red; ctx.fillText("⚠ COULD NOT LOAD assets/teams.json — CHECK DEPLOYMENT", VW/2, 408); }
       else { ctx.fillStyle=TTX.yellow; ctx.fillText("LOADING ROSTER…", VW/2, 408); }
     }
-    // footer — studio credit + copyright
-    ctx.font=ttFont(14); ctx.fillStyle=TTX.green; ctx.fillText("A WIMP STUDIO CREATION", VW/2, 474);
-    ctx.font=ttFont(10,""); ctx.fillStyle=TTX.dim;
-    ctx.fillText("SCORDAGOL ™   © 2026 WIMP STUDIO · ALL RIGHTS RESERVED", VW/2, 491);
-    if (M.best>0){ ctx.font=ttFont(11); ctx.fillStyle=TTX.cyan; ctx.fillText("BEST SCORE  "+M.best, VW/2, 505); }
+    // footer — condensed on touch to avoid crowding the menu options
+    if (TOUCH){
+      if (ttDone(2+opts.length)){
+        ctx.font=ttFont(12); ctx.fillStyle=TTX.green; ctx.fillText("A WIMP STUDIO CREATION", VW/2, 462);
+        if (M.best>0){ ctx.font=ttFont(11); ctx.fillStyle=TTX.cyan; ctx.fillText("BEST  "+M.best, VW/2, 480); }
+      }
+    } else {
+      ctx.font=ttFont(14); ctx.fillStyle=TTX.green; ctx.fillText("A WIMP STUDIO CREATION", VW/2, 474);
+      ctx.font=ttFont(10,""); ctx.fillStyle=TTX.dim;
+      ctx.fillText("SCORDAGOL ™   © 2026 WIMP STUDIO · ALL RIGHTS RESERVED", VW/2, 491);
+      if (M.best>0){ ctx.font=ttFont(11); ctx.fillStyle=TTX.cyan; ctx.fillText("BEST SCORE  "+M.best, VW/2, 505); }
+    }
     ctx.textAlign="left";
   }
   function drawName(){
@@ -1257,7 +1276,7 @@
       ctx.fillText(txt, gx, 231);
       if (ttCursorOn()){ ctx.fillStyle=TTX.yellow; ctx.fillRect(gx+w+3, 210, 14, 26); }
       ctx.textAlign="center"; ctx.font=ttFont(13); ctx.fillStyle=TTX.grey;
-      ctx.fillText("TYPE YOUR NAME     ENTER TO CONTINUE     ESC BACK", VW/2, 300);
+      ctx.fillText(TOUCH?"TYPE YOUR NAME  ·  TAP DONE ON KEYBOARD":"TYPE YOUR NAME     ENTER TO CONTINUE     ESC BACK", VW/2, 300);
     }
     ctx.textAlign="left";
   }
@@ -1293,7 +1312,7 @@
       ctx.fillText(t.name, sx+sw+8, mid+1); ctx.textBaseline="alphabetic";
     });
     ctx.textAlign="center"; ctx.font=ttFont(13); ctx.fillStyle=TTX.grey;
-    ctx.fillText("← ↑ ↓ →  CHOOSE    SPACE  CONFIRM    ESC  BACK", VW/2, SH-14);
+    ctx.fillText(TOUCH?"TAP A CLUB TO CONFIRM":"← ↑ ↓ →  CHOOSE    SPACE  CONFIRM    ESC  BACK", VW/2, SH-14);
     ctx.textAlign="left";
   }
   function ord(n){ const s=["th","st","nd","rd"],v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); }
@@ -1376,13 +1395,13 @@
       const bw=420,bh=24,bx=VW/2-bw/2,by=nbY+nbH+34;
       ctx.fillStyle=TTX.neon; ctx.fillRect(bx,by,bw,bh);
       ctx.fillStyle="#06070b"; ctx.font=ttFont(13); ctx.textAlign="center"; ctx.textBaseline="middle";
-      ctx.fillText("★ CHAMPIONS · CLICK / E TO END SEASON", VW/2, by+bh/2+1);
+      ctx.fillText(TOUCH?"★ CHAMPIONS · TAP HERE TO END SEASON":"★ CHAMPIONS · CLICK / E TO END SEASON", VW/2, by+bh/2+1);
       ctx.textBaseline="alphabetic"; ctx.textAlign="center"; clinchBtn={x:bx,y:by,w:bw,h:bh};
     } else { ctx.font=ttFont(14); ctx.fillStyle=TTX.yellow; ctx.fillText("TITLE ODDS    "+CAR.titleOdds+"%", VW/2, nbY+nbH+44); }
     if (CAR.news[0]){ ctx.fillStyle=TTX.grey; ctx.font=ttFont(12,"");
       let nw=CAR.news[0]; while(nw.length>5 && ctx.measureText('"'+nw+'"').width>VW-60) nw=nw.slice(0,-1);
       ctx.fillText('"'+nw+(nw===CAR.news[0]?"":"…")+'"', VW/2, nbY+nbH+66); }
-    if (ttCursorOn()){ ctx.fillStyle=TTX.neon; ctx.font=ttFont(19); ctx.fillText("SPACE  TO  PLAY", VW/2, nbY+nbH+90); }
+    if (ttCursorOn()){ ctx.fillStyle=TTX.neon; ctx.font=ttFont(19); ctx.fillText(TOUCH?"TAP  TO  PLAY":"SPACE  TO  PLAY", VW/2, nbY+nbH+90); }
     drawTicker(CAR.lastResults, 508);
     ctx.textAlign="left";
   }
@@ -1409,7 +1428,7 @@
       ctx.font=ttFont(15); ctx.fillStyle = n>0?TTX.yellow:TTX.grey;
       ctx.fillText(n>0 ? (n+" TRANSFER OFFER"+(n>1?"S":"")+" IN YOUR INBOX") : "NO TRANSFER OFFERS THIS SUMMER", VW/2, 252);
       if (ttCursorOn()){ ctx.fillStyle=TTX.neon; ctx.font=ttFont(18);
-        ctx.fillText(n>0 ? "SPACE  TO  OPEN  INBOX" : "SPACE  TO  START  NEXT  SEASON", VW/2, 360); }
+        ctx.fillText(n>0 ? (TOUCH?"TAP  TO  OPEN  INBOX":"SPACE  TO  OPEN  INBOX") : (TOUCH?"TAP  TO  START  NEXT  SEASON":"SPACE  TO  START  NEXT  SEASON"), VW/2, 360); }
     }
     ctx.textAlign="left";
   }
@@ -1454,7 +1473,7 @@
       inboxRects.push({x:8, y:y, w:VW-16, h:rowH-6, i:i});
     }
     ctx.font=ttFont(11); ctx.fillStyle=TTX.grey; ctx.textAlign="center";
-    ctx.fillText("↑ ↓  SELECT     ENTER  OPEN     ESC  BACK", VW/2, SH-18);
+    if (!TOUCH) ctx.fillText("↑ ↓  SELECT     ENTER  OPEN     ESC  BACK", VW/2, SH-18);
     ctx.textAlign="left";
   }
   function drawEmail(){
@@ -1477,8 +1496,8 @@
       ctx.fillText(defs[i].label, x+bw/2, by+bh/2+1); ctx.textBaseline="alphabetic"; ctx.textAlign="left";
       emailBtns.push({x:x,y:by,w:bw,h:bh,k:defs[i].k});
     }
-    ctx.textAlign="center"; ctx.font=ttFont(10); ctx.fillStyle=TTX.grey;
-    ctx.fillText("[A] ACCEPT   [D] DECLINE   [ESC] INBOX", VW/2, SH-16); ctx.textAlign="left";
+    if (!TOUCH){ ctx.textAlign="center"; ctx.font=ttFont(10); ctx.fillStyle=TTX.grey;
+    ctx.fillText("[A] ACCEPT   [D] DECLINE   [ESC] INBOX", VW/2, SH-16); } ctx.textAlign="left";
   }
   function openEmail(i){ const offers=CAR.offers||[]; if(i<0||i>=offers.length) return; openedOffer=i; offers[i].read=true; state=ST.EMAIL; }
   function emailAction(k){
@@ -1566,7 +1585,7 @@
       ctx.textAlign="right"; ctx.fillText(""+e.score, VW-312, y); y+=21;
     });
     ctx.textAlign="center";
-    if (ttCursorOn()){ ctx.fillStyle=TTX.neon; ctx.font=ttFont(18); ctx.fillText("SPACE  TO  RETURN  TO  MENU", VW/2, 470); }
+    if (ttCursorOn()){ ctx.fillStyle=TTX.neon; ctx.font=ttFont(18); ctx.fillText(TOUCH?"TAP  TO  RETURN  TO  MENU":"SPACE  TO  RETURN  TO  MENU", VW/2, 470); }
     ctx.textAlign="left";
   }
   function drawHorseWord(y){
@@ -1592,8 +1611,8 @@
       if (sel && ttCursorOn()){ ctx.fillStyle=TTX.yellow; ctx.fillRect(gx+w+3, y-2, 11, 22); }
     }
     ctx.textAlign="center"; ctx.font=ttFont(11); ctx.fillStyle=TTX.grey;
-    ctx.fillText("TYPE · ENTER = NEXT · ENTER ON WORD STARTS · ESC BACK", VW/2, 326);
-    ctx.fillText("WORD LENGTH = NUMBER OF ROUNDS  (HORSE = 5)", VW/2, 346);
+    if (!TOUCH) ctx.fillText("TYPE · ENTER = NEXT · ENTER ON WORD STARTS · ESC BACK", VW/2, 326);
+    ctx.fillText("WORD LENGTH = NUMBER OF ROUNDS  (HORSE = 5)", VW/2, TOUCH?326:346);
     ctx.textAlign="left";
   }
   function drawHorsePass(){
@@ -1607,7 +1626,7 @@
     ctx.font=ttFont(26); ctx.fillStyle=(H.turn===0?COL_A:COL_B); ctx.fillText("PASS TO  "+H.p[H.turn], VW/2, 244);
     if (H.turn===1 && H.scores[0]!=null){ ctx.font=ttFont(14); ctx.fillStyle=TTX.white;
       ctx.fillText(H.p[0]+" SCORED "+H.scores[0]+" — BEAT IT!", VW/2, 282); }
-    if (ttCursorOn()){ ctx.fillStyle=TTX.neon; ctx.font=ttFont(18); ctx.fillText("SPACE TO START  ("+HORSE_BALLS+" BALLS)", VW/2, 342); }
+    if (ttCursorOn()){ ctx.fillStyle=TTX.neon; ctx.font=ttFont(18); ctx.fillText(TOUCH?"TAP TO START  ("+HORSE_BALLS+" BALLS)":"SPACE TO START  ("+HORSE_BALLS+" BALLS)", VW/2, 342); }
     ctx.textAlign="left";
   }
   function drawHorseEnd(){
@@ -1619,7 +1638,7 @@
     ctx.font=ttFont(30);
     if (winner===-1){ ctx.fillStyle=TTX.yellow; ctx.fillText("IT'S A DRAW!", VW/2, 240); }
     else { ctx.fillStyle=winner===0?COL_A:COL_B; ctx.fillText(H.p[winner]+" WINS!", VW/2, 240); }
-    if (ttCursorOn()){ ctx.fillStyle=TTX.neon; ctx.font=ttFont(18); ctx.fillText("SPACE  TO  RETURN  TO  MENU", VW/2, 360); }
+    if (ttCursorOn()){ ctx.fillStyle=TTX.neon; ctx.font=ttFont(18); ctx.fillText(TOUCH?"TAP  TO  RETURN  TO  MENU":"SPACE  TO  RETURN  TO  MENU", VW/2, 360); }
     ctx.textAlign="left";
   }
 
