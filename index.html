@@ -410,6 +410,7 @@
   let dragStartFieldX=null, dragManStartX=null;   // relative-drag anchor (touch only)
   let touchPauseResumeRect=null, touchPauseForfeitRect=null;   // tap zones on pause overlay
   let touchBackBtn=null;
+  let clubSelFreshPointer=false;   // true once a pointerup fires after entering CLUBSEL; guards against phantom taps
   let manKicking=false, manKickT=0;
   let defenders = [];
   let keeperPose = { x:KEEPER_START_X, dir:"up", anim:"idle", frame:1 };
@@ -725,7 +726,7 @@
     if (shotOver) {
       if (!booted) flagResult(complete_miss ? "MISSED IT!" : "NO CONTACT", "#9aa7b4", 0);
       if (!sc) M.attempts--;     // goals (sc=1) are free shots
-      resultTimer = 1.1;
+      resultTimer = 0.7;
       state = ST.RESULT;
     }
   }
@@ -1778,7 +1779,7 @@
   function confirmName(){
     if(!nameBuf.trim()) return; menuSel=0; kbdClose();
     if (pendingMode==="daily"){ localStorage.setItem("vc_name", nameBuf.trim().toUpperCase()); startDaily(); }
-    else { state=ST.CLUBSEL; stateEnterAt=performance.now(); }   // stamp immediately so debounce works before first rAF
+    else { state=ST.CLUBSEL; stateEnterAt=performance.now(); clubSelFreshPointer=false; }
   }
   function togglePause(){ if(state===ST.SERVE||state===ST.FLIGHT||state===ST.RESULT) paused=!paused; }
   function forfeit(){            // give up the current match -> career home (counts as a loss) / menu
@@ -1946,7 +1947,7 @@
     if(TOUCH && touchBackBtn){ const r=touchBackBtn; if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h){ goBack(); return; } }
     if(state===ST.MENU){ const i=menuHit(p.x,p.y); if(i>=0){ menuSel=i; pressSelect(); } }
     else if(state===ST.CLUBSEL){
-      if(TOUCH && performance.now()-stateEnterAt<800) return;   // block phantom tap from keyboard dismiss
+      if(TOUCH && !clubSelFreshPointer) return;   // wait for a genuine new gesture after entering this state
       const i=clubHit(p.x,p.y);
       if(i>=0){ menuSel=i; pressSelect(); }
     }
@@ -1958,7 +1959,7 @@
       dragStartFieldX = p.x-OX;   // anchor for relative drag (raw screen field x)
       dragManStartX = manX;        // physical player x; leftFooted delta sign handled in pointermove
       mouseTargetX = manX;         // hold position until finger moves
-      if(state===ST.RESULT && resultTimer>0.3) resultTimer=0.3;   // fast-forward result to next serve
+      if(state===ST.RESULT) resultTimer=0;   // touch during result: skip straight to next serve
     }
     else if(state===ST.TABLE){
       if(clinchBtn && p.x>=clinchBtn.x && p.x<=clinchBtn.x+clinchBtn.w && p.y>=clinchBtn.y && p.y<=clinchBtn.y+clinchBtn.h) endSeasonEarly();
@@ -1970,6 +1971,7 @@
   },{passive:false});
   canvas.addEventListener("pointerup",(e)=>{
     e.preventDefault();
+    if(state===ST.CLUBSEL) clubSelFreshPointer=true;   // a genuine lift means next pointerdown is a real gesture
     if(dragging){
       dragging=false; dragStartFieldX=null; dragManStartX=null;
       if(state===ST.SERVE && !kicked && !paused) triggerKick();
