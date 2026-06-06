@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>SCORDAGOL — Recolour Preview</title>
+<style>
+  body { background: #1a1d24; color: #dde2e7; font: 13px/1.5 "Segoe UI", system-ui, sans-serif;
+         padding: 24px; margin: 0; max-width: 1400px; }
+  h1 { color: #34ff6e; font-size: 19px; margin: 0 0 4px; letter-spacing: 0.5px; }
+  .lead { color: #9aa7b4; margin-bottom: 18px; max-width: 920px; }
+  .lead code { background:#0a0c10; color:#ffe23d; padding:1px 5px; border-radius:3px; font-size:12px; }
+  .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; align-items: start; }
+  .card { background: #232830; border: 1px solid #2a3140; padding: 12px; border-radius: 6px; text-align: center; }
+  .card h3 { font-size: 10px; color: #6b7682; letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 4px; }
+  .card .team-name { font-size: 13px; color: #ffe23d; font-weight: 700; margin-bottom: 8px; min-height: 16px; }
+  canvas { image-rendering: pixelated; background:
+    repeating-conic-gradient(#c0c5cc 0 25%, #d8dce1 25% 50%) 0/12px 12px;
+    width: 100%; height: auto; display: block; }
+  .swatches { display: flex; gap: 3px; margin-top: 8px; justify-content: center; flex-wrap: wrap; }
+  .sw { width: 16px; height: 16px; border-radius: 3px; border: 1px solid rgba(255,255,255,0.15); }
+  .err { color: #ff5252; padding: 20px; background: #2a1a1a; border-radius: 6px; }
+  footer { color: #5d6b78; margin-top: 22px; font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>Recolour Preview</h1>
+<p class="lead">
+  Each source pixel inside a traced layer is tinted with the team's colour for that region while preserving the source pixel's relative brightness. The maths per pixel is
+  <code>output = team_colour × max(R,G,B) / 255</code>. Bright source pixels (e.g. the shirt body) get the full team colour;
+  dark source pixels (the black line-work) get a dark version of the team colour. That's how edge definition survives without a separate "outline" region — the dark pixels are part of whichever layer claims them, they just stay dark within their colour family.
+</p>
+<div id="root" class="grid"></div>
+<footer id="status">loading…</footer>
+
+<script>
+"use strict";
+(async function () {
+  const root = document.getElementById("root");
+  const status = document.getElementById("status");
+  let project, teamsData, srcImg;
+
+  try {
+    [project, teamsData] = await Promise.all([
+      fetch("striker_Liverpool_k0_regions.json").then(r => r.ok ? r.json() : Promise.reject(new Error("regions JSON not found at editor/striker_Liverpool_k0_regions.json"))),
+      fetch("../assets/teams.json").then(r => r.ok ? r.json() : Promise.reject(new Error("teams.json not found")))
+    ]);
+    srcImg = await new Promise((res, rej) => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = () => rej(new Error("failed to load ../assets/striker_Liverpool_k0.png"));
+      i.src = "../assets/striker_Liverpool_k0.png";
+    });
+  } catch (e) {
+    root.innerHTML = '<div class="err">' + e.message + "</div>";
+    status.textContent = "error";
+    return;
+  }
+
+  const W = srcImg.naturalWidth, H = srcImg.naturalHeight;
+  // pull source pixels into a typed array once
+  const srcCv = document.createElement("canvas"); srcCv.width = W; srcCv.height = H;
+  srcCv.getContext("2d").drawImage(srcImg, 0, 0);
+  const srcData = srcCv.getContext("2d").getImageData(0, 0, W, H).data;
+
+  // decode every layer mask into pixel data
+  const layers = [];
+  for (const L of project.layers) {
+    const img = new Image();
+    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = L.mask; });
+    const c = document.createElement("canvas"); c.width = W; c.height = H;
+    c.getContext("2d").drawImage(img, 0, 0);
+    layers.push({ name: L.name, defaultColor: L.color, data: c.getContext("2d").getImageData(0, 0, W, H).data });
+  }
+
+  // map a layer name -> a colour for this team (or a fixed non-kit colour)
+  function teamColourFor(team, layerName) {
+    const map = { Shirt: "shirt", Sleeves: "sleeves", Shorts: "shorts", Socks: "socks", "Sock Tops": "socks_top", Cuffs: "stripe" };
+    const slot = map[layerName];
+    if (slot && team[slot] && teamsData.palette[team[slot]]) return teamsData.palette[team[slot]];
+    if (layerName === "Boots") return "#1a1a1a";
+    if (layerName === "Hair")  return "#774422";
+    if (layerName === "Skin")  return "#f0c89c";
+    return null;
+  }
+
+  const rgb = hex => { const n = parseInt(hex.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+
+  // ---- precompute layer ownership via nearest-outline BFS ----
+  // For every non-transparent source pixel, find the nearest layer outline and claim the pixel
+  // for that layer. This simulates what the Fill step in the editor would do automatically.
+  const ownerMap = new Int16Array(W * H).fill(-1);
+  {
+    const qx = [], qy = [], ql = [];
+    for (let k = 0; k < layers.length; k++) {
+      const data = layers[k].data;
+      for (let i = 0; i < W * H; i++) {
+        if (data[i * 4 + 3] >= 30 && ownerMap[i] === -1) {
+          ownerMap[i] = k;
+          qx.push(i % W); qy.push(Math.floor(i / W)); ql.push(k);
+        }
+      }
+    }
+    let head = 0;
+    const dxs = [1, -1, 0, 0], dys = [0, 0, 1, -1];
+    while (head < qx.length) {
+      const x = qx[head], y = qy[head], k = ql[head]; head++;
+      for (let d = 0; d < 4; d++) {
+        const nx = x + dxs[d], ny = y + dys[d];
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const nidx = ny * W + nx;
+        if (ownerMap[nidx] !== -1) continue;
+        if (srcData[nidx * 4 + 3] < 30) continue;
+        ownerMap[nidx] = k;
+        qx.push(nx); qy.push(ny); ql.push(k);
+      }
+    }
+  }
+
+  // ---- recolour using the dilated ownership map ----
+  function recolour(team) {
+    const teamCols = layers.map(L => rgb(teamColourFor(team, L.name) || L.defaultColor));
+    const out = new ImageData(W, H);
+    const od = out.data;
+    for (let i = 0; i < W * H; i++) {
+      const j = i * 4;
+      if (srcData[j + 3] < 30) { od[j + 3] = 0; continue; }
+      const owner = ownerMap[i];
+      if (owner === -1) {
+        od[j] = srcData[j]; od[j + 1] = srcData[j + 1]; od[j + 2] = srcData[j + 2]; od[j + 3] = srcData[j + 3];
+        continue;
+      }
+      const [Lr, Lg, Lb] = teamCols[owner];
+      const bright = Math.max(srcData[j], srcData[j + 1], srcData[j + 2]) / 255;
+      od[j]     = Math.round(Lr * bright);
+      od[j + 1] = Math.round(Lg * bright);
+      od[j + 2] = Math.round(Lb * bright);
+      od[j + 3] = srcData[j + 3];
+    }
+    return out;
+  }
+
+  function makeCard(title, teamName, imgData, team) {
+    const card = document.createElement("div"); card.className = "card";
+    const h = document.createElement("h3"); h.textContent = title; card.appendChild(h);
+    const t = document.createElement("div"); t.className = "team-name"; t.textContent = teamName || " ";
+    card.appendChild(t);
+    const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+    cv.getContext("2d").putImageData(imgData, 0, 0);
+    card.appendChild(cv);
+    if (team) {
+      const swrap = document.createElement("div"); swrap.className = "swatches";
+      for (const L of layers) {
+        const col = teamColourFor(team, L.name) || L.defaultColor;
+        const d = document.createElement("div"); d.className = "sw"; d.style.background = col;
+        d.title = L.name + " → " + col;
+        swrap.appendChild(d);
+      }
+      card.appendChild(swrap);
+    }
+    return card;
+  }
+
+  // original
+  const origData = new ImageData(new Uint8ClampedArray(srcData), W, H);
+  root.appendChild(makeCard("source", "Liverpool (original)", origData, null));
+
+  // four featured teams chosen to show varied tints
+  const featured = ["AstonVilla", "ManCity", "Newcastle", "Wolves"];
+  for (const slug of featured) {
+    const team = teamsData.teams.find(t => t.slug === slug);
+    if (!team) continue;
+    root.appendChild(makeCard("recoloured", team.name, recolour(team), team));
+  }
+
+  status.textContent = "ready · source " + W + "×" + H + " · " + layers.length + " layers";
+})();
+</script>
+</body>
+</html>

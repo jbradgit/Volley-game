@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:www.mygamesworld.com)",
+      "WebSearch",
+      "Bash(node -e ' *)",
+      "Bash(node --check /tmp/check.js)"
+    ]
+  }
+}

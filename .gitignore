@@ -1,0 +1,17 @@
+# Java runtime and tools (large binaries)
+tools/jre/
+tools/ffdec/
+tools/ffdec.zip
+tools/jre.zip
+tools/ruffle.zip
+
+# Build/distribution archives
+scordagol_web.zip
+game.zip
+
+# Python cache
+decomp/__pycache__/
+
+# Temp and log files
+*.tmp
+*.log

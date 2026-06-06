@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Original SWF (reference)</title>
+<style>html,body{margin:0;background:#222;}#c{width:550px;height:520px;}</style>
+</head>
+<body>
+<div id="c"></div>
+<script src="ruffle/ruffle.js"></script>
+<script>
+  window.RufflePlayer = window.RufflePlayer || {};
+  window.addEventListener("load", () => {
+    const ruffle = window.RufflePlayer.newest();
+    const player = ruffle.createPlayer();
+    player.id = "player";
+    const c = document.getElementById("c");
+    c.appendChild(player);
+    player.style.width = "550px";
+    player.style.height = "520px";
+    window.__player = player;
+    player.ruffle().load({ url: "original.swf", autoplay: "on", letterbox: "on" });
+  });
+</script>
+</body>
+</html>

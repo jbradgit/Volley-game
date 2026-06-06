@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="Cache-Control" content="no-store" />
+<title>SCORDAGOL Studio — Asset Checklist</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: #14171d; color: #e2e8ef;
+    font: 13px/1.45 "Segoe UI", system-ui, sans-serif; }
+  body { display: grid; grid-template-rows: auto auto 1fr; }
+
+  header { display: flex; align-items: center; gap: 12px; padding: 12px 18px; background: #0f1218; border-bottom: 1px solid #232936; flex-wrap: wrap; }
+  header h1 { font-size: 15px; font-weight: 800; color: #34ff6e; letter-spacing: 1px; }
+  header h1 small { color: #6b7682; font-weight: 600; font-size: 10px; margin-left: 8px; letter-spacing: 0; }
+  header .grow { flex: 1; }
+  header a.home { color: #9aa7b4; text-decoration: none; font-size: 12px; }
+  header a.home:hover { color: #e2e8ef; }
+  button { background: #2a3140; color: #e2e8ef; border: 1px solid #3d4555; border-radius: 4px;
+    padding: 6px 12px; font: 12px "Segoe UI", sans-serif; cursor: pointer; }
+  button:hover { background: #3a4150; }
+  button.primary { background: #34ff6e; color: #06321a; font-weight: 700; border-color: #34ff6e; }
+
+  /* progress bar */
+  .progwrap { padding: 12px 18px; background: #0f1218; border-bottom: 1px solid #232936; }
+  .progbar { height: 22px; background: #1c212b; border-radius: 5px; overflow: hidden; display: flex; }
+  .progbar .seg { height: 100%; transition: width .3s; }
+  .seg.done { background: #2faa4a; }
+  .seg.prog { background: #e0a82e; }
+  .progmeta { display: flex; gap: 18px; margin-top: 8px; font-size: 12px; color: #9aa7b4; flex-wrap: wrap; }
+  .progmeta b { color: #e2e8ef; }
+  .chip { display: inline-flex; align-items: center; gap: 5px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+
+  main { overflow-y: auto; padding: 8px 18px 60px; }
+  section { margin-top: 18px; }
+  section > h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 1.4px; color: #8a96a3;
+    margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+  section > h2 .catdot { width: 11px; height: 11px; border-radius: 3px; }
+  section > h2 .ct { color: #6b7682; font-weight: 600; letter-spacing: 0; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+  .card { background: #1b202a; border: 1px solid #283040; border-left-width: 4px; border-radius: 6px; padding: 11px 13px; display: flex; flex-direction: column; gap: 7px; }
+  .card.s-done { border-left-color: #2faa4a; }
+  .card.s-prog { border-left-color: #e0a82e; }
+  .card.s-todo { border-left-color: #3d4555; }
+  .card .top { display: flex; align-items: flex-start; gap: 8px; }
+  .card .nm { font-weight: 700; font-size: 13.5px; flex: 1; }
+  .card .badge { font-size: 9.5px; text-transform: uppercase; letter-spacing: .5px; padding: 2px 6px; border-radius: 3px; font-weight: 700; white-space: nowrap; }
+  .badge.ripped { background: #3a1f24; color: #ff7a90; }
+  .badge.new { background: #1f2f3a; color: #5fd0ff; }
+  .card .spec { font-size: 11px; color: #8a96a3; line-height: 1.5; }
+  .card .spec code { background: #0d1016; color: #ffe23d; padding: 0 4px; border-radius: 2px; font-size: 10.5px; }
+  .card .ts { font-size: 10px; color: #5a6573; }
+  .card .actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+  .card .actions button { padding: 5px 9px; font-size: 11.5px; }
+  .statusbtns { display: inline-flex; border: 1px solid #3d4555; border-radius: 4px; overflow: hidden; }
+  .statusbtns button { border: 0; border-radius: 0; padding: 5px 9px; background: #232a36; }
+  .statusbtns button.on.todo { background: #4a5360; color:#fff; }
+  .statusbtns button.on.prog { background: #e0a82e; color:#3a2a05; font-weight: 700; }
+  .statusbtns button.on.done { background: #2faa4a; color:#06250f; font-weight: 700; }
+  .thumb { width: 100%; height: 84px; background: repeating-conic-gradient(#2a2f38 0% 25%, #333941 25% 50%) 0/14px 14px; border-radius: 4px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .thumb img { max-width: 100%; max-height: 100%; image-rendering: pixelated; }
+  .thumb .none { color: #5a6573; font-size: 11px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>SCORDAGOL STUDIO <small>ASSET CHECKLIST</small></h1>
+  <span class="grow"></span>
+  <a class="home" href="index.html">↩ Studio hub</a>
+  <button id="importBtn">⬆ Import</button>
+  <button id="exportBtn" class="primary">⬇ Export checklist</button>
+  <input type="file" id="importFile" accept="application/json" style="display:none">
+</header>
+
+<div class="progwrap">
+  <div class="progbar"><div class="seg done" id="segDone"></div><div class="seg prog" id="segProg"></div></div>
+  <div class="progmeta">
+    <span class="chip"><span class="dot" style="background:#2faa4a"></span> Done <b id="nDone">0</b></span>
+    <span class="chip"><span class="dot" style="background:#e0a82e"></span> In progress <b id="nProg">0</b></span>
+    <span class="chip"><span class="dot" style="background:#4a5360"></span> To do <b id="nTodo">0</b></span>
+    <span class="chip">Total <b id="nTot">0</b></span>
+    <span class="chip">— <b id="pct">0%</b> complete</span>
+  </div>
+</div>
+
+<main id="main"></main>
+
+<script>
+const $ = id => document.getElementById(id);
+const LS_KEY = "scordagol_checklist_state_v1";
+let DATA = null;            // the loaded checklist file
+let STATE = {};            // id -> {status, ts}
+
+async function boot(){
+  try {
+    DATA = await fetch("assets-checklist.json").then(r => { if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); });
+  } catch(e){
+    $("main").innerHTML = '<p style="padding:24px;color:#ff7a90">Could not load assets-checklist.json — serve over http (run serve.py / play.bat), not file://.<br>'+e.message+'</p>';
+    return;
+  }
+  // seed STATE from file, then overlay any saved localStorage progress
+  const saved = JSON.parse(localStorage.getItem(LS_KEY) || "{}");
+  for (const a of DATA.assets) STATE[a.id] = saved[a.id] || { status: a.status || "todo", ts: 0 };
+  render();
+}
+
+function save(){ localStorage.setItem(LS_KEY, JSON.stringify(STATE)); }
+
+function setStatus(id, st){
+  STATE[id] = { status: st, ts: st === "done" ? Date.now() : (STATE[id]?.ts || 0) };
+  save(); render();
+}
+
+function fmtTs(ts){ if(!ts) return ""; const d = new Date(ts); return "done " + d.toLocaleDateString() + " " + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}); }
+
+function specLine(a){
+  const s = a.spec || {}; const bits = [];
+  if (s.w && s.h) bits.push(`<code>${s.w}×${s.h}</code>`);
+  if (s.ox != null) bits.push(`origin <code>${s.ox},${s.oy}</code>`);
+  if (s.scaleX) bits.push(`scale <code>${s.scaleX}×${s.scaleY}</code>`);
+  let html = bits.join(" · ");
+  if (s.note) html += (html ? "<br>" : "") + s.note;
+  return html;
+}
+
+function render(){
+  const m = $("main"); m.innerHTML = "";
+  let nDone=0, nProg=0, nTodo=0;
+  for (const a of DATA.assets){ const st = STATE[a.id].status; if(st==="done")nDone++; else if(st==="prog")nProg++; else nTodo++; }
+  const tot = DATA.assets.length;
+  $("nDone").textContent=nDone; $("nProg").textContent=nProg; $("nTodo").textContent=nTodo; $("nTot").textContent=tot;
+  $("pct").textContent = Math.round(nDone/tot*100) + "%";
+  $("segDone").style.width = (nDone/tot*100) + "%";
+  $("segProg").style.width = (nProg/tot*100) + "%";
+
+  for (const cat of DATA.categories){
+    const items = DATA.assets.filter(a => a.category === cat.id);
+    if (!items.length) continue;
+    const sec = document.createElement("section");
+    const done = items.filter(a => STATE[a.id].status==="done").length;
+    sec.innerHTML = `<h2><span class="catdot" style="background:${cat.color}"></span>${cat.name}<span class="ct">${done}/${items.length}</span></h2>`;
+    const grid = document.createElement("div"); grid.className = "grid";
+    for (const a of items) grid.appendChild(card(a, cat));
+    sec.appendChild(grid); m.appendChild(sec);
+  }
+}
+
+function card(a, cat){
+  const st = STATE[a.id].status;
+  const el = document.createElement("div");
+  el.className = "card s-" + st;
+  const editable = !!a.source && a.category !== "sound";  // region editor handles images
+  const editLink = editable ? `region-editor.html?asset=${encodeURIComponent(a.source)}` : null;
+  el.innerHTML = `
+    <div class="top">
+      <span class="nm">${a.name}</span>
+      <span class="badge ${a.reason}">${a.reason==="ripped"?"replace":"new"}</span>
+    </div>
+    <div class="thumb">${a.source ? `<img src="../assets/${a.source}" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'none',textContent:'(no preview)'}))">` : `<span class="none">new artwork</span>`}</div>
+    <div class="spec">${specLine(a) || "&nbsp;"}</div>
+    <div class="actions">
+      ${editLink ? `<button onclick="window.open('${editLink}','_blank')">✎ Edit in region editor</button>` : `<button disabled title="Draw externally, then drop into assets/">draw externally</button>`}
+      <span class="statusbtns" data-id="${a.id}">
+        <button class="todo ${st==='todo'?'on':''}" onclick="setStatus('${a.id}','todo')">To do</button>
+        <button class="prog ${st==='prog'?'on':''}" onclick="setStatus('${a.id}','prog')">In progress</button>
+        <button class="done ${st==='done'?'on':''}" onclick="setStatus('${a.id}','done')">✓ Done</button>
+      </span>
+    </div>
+    <div class="ts">${fmtTs(STATE[a.id].ts)}</div>`;
+  return el;
+}
+
+// export merged checklist (file statuses overwritten with live STATE)
+$("exportBtn").onclick = () => {
+  const out = JSON.parse(JSON.stringify(DATA));
+  for (const a of out.assets){ a.status = STATE[a.id].status; if (STATE[a.id].ts) a.completedAt = new Date(STATE[a.id].ts).toISOString(); }
+  const blob = new Blob([JSON.stringify(out, null, 2)], { type: "application/json" });
+  const aEl = document.createElement("a"); aEl.href = URL.createObjectURL(blob); aEl.download = "assets-checklist.json"; aEl.click();
+  alert("Downloaded assets-checklist.json — replace editor/assets-checklist.json with it to persist statuses across browsers.");
+};
+$("importBtn").onclick = () => $("importFile").click();
+$("importFile").onchange = e => {
+  const f = e.target.files[0]; if(!f) return;
+  const r = new FileReader();
+  r.onload = () => { try {
+    const j = JSON.parse(r.result);
+    for (const a of (j.assets||[])) if (STATE[a.id]) STATE[a.id] = { status: a.status||"todo", ts: a.completedAt ? Date.parse(a.completedAt) : STATE[a.id].ts };
+    save(); render(); alert("Imported statuses.");
+  } catch(err){ alert("Bad file: "+err.message); } };
+  r.readAsText(f);
+};
+
+boot();
+</script>
+</body>
+</html>

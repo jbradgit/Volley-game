@@ -1,0 +1,1536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="theme-color" content="#06070b" />
+<title>SCORDAGOL — Volley Your Way To Greatness</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    height: 100%; background: #04060a; overflow: hidden;
+    font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
+    color: #fff; -webkit-user-select: none; user-select: none;
+    touch-action: none; -webkit-touch-callout: none; overscroll-behavior: none;
+  }
+  #wrap { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+  canvas { background: #04060a; image-rendering: auto; max-width: 100%; max-height: 100%;
+           box-shadow: 0 0 50px rgba(0,0,0,0.85); }
+  /* off-screen field used to summon the iOS keyboard for name / word entry */
+  #kbd { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: 0;
+         border: 0; padding: 0; font-size: 16px; background: transparent; color: transparent; }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="game" width="1100" height="1040"></canvas></div>
+<input id="kbd" type="text" autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false" />
+
+<script>
+"use strict";
+(function () {
+  // ---- Logical stage (matches original SWF) ----
+  const SW = 550, SH = 520;          // stage
+  const SCALE = 2;                   // backing-store supersample for crispness
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+
+  function fit() {
+    const r = Math.min(window.innerWidth / SW, window.innerHeight / SH);
+    canvas.style.width = Math.floor(SW * r) + "px";
+    canvas.style.height = Math.floor(SH * r) + "px";
+  }
+  window.addEventListener("resize", fit); fit();
+  function toggleFullscreen(){
+    try { if (!document.fullscreenElement){ const el=document.documentElement; (el.requestFullscreen||el.webkitRequestFullscreen||function(){}).call(el); }
+          else { (document.exitFullscreen||document.webkitExitFullscreen||function(){}).call(document); } } catch(e){}
+  }
+  document.addEventListener("fullscreenchange", ()=>setTimeout(fit,60));
+
+  // Your club + current opponent (both per-team recoloured; defaults used for Quick Play).
+  let MYCLUB   = { slug:"Liverpool", name:"Liverpool", rating:8 };
+  let OPPONENT = { slug:"AstonVilla", name:"Aston Villa", rating:9, home:false };
+
+  // ---- Static assets (kits are loaded dynamically per club, see loadKits) ----
+  const IMG = {};
+  const sources = { pitch:"assets/pitch_hd.png?v=hr5", crowd:"assets/crowd.jpg",
+                    katlas0:"assets/keeper_atlas_0.png?v=hr", katlas1:"assets/keeper_atlas_1.png?v=hr",
+                    kit:"assets/kit.jpg", ball:"assets/ball.png?v=hr", shadow:"assets/shadow.png?v=hr" };
+  let loaded = 0, total = Object.keys(sources).length, assetsReady = false;
+  for (const k in sources) {
+    const im = new Image();
+    im.onload = () => { if (++loaded === total) assetsReady = true; };
+    im.onerror = () => { if (++loaded === total) assetsReady = true; };
+    im.src = sources[k]; IMG[k] = im;
+  }
+  // Striker (your club) + defender (opponent) kits loaded on demand.
+  for (const k of ["striker","sk0","sk1","sk2","sk3","sk4","defender"]) IMG[k] = new Image();
+  let kitsReady = false;
+  function loadKits(mySlug, oppSlug, cb) {
+    kitsReady = false;
+    const need = [["striker",mySlug+"_k0"],["sk0",mySlug+"_k1"],["sk1",mySlug+"_k2"],
+                  ["sk2",mySlug+"_k3"],["sk3",mySlug+"_k4"],["sk4",mySlug+"_k5"]];
+    let c = 0, tot = need.length + 1;
+    const done = () => { if (++c === tot) { kitsReady = true; cb && cb(); } };
+    for (const [key,file] of need) { const im = IMG[key]; im.onload = im.onerror = done; im.src = "assets/striker_"+file+".png?v=hr5"; }
+    const dfn = IMG.defender; dfn.onload = dfn.onerror = done; dfn.src = "assets/defender_"+oppSlug+".png?v=hr5";
+  }
+  // Team roster (kits + ratings) for career mode.
+  let TEAMS = [], TEAMBY = {}, PAL = {};
+  let rosterStatus = "loading";   // loading | ok | error  (surfaced on the menu so failures aren't silent)
+  fetch("assets/teams.json")
+    .then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
+    .then(j=>{
+      TEAMS=j.teams.slice().sort((a,b)=>a.name.localeCompare(b.name));   // club-select listed A–Z
+      PAL=j.palette; for (const t of TEAMS) TEAMBY[t.slug]=t; rosterStatus="ok"; })
+    .catch(e=>{ rosterStatus="error"; try{ console.error("teams.json failed to load:", e); }catch(_){} });
+  // Keeper sprite-atlas manifest (per-frame rects + offsets, all 371-frame anims packed).
+  let KMAN = null;
+  fetch("assets/keeper_atlas.json?v=hr").then(r=>r.json()).then(j=>{ KMAN = j.frames; }).catch(()=>{});
+  // Keeper labelled animation ranges actually used by the original (frame_10 / frame_9):
+  //   dive_left/right = gotoandplay; central catch = gotoandstop a single frame by height.
+  const KEEPER_ANIMS = { idle:[1,1], dive_left:[50,99], dive_right:[100,149],
+                         low_catch:[323,323], mid_catch:[328,328], high_catch:[354,354] };
+
+  // ---- Exact constants (decompiled) ----
+  // The SWF runs at 28 fps. Clip enterFrames (striker movement, animations) fire at 28 Hz,
+  // but the game-logic main timeline is a 2-frame loop (mainloop=frame9 -> frame10 -> goto),
+  // so ball physics / scoring / keeper run at 14 Hz. We mirror that split exactly.
+  const FPS = 28, DT = 1 / FPS;       // SWF frame rate (striker + animations)
+  const LPOST = 135, RPOST = 430, BARH = 105, POSTTOL = 13;   // exact SWF (frame_9)
+  const KEEPER_START_X = 263;
+  const MAN_MIN_X = 50, MAN_MAX_X = 500, MAN_START_X = 450, MAN_Y = 300;
+  const SERVE_Y = 300, GOAL_RESOLVE_Y = 160, NET_GOAL_Y = 150, YBIT = 8;
+  const KICK_FRAMES = 6;             // SWF frames from Space to contact (kick anim -> frame 7)
+  // Defender = inner man sprite (DefineSprite_151), exact registration origin from swf.xml
+  const DEF_W = 67, DEF_H = 115, DEF_OX = 33.4, DEF_OY = 57.5;
+  // defender stage bbox (= opponent.man.hitTest); origin (ox,oy) maps to the opponent placement
+  function defBox(d){ return { x0:d.ox-DEF_OX*d.sx, x1:d.ox+(DEF_W-DEF_OX)*d.sx,
+                               y0:d.oy-DEF_OY*d.sy, y1:d.oy+(DEF_H-DEF_OY)*d.sy }; }
+  const DEG = Math.PI / 180;
+  // Swappable RNG: normal play uses Math.random; daily challenge + HORSE rounds use a SEEDED
+  // generator so everyone (or both players) faces an identical serve/keeper/defender sequence.
+  let RAND = Math.random;
+  function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a);
+    t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+  function seedRand(seed){ RAND = (seed==null) ? Math.random : mulberry32(seed>>>0); }
+  const rnd = (n) => Math.floor(RAND() * n);   // emulate AS random(n) => 0..n-1 (via swappable RAND)
+  const clamp = (v, lo, hi) => v < lo ? lo : (v > hi ? hi : v);
+
+  // ---- Audio: the ORIGINAL SWF sound effects (decompiled to assets/snd) ----
+  //   116 shotsnd -> kick   118 crink -> post/woodwork   171 -> whistle
+  //   172 -> goal cheer   173 -> boos   174 near_miss "ooh" -> save
+  const SND = {};
+  for (const n of ["kick","post","whistle","goal","boos","ooh"]) {
+    const a = new Audio("assets/snd/"+n+".mp3?v=hr5"); a.preload="auto"; SND[n]=a;
+  }
+  let audioUnlocked=false;
+  function audio(){                       // prime playback on first user gesture (autoplay policy)
+    if (audioUnlocked) return; audioUnlocked=true;
+    for (const n in SND){ const a=SND[n];
+      try{ a.muted=true; const p=a.play(); if(p&&p.then) p.then(()=>{a.pause();a.currentTime=0;a.muted=false;}).catch(()=>{a.muted=false;}); }catch(e){} }
+  }
+  function play(name, vol){ const a=SND[name]; if(!a) return;
+    try{ const c=a.cloneNode(); c.volume=(vol==null?0.7:vol); c.play().catch(()=>{}); }catch(e){} }
+  const sfx = {
+    kick(){ play("kick",0.75); },
+    goal(){ play("goal",0.95); },
+    save(){ play("ooh",0.8); },
+    post(){ play("post",0.9); },
+    whistle(){ play("whistle",0.8); },
+    boos(){ play("boos",0.8); }
+  };
+
+  // ---- Game state ----
+  const ST = { MENU:"menu", NAME:"name", CLUBSEL:"clubsel", TABLE:"table", SEASONEND:"seasonend",
+               TITLE:"title", COUNTDOWN:"countdown", SERVE:"serve", FLIGHT:"flight", RESULT:"result",
+               MATCHEND:"matchend", OVER:"over",
+               DAILYBOARD:"dailyboard", HORSESETUP:"horsesetup", HORSEPASS:"horsepass", HORSEEND:"horseend" };
+  let state = ST.MENU;
+  let menuSel = 0;          // menu / club-select cursor
+  let nameBuf = "";         // player-name entry buffer
+  let pendingMode = "career";  // 'quick' or 'career' — what the club-select confirms into
+  let GMODE = "career";     // active game mode: 'career' | 'daily' | 'horse'
+  let serveQueue = null, serveIdx = 0;   // pre-rolled serves for seeded (daily/HORSE) matches
+  const HORSE_BALLS = 5;    // balls per turn in 2-player HORSE
+
+  const M = { score:0, attempts:10, winTarget:0, drawTarget:0, goals:0,
+              best:Number(localStorage.getItem("vc_best")||0) };
+
+  // ---- Career ----
+  let CAR = null;   // {name, slug, season, idx, fixtures:[{opp,home}], table:{slug:{p,w,d,l,pts,gd}}, news:[]}
+  function loadCareer(){ try { return JSON.parse(localStorage.getItem("vc_career")); } catch(e){ return null; } }
+  function saveCareer(){ if (CAR) localStorage.setItem("vc_career", JSON.stringify(CAR)); }
+  function freshTable(){ const t={}; for (const tm of TEAMS) t[tm.slug]={p:0,w:0,d:0,l:0,pts:0,gd:0}; return t; }
+  function makeFixtures(slug){
+    const others = TEAMS.filter(t=>t.slug!==slug).map(t=>t.slug);
+    const fx = [];
+    for (const o of others){ fx.push({opp:o,home:true}); fx.push({opp:o,home:false}); }
+    for (let i=fx.length-1;i>0;i--){ const j=rnd(i+1); [fx[i],fx[j]]=[fx[j],fx[i]]; }  // shuffle
+    return fx;
+  }
+  function newCareer(name, slug){
+    CAR = { name:name||"You", slug, season:1, idx:0, fixtures:makeFixtures(slug),
+            table:freshTable(), news:[], titles:0, form:[], titleOdds:null };
+    CAR.news.unshift(name+" signs for "+TEAMBY[slug].name+"!");
+    saveCareer();
+  }
+  // ---- Title-race model (shared by simRound + computeTitleOdds) ----
+  // A team's per-game win chance is a GENTLE function of its strength so a single rating point
+  // doesn't compound into a near-certain title over 38 games. Strength = static rating blended
+  // with the team's OBSERVED points-per-game once it has played, so the table reacts to real
+  // results. computeTitleOdds also draws a per-team "form" offset each simulated season, giving
+  // realistic tails: the favourites sit ~25%, the chasing pack has a genuine chance, and the
+  // number visibly MOVES as you win or lose (the old model pinned everyone outside the top 2 at 1%).
+  // ODDS_FORM = per-season form variance. Higher = more upsets => a points lead is worth less,
+  // so a 5pt lead with 15 games left reads ~60% (like a real betting market) instead of ~74%.
+  const ODDS_W0 = 0.22, ODDS_WS = 0.34, ODDS_DRAW = 0.26, ODDS_FORM = 0.32;
+  function teamStrength(slug){
+    const t=TEAMBY[slug], r=CAR.table[slug]; let s=(t.rating-1)/9;
+    if (r.p>=3){ const ppg=r.pts/r.p, sImp=ppg/3, w=Math.min(1, r.p/10); s=(1-w)*s + w*sImp; }
+    return clamp(s, 0, 1);
+  }
+  // simulate one matchday for all teams except those given (player's + opponent's real result handled separately)
+  function simRound(exclude){
+    for (const tm of TEAMS){
+      if (exclude.indexOf(tm.slug)>=0) continue;
+      const pW = clamp(ODDS_W0 + ODDS_WS*teamStrength(tm.slug), 0.05, 0.88);
+      const row = CAR.table[tm.slug]; row.p++; const x=Math.random();
+      if (x < pW){ row.w++; row.pts+=3; row.gd+=1+rnd(2); }
+      else if (x < pW+ODDS_DRAW){ row.d++; row.pts+=1; }
+      else { row.l++; row.gd-=1+rnd(2); }
+    }
+  }
+  // Monte-Carlo the rest of the season -> % chance the player finishes 1st.
+  function computeTitleOdds(){
+    if (!CAR) return null;
+    const N=500, total=CAR.fixtures.length, me=CAR.slug; let wins=0;
+    const sT={}; for (const t of TEAMS) sT[t.slug]=teamStrength(t.slug);   // base strengths once per call
+    for (let k=0;k<N;k++){
+      const pts={}, gd={};
+      for (const t of TEAMS){ const r=CAR.table[t.slug]; pts[t.slug]=r.pts; gd[t.slug]=r.gd;
+        const form=(Math.random()*2-1)*ODDS_FORM;                          // this team runs hot/cold this season
+        const pW=clamp(ODDS_W0 + ODDS_WS*sT[t.slug] + form, 0.05, 0.88);
+        for (let g=total-r.p; g>0; g--){ const x=Math.random();
+          if (x<pW){ pts[t.slug]+=3; gd[t.slug]++; } else if (x<pW+ODDS_DRAW){ pts[t.slug]++; } else { gd[t.slug]--; } }
+      }
+      let best=me;
+      for (const t of TEAMS){ if (pts[t.slug]>pts[best] || (pts[t.slug]===pts[best] && gd[t.slug]>gd[best])) best=t.slug; }
+      if (best===me) wins++;
+    }
+    let pct=Math.round(wins/N*100);
+    // floor at 1% only while the player can still mathematically reach the top rival's current points
+    if (pct===0){
+      const myMax=CAR.table[me].pts + (total-CAR.table[me].p)*3;
+      let bestRival=0;
+      for (const t of TEAMS){ if (t.slug===me) continue;
+        if (CAR.table[t.slug].pts>bestRival) bestRival=CAR.table[t.slug].pts; }
+      if (myMax>bestRival) pct=1;
+    }
+    return pct;
+  }
+  function standings(){
+    // by points, then goal-difference, then ALPHABETICAL (so the pre-season table is A–Z)
+    return TEAMS.slice().sort((a,b)=>{ const A=CAR.table[a.slug],B=CAR.table[b.slug];
+      return B.pts-A.pts || B.gd-A.gd || a.name.localeCompare(b.name); });
+  }
+  function myPosition(){ return standings().findIndex(t=>t.slug===CAR.slug)+1; }
+
+  // physics vars (mirror original names)
+  let velocity, angle, cangle, sangle, t, bounce, bounced, booted, innet;
+  let xball, yball, z, dbx, dby, ybit, yscale, ay;   // ay = original serve "y" (xball lags it by 1 step)
+  let checked, dive, no_dive, divedirn, destination, keeperX;
+  let manX, kicked, cchecked, kickTick, manFinished, complete_miss, end, sc;
+  let hitkeeper, held, hitbar, lposthit, rposthit, leftcorner, rightcorner, topnet, znet;
+  let resultText="", resultColor="#fff", resultPoints=0, resultTimer=0, flash=0;
+  let paused=false, countdownT=0;
+  let mouseTargetX=null;          // mouse-driven striker target x (null = mouse not steering)
+  let manKicking=false, manKickT=0;
+  let defenders = [];
+  let keeperPose = { x:KEEPER_START_X, dir:"up", anim:"idle", frame:1 };
+  let leftFooted=false;           // ~1 in 5 matches: mirror the play (left-footed)
+  let matchEndText="", matchEndColor="#fff", matchEndTimer=0;   // end-of-match VICTORY/DRAW/LOSS burst
+  const GCX = (LPOST+RPOST)/2;    // goal centre x: sprites mirror around this so they stay in the goal mouth
+  // ---- per-match random hair ----
+  const HAIR_COLOURS = [[40,40,42],[150,95,45],[225,195,120],[196,96,0],[120,30,30],[185,185,185]]; // black, brown, blonde, ginger, auburn, grey
+  const STRIKER_HAIR = [];        // 6 hair-recoloured frame canvases for the current match
+  function buildHairFrames(){
+    STRIKER_HAIR.length=0;
+    const imgs=[IMG.striker,IMG.sk0,IMG.sk1,IMG.sk2,IMG.sk3,IMG.sk4];
+    const hc=HAIR_COLOURS[rnd(HAIR_COLOURS.length)];
+    for (const im of imgs){
+      if (!im || !im.naturalWidth){ STRIKER_HAIR.push(null); continue; }
+      const c=document.createElement("canvas"); c.width=im.naturalWidth; c.height=im.naturalHeight;
+      const g=c.getContext("2d"); g.drawImage(im,0,0);
+      const d=g.getImageData(0,0,c.width,c.height), p=d.data;
+      for (let i=0;i<p.length;i+=4){
+        const r=p[i],gg=p[i+1],b=p[i+2],a=p[i+3];
+        if (a>40 && r>=120&&r<=232 && gg>=40&&gg<=150 && b<58 && (r-gg)>=48 && (gg-b)>34){  // ginger hair
+          const v=Math.min(1.12, r/192);
+          p[i]=Math.min(255,hc[0]*v); p[i+1]=Math.min(255,hc[1]*v); p[i+2]=Math.min(255,hc[2]*v);
+        }
+      }
+      g.putImageData(d,0,0); STRIKER_HAIR.push(c);
+    }
+  }
+
+  function setTargets() {
+    M.winTarget = 2000 + OPPONENT.rating*1500 + rnd(10)*200;
+    if (!OPPONENT.home) M.winTarget += 2000;
+    M.drawTarget = Math.floor(M.winTarget*5/10);
+  }
+
+  function startMatch(opts) {
+    opts = opts || {};
+    M.score=0; M.attempts=opts.balls||10; M.goals=0; manX=MAN_START_X; mouseTargetX=null;
+    if (opts.seed!=null){                 // seeded: a reproducible serve sequence (daily / HORSE round)
+      const pr=mulberry32(opts.seed>>>0);
+      serveQueue=[]; for (let i=0;i<M.attempts+4;i++) serveQueue.push({v:Math.floor(pr()*5)+18, a:Math.floor(pr()*5)+35});
+      serveIdx=0; leftFooted = Math.floor(pr()*5)===0; RAND = Math.random;   // keeper/defenders stay reactive to play
+    } else {
+      serveQueue=null; serveIdx=0; leftFooted = rnd(5)===0;   // ~1 in 5 matches mirror the play (left-footed)
+    }
+    teamHud = teamColors(MYCLUB.slug);   // info panel themed to your club's kit
+    buildHairFrames();                   // random hair colour this match
+    setTargets(); sfx.whistle();
+    newServe();                          // sets up the scene + first serve...
+    countdownT=3.0; state=ST.COUNTDOWN;  // ...held behind a 3-2-1 so you can get in position
+  }
+
+  // Career: play the current fixture.
+  function startFixture() {
+    const fx = CAR.fixtures[CAR.idx], ot = TEAMBY[fx.opp];
+    OPPONENT = { slug:ot.slug, name:ot.name, rating:ot.rating, home:fx.home };
+    MYCLUB   = { slug:CAR.slug, name:TEAMBY[CAR.slug].name, rating:TEAMBY[CAR.slug].rating };
+    loadKits(MYCLUB.slug, OPPONENT.slug, startMatch);
+  }
+  function matchResult(){ return M.score>=M.winTarget ? "W" : (M.score>=M.drawTarget ? "D" : "L"); }
+  // Match finished (10 balls used): show the VICTORY/DRAW/LOSS burst, then commit.
+  function endMatch() {
+    if (M.score>M.best){ M.best=M.score; localStorage.setItem("vc_best",M.best); }
+    if (GMODE==="horse"){ horseTurnDone(); return; }   // 2-player: record the turn, advance
+    if (GMODE==="daily"){ dailyDone();    return; }     // daily: record to leaderboard
+    const res = matchResult();                          // career: VICTORY/DRAW/LOSS burst
+    matchEndText  = res==="W" ? "VICTORY" : (res==="D" ? "DRAW" : "LOSS");
+    matchEndColor = res==="W" ? "#46e36b" : (res==="D" ? "#c7d0da" : "#ff5d5d");
+    if (res==="W") sfx.goal(); else if (res==="L") sfx.boos(); else sfx.whistle();
+    matchEndTimer = 2.6; state = ST.MATCHEND;
+  }
+  // Varied tabloid-style headline for the result. {n}=player {c}=your club {o}=opponent {s}=score.
+  function headline(res, pos){
+    const n=CAR.name, c=MYCLUB.name, o=OPPONENT.name, s=M.score;
+    const W=["{n} fires {c} past {o}","{c} sink {o} as {n} stars","Sublime {n} downs {o}",
+      "{c} too hot for {o}","{n} on fire: {o} blown away","Three points! {c} see off {o}",
+      "{o} have no answer to {n}","Dream day for {n} at {c}","{n} masterclass buries {o}",
+      "{c} march on, {o} beaten","{n} the hero again versus {o}","Ruthless {c} dismantle {o}",
+      "{n} hits {s} as {c} beat {o}","{o} sunk by clinical {c}"];
+    const D=["{c} held by stubborn {o}","Honours even: {c} and {o} share it","{n} frustrated by {o}",
+      "Stalemate as {c} draw {o}","{c} forced to settle for a point","{n} can't break {o} down",
+      "A point apiece for {c} and {o}","Spoils shared between {c} and {o}","{o} dig in to deny {n}"];
+    const L=["{c} fall to {o}","Off day for {n} as {o} win","{o} edge a tight one with {c}",
+      "{c} undone by {o}","{n} left to rue defeat at {o}","Nightmare for {c} against {o}",
+      "{o} pile on the misery for {c}","{c} slump to defeat by {o}","Blank day for {n} as {o} prevail"];
+    const pool = res==="W"?W:(res==="D"?D:L);
+    let h = pool[rnd(pool.length)];
+    // occasional context flavour
+    if (res==="W" && pos===1 && rnd(2)===0) h="{c} go top! {n} downs {o}";
+    else if (res==="L" && pos>=18 && rnd(2)===0) h="Pressure mounts on {n} as {c} lose to {o}";
+    return h.replace(/{n}/g,n).replace(/{c}/g,c).replace(/{o}/g,o).replace(/{s}/g,s);
+  }
+  // After the burst: record the result + advance the career (or Quick-Play OVER).
+  function commitMatch() {
+    if (!CAR){ state=ST.OVER; return; }
+    const res = matchResult();
+    const me = CAR.table[CAR.slug], opp = CAR.table[OPPONENT.slug];
+    me.p++; opp.p++;
+    if (res==="W"){ me.w++; me.pts+=3; me.gd+=2; opp.l++; opp.gd-=2; }
+    else if (res==="D"){ me.d++; me.pts+=1; opp.d++; opp.pts+=1; }
+    else { me.l++; me.gd-=2; opp.w++; opp.pts+=3; opp.gd+=2; }
+    const mypos0 = myPosition();   // standing after this result (for headline flavour)
+    CAR.news.unshift(headline(res, mypos0));
+    CAR.news = CAR.news.slice(0,8);
+    CAR.form = (CAR.form||[]); CAR.form.unshift(res); CAR.form = CAR.form.slice(0,5);   // last-5 form
+    simRound([CAR.slug, OPPONENT.slug]);
+    CAR.idx++;
+    CAR.titleOdds = computeTitleOdds();      // refresh title odds after this game
+    saveCareer();
+    state = (CAR.idx >= CAR.fixtures.length) ? ST.SEASONEND : ST.TABLE;
+  }
+
+  function newServe() {
+    clearResult();   // each shot owns its result text; a 0-point miss must not inherit the last GOAL/SAVE
+    if (serveQueue){ const s=serveQueue[Math.min(serveIdx,serveQueue.length-1)]; serveIdx++; velocity=s.v; angle=s.a; }
+    else { velocity = rnd(5)+18; angle = rnd(5)+35; }
+    cangle = Math.cos(angle*DEG); sangle = Math.sin(angle*DEG);
+    t=0; bounce=0; bounced=1; booted=false; innet=false; ay=0;
+    xball=0; yball=SERVE_Y; z=0; dbx=0; dby=0; ybit=YBIT; yscale=93;
+    checked=false; dive=false; no_dive=true; divedirn="up"; destination=0; keeperX=KEEPER_START_X;
+    kicked=false; cchecked=false; kickTick=0; manFinished=false; complete_miss=false; end=0; sc=0;
+    hitkeeper=0; held=false; hitbar=false; lposthit=false; rposthit=false;
+    leftcorner=0; rightcorner=0; topnet=0; znet=0;
+    manKicking=false; manKickT=0;
+    keeperPose = { x:KEEPER_START_X, dir:"up", anim:"idle", frame:1 };
+    // Defenders: exact placements from the SWF (PlaceObject matrices, twips/20).
+    // opponent1 deflects -=10+rnd8 @ yball<240; opponent2 -=20+rnd8 @ yball<200; opponent3 +=10+rnd8 @ yball<200.
+    defenders = [
+      { ox:117.95, oy:210.25, sx:1.0000, sy:1.0000, thr:240, mag:10, sign:-1, chk:false },
+      { ox: 27.60, oy:163.35, sx:0.8982, sy:0.8960, thr:200, mag:20, sign:-1, chk:false },
+      { ox:471.15, oy:157.75, sx:0.8234, sy:0.8264, thr:200, mag:10, sign:+1, chk:false }
+    ];
+    state = ST.SERVE;
+  }
+
+  function triggerKick() {
+    if (!kicked && (state===ST.SERVE)) { kicked=true; manKicking=true; manKickT=0; kickTick=0; }
+  }
+
+  // offscreen buffer for the keeper pixel hit-test (faithful to keeps.hitTest(...,true))
+  const offC = document.createElement("canvas"); offC.width=SW; offC.height=420;
+  const offCtx = offC.getContext("2d");
+
+  // ---- saved_check(): pixel-test the keeper sprite at 8 points around the ball, like the original ----
+  function savedCheck() {
+    offCtx.setTransform(1,0,0,1,0,0);
+    offCtx.clearRect(0,0,SW,420);
+    drawKeeperTo(offCtx);
+    const bx = xball, by = yball - z;   // ball._x, ball._y
+    const pts = [[0,0],[-10,-8],[10,-8],[0,-15],[0,-7],[-5,-5],[5,-5],[0,3]];   // original's sample offsets
+    hitkeeper = 0;
+    for (const [ox,oy] of pts) {
+      const sx = Math.round(bx+ox), sy = Math.round(by+oy);
+      if (sx<0||sy<0||sx>=SW||sy>=420) continue;
+      if (offCtx.getImageData(sx,sy,1,1).data[3] > 16) { hitkeeper = 1; break; }
+    }
+    if (dbx > 1 && xball < 170) { leftcorner=1; rightcorner=0; }
+    if (dbx < 1 && xball > 400) { rightcorner=1; leftcorner=0; }
+    if (z > 75) { topnet=1; znet=z; }
+  }
+
+  // striker movement: keyboard (±5/tick) takes priority; otherwise ease toward the mouse target.
+  // When left-footed the scene is mirrored, so swap the arrow keys (mouse target is already mapped).
+  function moveMan() {
+    const R = leftFooted ? input.left : input.right;
+    const L = leftFooted ? input.right : input.left;
+    if (R && manX<MAN_MAX_X) manX=Math.min(MAN_MAX_X, manX+5);
+    else if (L && manX>MAN_MIN_X) manX=Math.max(MAN_MIN_X, manX-5);
+    else if (mouseTargetX!=null){ const d=mouseTargetX-manX, step=18;   // ease toward finger/cursor (snappy for touch)
+      if (Math.abs(d)>2) manX=clamp(manX+Math.max(-step,Math.min(step,d)), MAN_MIN_X, MAN_MAX_X); }
+  }
+  // ---- 28 Hz frame: striker movement + animations; drives the 14 Hz logic loop ----
+  function swfFrame() {
+    if (paused) return;                  // ENTER toggles pause; freezes sim while held
+    if (state===ST.COUNTDOWN) {          // move into position before the first ball is fed
+      moveMan();
+      countdownT -= DT;
+      if (countdownT<=0) state=ST.SERVE;
+      return;
+    }
+    if (state===ST.RESULT) {
+      resultTimer -= DT;
+      if (resultTimer<=0) {
+        if (M.attempts<=0) endMatch();
+        else newServe();
+      }
+      return;
+    }
+    if (state===ST.MATCHEND) {           // VICTORY/DRAW/LOSS burst, then record + advance
+      matchEndTimer -= DT;
+      if (matchEndTimer<=0) commitMatch();
+      return;
+    }
+    if (state!==ST.SERVE && state!==ST.FLIGHT) return;
+
+    // striker movement runs every SWF frame (28 Hz) — like the original man.enterFrame
+    moveMan();
+    // kick animation advances at 28 Hz; contact (man.finished) lands on anim frame 7
+    if (manKicking) manKickT++;
+    if (kicked && !cchecked) { kickTick++; if (kickTick>=KICK_FRAMES) manFinished=true; }
+    // keeper dive animation plays at the SWF frame rate (one source frame per 28 Hz tick)
+    if (dive && !no_dive) {
+      const a = KEEPER_ANIMS[keeperPose.anim] || KEEPER_ANIMS.dive_left;
+      if (keeperPose.frame < a[1]) keeperPose.frame++;
+    }
+
+    // game logic runs every frame (28 Hz) — full-rate cross, matches the original's feel
+    logicStep();
+  }
+
+  // ---- 14 Hz logic: frame_9 (physics + resolve) then frame_10 (contact, defenders, keeper, end) ----
+  function logicStep() {
+    // ===== frame_9: ball physics =====
+    t += 0.06;
+    if (!booted) {
+      yball = SERVE_Y;
+      xball = ay*10;                              // xball lags ay by one step (faithful)
+      ay = cangle*velocity*t + bounce;
+      z = (sangle*velocity*t - 5*t*t)*10;
+      if (z<0) { t=0; bounce=ay; bounced=2; velocity*=0.7; z=0; }
+      yscale = 10 + 90*yball/325;
+    } else if (!innet) {
+      xball -= dbx; yball -= ybit; z += dby/13;
+      yscale = 10 + 90*yball/325;
+      if (yball<GOAL_RESOLVE_Y && !checked) {
+        checked=true; savedCheck();
+        // ===== EXACT transcription of frame_9 resolution =====
+        if (hitkeeper===0) {
+          if (Math.abs(xball-RPOST)<POSTTOL && z<BARH) {
+            rposthit=true; ybit=-ybit; dbx=-10; M.score+=Math.round(150/bounced); flagResult("WOODWORK!","#ff9f1c",150); sfx.post();
+          }
+          if (Math.abs(xball-LPOST)<POSTTOL && z<BARH) {
+            lposthit=true; ybit=-ybit; dbx=10; M.score+=Math.round(150/bounced); flagResult("WOODWORK!","#ff9f1c",150); sfx.post();
+          }
+          if (z>=BARH-15 && z<=BARH && xball>LPOST && xball<RPOST) {
+            if (!(lposthit||rposthit)) { hitbar=true; dby=10; M.score+=Math.round(150/bounced); flagResult("OFF THE BAR!","#ff9f1c",150); sfx.post(); }
+          }
+          if (xball>LPOST && xball<RPOST && z<BARH && !rposthit && !lposthit && !hitbar) {
+            innet=true;   // GOAL
+          } else if (!rposthit && !lposthit && !hitbar) {
+            flagResult("MISSED!","#ff5d5d",0);   // wide/over -> miss (no score; cosmetic text only)
+          }
+        } else {
+          M.score+=Math.round(300/bounced); flagResult("SAVED!","#ffd23f",300); sfx.save();
+          if (divedirn==="left"){ ybit=-ybit; dbx=10; dby=-dby; } else { ybit=-ybit; dbx=-10; dby=-dby; }
+          if (no_dive){ held=true; keeperPose.anim="catch"; keeperPose.frame = (z<30 ? 323 : (z<60 ? 328 : 354)); }
+        }
+        if (window.__dbg) window.__rs={finalx:Math.round(xball),z:Math.round(z),hk:hitkeeper,innet,rp:rposthit,lp:lposthit,bar:hitbar};
+      }
+    } else {
+      xball -= dbx; yball -= 6; z += dby/12;
+      yscale = 10 + 90*yball/325;
+      if (rightcorner===1){ dbx=10; rightcorner=0; }
+      if (leftcorner===1){ dbx=-10; leftcorner=0; }
+      if (topnet===1){ z=znet-20; }
+      if (yball<NET_GOAL_Y) {
+        end=1; M.score+=Math.round(4000/bounced); sc=1; M.goals++;
+        flagResult("GOOOOAL!","#46e36b",4000); sfx.goal(); flash=0.6;
+      }
+    }
+
+    // ===== frame_10: contact, defenders, keeper, end =====
+    // contact resolves once the kick animation has reached its strike frame
+    if (kicked && !cchecked && manFinished) {
+      cchecked=true;
+      dbx = manX + 15 - xball;
+      dby = z;
+      if (z<40 && Math.abs(dbx)<30) {
+        booted=true; innet=false; M.score += Math.round(100/bounced); sfx.kick();
+        state=ST.FLIGHT;
+      } else {
+        complete_miss=true;   // whiff – attempt lost when ball rolls off
+      }
+    }
+    dby = z;   // frame_10 line 50
+
+    // defenders: each gets ONE hitTest the moment the ball passes its depth threshold (frame_10 1-30)
+    if (booted) {
+      const bx = xball, by = yball - z;   // ball._x, ball._y (screen)
+      for (const d of defenders) {
+        if (!d.chk && yball < d.thr) {
+          d.chk = true;
+          const b = defBox(d);
+          if (bx>=b.x0 && bx<=b.x1 && by>=b.y0 && by<=b.y1){ dbx += d.sign*(d.mag + rnd(8));
+            if (window.__df) window.__df.push({ox:d.ox,sign:d.sign,atx:Math.round(bx),aty:Math.round(by),newdbx:Math.round(dbx)}); }
+        }
+      }
+    }
+
+    // keeper dive AI
+    if (booted && !dive) {
+      dive=true; destination = xball - 18*dbx; divedirn="up";
+      if (rnd(10)<8) {
+        if (destination>310 && destination<500){ divedirn="right"; no_dive=false; keeperPose.anim="dive_right"; keeperPose.frame=KEEPER_ANIMS.dive_right[0]; }
+        if (destination<250 && destination>50){ divedirn="left"; no_dive=false; keeperPose.anim="dive_left"; keeperPose.frame=KEEPER_ANIMS.dive_left[0]; }
+      }
+      keeperPose.dir = divedirn;
+    }
+    if (dive && no_dive) {
+      if (destination>keeperPose.x) keeperPose.x+=1;
+      if (destination<keeperPose.x) keeperPose.x-=1;
+    }
+
+    // end conditions + serve roll-off
+    if (yball<100) end=1;
+    if (hitbar && z>200) end=1;
+    if ((lposthit||rposthit||hitkeeper===1) && yball>200) end=1;
+    if (t>7) end=1;
+
+    const shotOver = (end===1) || (!booted && xball>=600);
+    if (shotOver) {
+      if (!booted) flagResult(complete_miss ? "MISSED IT!" : "NO CONTACT", "#9aa7b4", 0);
+      if (!sc) M.attempts--;     // goals (sc=1) are free shots
+      resultTimer = 1.1;
+      state = ST.RESULT;
+    }
+  }
+
+  function flagResult(txt,col,pts){ if(resultText==="" || pts>0){ resultText=txt; resultColor=col; resultPoints=pts; } }
+
+  // =================== RENDER ===================
+  function clearResult(){ resultText=""; resultColor="#fff"; resultPoints=0; }
+
+  // Logical (zoom-1) sprite sizes + registration origins. Bitmaps are exported at 3x and
+  // drawn at these logical sizes so the browser downscales -> crisp (vector-equivalent at this canvas).
+  const BALL_W = 41, BALL_H = 41, BALL_OX = 19.6, BALL_OY = 34.1;
+  const SHADOW_W = 28, SHADOW_H = 11, SHADOW_OX = 13.0, SHADOW_OY = 0.0;
+  function drawBall() {
+    if (held || state===ST.COUNTDOWN) return;
+    const ss = yscale/100;                          // shadow + in-net ball use full yscale
+    const bs = (innet ? yscale : yscale*0.8)/100;   // /ball uses yscale*0.8, /ball2 (in net) uses yscale (frame_9 :276/:285)
+    // shadow: origin (13.0, 0.0) maps to (xball, yball); alpha ~0.25 (original CXFORM alphaMult 64/256)
+    if (yball>=130 && IMG.shadow.naturalWidth) {
+      ctx.globalAlpha=0.25;
+      ctx.drawImage(IMG.shadow, xball-SHADOW_OX*ss, yball-SHADOW_OY*ss, SHADOW_W*ss, SHADOW_H*ss);
+      ctx.globalAlpha=1;
+    }
+    // ball: origin (19.6, 34.1) maps to (xball, yball-z)
+    if (IMG.ball.naturalWidth) {
+      ctx.drawImage(IMG.ball, xball-BALL_OX*bs, (yball-z)-BALL_OY*bs, BALL_W*bs, BALL_H*bs);
+    }
+  }
+
+  function drawKeeper() { drawKeeperTo(ctx); }
+
+  // Exact keeper placement scale from the SWF (PlaceObject / keeps._yscale=78).
+  // Feet-anchor: keeper standing feet (PNG 300,197) -> stage (keeps._x=263, goal-line y=163).
+  const KEEPER_SX = 0.7530, KEEPER_SY = 0.7767;
+  const KEEPER_FEET_PX = 300, KEEPER_FEET_PY = 197;   // standing feet/centre in the 596x263 sprite
+  const KEEPER_STAGE_Y = 163;                          // goal line (measured from pitch.jpg post base)
+
+  // Render the current keeper frame from the sprite atlas. Frames share a unified canvas, so
+  // each frame's (ox,oy) offset (logical px) positions it relative to the fixed feet anchor;
+  // side-dive frames carry the lateral motion internally (keeps._x stays put on a dive).
+  function drawKeeperTo(g) {
+    if (!KMAN) return;
+    const fr = KMAN[String(keeperPose.frame)] || KMAN["1"];
+    if (!fr) return;
+    const sheet = fr.sheet===0 ? IMG.katlas0 : IMG.katlas1;
+    if (!sheet || !sheet.naturalWidth) return;
+    g.save();
+    g.translate(keeperPose.x, KEEPER_STAGE_Y);     // central keeper shuffles x; dives keep x=263
+    g.drawImage(sheet, fr.x, fr.y, fr.w, fr.h,
+                (fr.ox - KEEPER_FEET_PX)*KEEPER_SX, (fr.oy - KEEPER_FEET_PY)*KEEPER_SY,
+                (fr.w/2)*KEEPER_SX, (fr.h/2)*KEEPER_SY);   // /2: atlas is exported at 2x
+    g.restore();
+  }
+
+  // exact: gameplay player placed at scale 1.0 (root); registration origin (101.2,126.5) -> (man._x, man._y)
+  const STRIKER_OX = 101.2, STRIKER_OY = 126.5, STRIKER_W = 131, STRIKER_H = 191;
+  function drawStriker() {
+    if (!IMG.striker.complete || !IMG.striker.naturalWidth) return;
+    const hair = STRIKER_HAIR.length===6 && STRIKER_HAIR[0];   // hair-recoloured frame canvases
+    let img;
+    if (manKicking) {
+      const seq = hair ? [STRIKER_HAIR[1],STRIKER_HAIR[2],STRIKER_HAIR[3],STRIKER_HAIR[4],STRIKER_HAIR[5]]
+                       : [IMG.sk0, IMG.sk1, IMG.sk2, IMG.sk3, IMG.sk4];
+      const idx = Math.max(0, Math.min(4, Math.floor((manKickT-1)/2)));
+      img = (seq[idx] && (seq[idx].naturalWidth||seq[idx].width)) ? seq[idx] : (hair ? STRIKER_HAIR[0] : IMG.striker);
+    } else {
+      img = hair ? STRIKER_HAIR[0] : IMG.striker;
+    }
+    ctx.drawImage(img, manX - STRIKER_OX, MAN_Y - STRIKER_OY, STRIKER_W, STRIKER_H);
+  }
+
+  function drawDefenders() {
+    if (!IMG.defender.complete || !IMG.defender.naturalWidth) return;
+    // far (smaller) first for correct overlap; draw man origin (DEF_OX,DEF_OY) at the opponent placement
+    const order = defenders.slice().sort((a,b)=>a.sy-b.sy);
+    for (const d of order) {
+      ctx.drawImage(IMG.defender, d.ox - DEF_OX*d.sx, d.oy - DEF_OY*d.sy, DEF_W*d.sx, DEF_H*d.sy);
+    }
+  }
+
+  function drawHUD() {
+    const P=teamHud.primary, S=teamHud.secondary;
+    // ===== progress strip over the grass (translucent; ~10% more compact than before) =====
+    const sx=70, sw=SW-140, sy=348, sh=48;
+    ctx.fillStyle="rgba(6,7,11,0.76)"; ctx.fillRect(sx,sy,sw,sh);
+    ctx.strokeStyle="rgba(255,255,255,0.18)"; ctx.lineWidth=1; ctx.strokeRect(sx+0.5,sy+0.5,sw-1,sh-1);
+    // fixture as COLOURED TEAM-NAME text (each club its own colour, 'v' in white)
+    const homeSlug = OPPONENT.home ? MYCLUB.slug : OPPONENT.slug, homeName = OPPONENT.home ? MYCLUB.name : OPPONENT.name;
+    const awaySlug = OPPONENT.home ? OPPONENT.slug : MYCLUB.slug, awayName = OPPONENT.home ? OPPONENT.name : MYCLUB.name;
+    ctx.font=ttFont(13); ctx.textBaseline="alphabetic"; ctx.textAlign="left";
+    const wHome=ctx.measureText(homeName).width, wV=ctx.measureText("  v  ").width, wAway=ctx.measureText(awayName).width;
+    let tx=SW/2-(wHome+wV+wAway)/2, ty=sy+16;
+    ctx.fillStyle=teamTextColor(homeSlug); ctx.fillText(homeName, tx, ty); tx+=wHome;
+    ctx.fillStyle=TTX.white;              ctx.fillText("  v  ", tx, ty); tx+=wV;
+    ctx.fillStyle=teamTextColor(awaySlug);ctx.fillText(awayName, tx, ty);
+    // EVEN-sized blocky LOSE/DRAW/WIN meter (integer cell + gap, centred)
+    const by=sy+24, bh=11, gap=2, cellW=8, mw=sw-24;
+    const cells=Math.floor((mw+gap)/(cellW+gap)), usedW=cells*cellW+(cells-1)*gap, bx=SW/2-usedW/2;
+    const drawFrac=clamp((M.drawTarget||0)/(M.winTarget||1),0,1), perc=clamp(M.score/(M.winTarget||1),0,1);
+    const pcol = M.score>=M.winTarget ? TTX.green : (M.score>=M.drawTarget ? TTX.yellow : TTX.red);
+    for (let i=0;i<cells;i++){ const f=(i+0.5)/cells;
+      ctx.fillStyle = (i/cells)<perc ? pcol : (f<=drawFrac ? "#3a1018" : "#3a2e0e");
+      ctx.fillRect(bx+i*(cellW+gap), by, cellW, bh);
+    }
+    ctx.fillStyle=TTX.white; ctx.fillRect(Math.round(bx+usedW*drawFrac)-1, by-3, 2, bh+6);
+    ctx.font=ttFont(9);
+    ctx.textAlign="left";   ctx.fillStyle=TTX.red;    ctx.fillText("LOSE", bx, sy+45);
+    ctx.textAlign="center"; ctx.fillStyle=TTX.yellow; ctx.fillText("DRAW", bx+usedW*drawFrac, sy+45);
+    ctx.textAlign="right";  ctx.fillStyle=TTX.green;  ctx.fillText("WIN", bx+usedW, sy+45);
+
+    // ===== info panel — TEAM COLOURS (primary bg, secondary text); win target made glanceable =====
+    ctx.fillStyle=P; ctx.fillRect(0,400,SW,SH-400);
+    ctx.fillStyle="rgba(0,0,0,0.22)"; ctx.fillRect(0,400,SW,4);
+    ctx.fillStyle=S; ctx.textAlign="left";
+    ctx.font=ttFont(12); ctx.fillText("BALLS", 22, 428);
+    ctx.font=ttFont(26); ctx.fillText(String(M.attempts), 22, 458);
+    ctx.font=ttFont(12); ctx.fillText("SCORE", 122, 428);
+    ctx.font=ttFont(26); ctx.fillText(String(M.score), 122, 458);
+    // WIN TARGET — big, boxed, right side: readable at a glance
+    ctx.textAlign="right";
+    ctx.font=ttFont(12); ctx.fillText("WIN TARGET", SW-24, 426);
+    ctx.font=ttFont(32); ctx.fillText(String(M.winTarget), SW-24, 460);
+    ctx.font=ttFont(11); ctx.globalAlpha=0.82; ctx.fillText("draw at "+M.drawTarget, SW-24, 478); ctx.globalAlpha=1;
+    // controls + best
+    ctx.textAlign="left"; ctx.font=ttFont(11); ctx.globalAlpha=0.92;
+    ctx.fillText(TOUCH ? "DRAG TO MOVE · RELEASE TO SHOOT" : "◄ ► MOVE     SPACE = SHOOT", 22, 500);
+    ctx.textAlign="right"; ctx.fillText("BEST "+M.best, SW-24, 500); ctx.globalAlpha=1;
+    ctx.textAlign="left";
+
+    // ===== early checkout banner (top-left), once the WIN target is secured =====
+    if (canCheckout()){
+      const msg = TOUCH ? "✓ TARGET HIT - TAP HERE TO CHECK OUT" : "✓ TARGET HIT  -  ESC TO CHECK OUT";
+      ctx.font=ttFont(13); ctx.textAlign="left";
+      ctx.fillStyle="rgba(0,0,0,0.85)"; ctx.fillText(msg, 13, 26);
+      ctx.fillStyle=TTX.neon; ctx.fillText(msg, 12, 25);
+    }
+  }
+  function canCheckout(){ return (state===ST.SERVE||state===ST.FLIGHT||state===ST.RESULT) && M.attempts>0 && M.score>=M.winTarget; }
+  function checkoutEarly(){ paused=false; sfx.whistle(); endMatch(); }   // bank the win now, skip remaining balls
+
+  // end-of-match burst: the result word tiled across the screen, pulsing, + a big centre word
+  function drawMatchEndBurst() {
+    ctx.fillStyle="rgba(4,6,10,0.5)"; ctx.fillRect(0,0,SW,SH);
+    const t=performance.now()/1000, word=matchEndText, long=word.length>5;
+    ctx.textAlign="center"; ctx.textBaseline="middle";
+    const cols=4, rows=6;
+    for (let r=0;r<rows;r++) for (let c=0;c<cols;c++){
+      const ph=r*cols+c;
+      const x=(c+0.5)/cols*SW + (r%2?26:-26);
+      const y=(r+0.5)/rows*SH;
+      const sc=0.85+0.2*Math.sin(t*6+ph*0.7);
+      ctx.font="900 "+Math.round((long?16:21)*sc)+"px Trebuchet MS";
+      ctx.globalAlpha=0.35+0.45*Math.abs(Math.sin(t*4+ph));
+      ctx.fillStyle="#000"; ctx.fillText(word,x+2,y+2);
+      ctx.fillStyle=matchEndColor; ctx.fillText(word,x,y);
+    }
+    ctx.globalAlpha=1;
+    const bs=1+0.08*Math.sin(t*9);
+    ctx.save(); ctx.translate(SW/2,SH/2); ctx.scale(bs,bs);
+    ctx.font="900 "+(long?54:66)+"px Trebuchet MS";
+    ctx.fillStyle="#000"; ctx.fillText(word,3,3);
+    ctx.fillStyle=matchEndColor; ctx.fillText(word,0,0);
+    ctx.restore();
+    ctx.textBaseline="alphabetic"; ctx.textAlign="left";
+  }
+  function drawResultText() {
+    if (state===ST.RESULT && resultText) {
+      ctx.textAlign="center";
+      const isGoal = resultPoints>=4000 || resultText.indexOf("GOO")===0;
+      if (isGoal){
+        const tt=performance.now()/1000, pulse=1+0.16*Math.sin(tt*18);     // size throb
+        const cols=[TTX.green,TTX.yellow,TTX.white,TTX.magenta], col=cols[Math.floor(tt*12)%cols.length];
+        ctx.save(); ctx.translate(SW/2,150); ctx.scale(pulse,pulse);
+        ctx.font=ttFont(44);
+        ctx.fillStyle="rgba(0,0,0,0.9)"; ctx.fillText(resultText,4,5);      // hard shadow for legibility
+        ctx.fillStyle=col; ctx.fillText(resultText,0,0); ctx.restore();
+      } else {
+        ctx.font=ttFont(34);
+        ctx.fillStyle="rgba(0,0,0,0.9)"; ctx.fillText(resultText, SW/2+3, 153);
+        ctx.fillStyle=resultColor; ctx.fillText(resultText, SW/2, 150);
+      }
+      if (resultPoints>0){
+        ctx.font=ttFont(18);
+        const pts = bounced>1 ? Math.round(resultPoints/2) : resultPoints;
+        ctx.fillStyle="rgba(0,0,0,0.9)"; ctx.fillText("+"+pts, SW/2+2, 184);
+        ctx.fillStyle=TTX.white; ctx.fillText("+"+pts, SW/2, 182);
+      }
+      ctx.textAlign="left";
+    }
+  }
+
+  // ================= TELETEXT UI KIT (CEEFAX-style menus/tables) =================
+  const TTX = { bg:"#06070b", white:"#ffffff", cyan:"#3df0ff", green:"#4dff7a", yellow:"#ffe23d",
+                red:"#ff5252", blue:"#5b7bff", magenta:"#ff6ad5", grey:"#9aa7b4", dim:"#5d6b78", neon:"#39ff14" };
+  function ttFont(px, w){ return (w||"bold ")+px+"px 'Courier New','Lucida Console',monospace"; }
+  function ttClear(){ ctx.fillStyle=TTX.bg; ctx.fillRect(0,0,SW,SH);
+    // faint scanlines for the retro CRT feel
+    ctx.fillStyle="rgba(0,0,0,0.16)"; for (let y=0;y<SH;y+=3) ctx.fillRect(0,y,SW,1); }
+
+  // ---- line-by-line "printing" reveal (resets whenever the screen/state changes) ----
+  let stateEnterAt=performance.now(), _prevDrawState=null;
+  function screenAge(){ return (performance.now()-stateEnterAt)/1000; }
+  const TT_LINE=0.06, TT_CPS=140;          // delay between lines + chars/sec within a line
+  function ttSub(text, lineIdx){           // visible substring of `text` for its print order
+    const age=screenAge()-(lineIdx||0)*TT_LINE;
+    if (age<=0) return null;               // not started printing yet
+    const n=Math.floor(age*TT_CPS);
+    return n>=text.length ? text : text.slice(0,n);
+  }
+  function ttCursorOn(){ return (Math.floor(performance.now()/260)%2)===0; }
+  function ttDone(lines){ return screenAge() > (lines||0)*TT_LINE + 0.25; }   // has the whole reveal finished?
+  // print one monospace line; left-aligned at x (or centred on its FULL width so layout is stable).
+  // returns true once the whole line has printed.
+  function ttPrint(text, x, y, color, lineIdx, opts){
+    opts=opts||{}; ctx.font=ttFont(opts.size||13, opts.weight);
+    const sub=ttSub(text, lineIdx); if (sub===null) return false;
+    let gx=x;
+    if (opts.center){ ctx.textAlign="left"; gx=SW/2 - ctx.measureText(text).width/2; }
+    else ctx.textAlign="left";
+    ctx.fillStyle=color;
+    const full=sub.length>=text.length;
+    ctx.fillText(sub, gx, y);
+    if (!full && ttCursorOn()){ const cw=ctx.measureText("M").width; ctx.fillRect(gx+ctx.measureText(sub).width+1, y-Math.round((opts.size||13)*0.78), cw*0.7, (opts.size||13)*0.9); }
+    return full;
+  }
+  // BBC-style solid header block with text inside it
+  function ttBar(text, x, y, w, h, block, fg, opts){
+    opts=opts||{}; ctx.fillStyle=block; ctx.fillRect(x,y,w,h);
+    ctx.font=ttFont(opts.size||16, opts.weight||"bold "); ctx.textBaseline="middle";
+    ctx.fillStyle=fg; ctx.textAlign=opts.center?"center":"left";
+    ctx.fillText(text, opts.center?x+w/2:x+8, y+h/2+1);
+    ctx.textBaseline="alphabetic"; ctx.textAlign="left";
+  }
+
+  // ---- SCORDAGOL brand logo: chunky 8-bit teletext style (neon green + hard drop shadow) ----
+  // Rendered tiny to an offscreen buffer, then upscaled nearest-neighbour so the edges read as
+  // big square pixels (like double-height teletext) — the way CEEFAX/Telescore headers look.
+  const logoC=document.createElement("canvas"), logoG=logoC.getContext("2d");
+  function drawLogo(cx, baseY, maxW){
+    const txt="SCORDAGOL", F=26, pad=4, off=3;       // small render; off = shadow offset in small px
+    logoG.font="900 "+F+"px 'Arial Black','Arial',sans-serif";
+    const tw=Math.ceil(logoG.measureText(txt).width);
+    logoC.width=tw+pad*2+off; logoC.height=F+pad*2+off+4;
+    logoG.clearRect(0,0,logoC.width,logoC.height);
+    logoG.font="900 "+F+"px 'Arial Black','Arial',sans-serif"; logoG.textBaseline="top"; logoG.textAlign="left";
+    logoG.fillStyle="#063b1c"; logoG.fillText(txt, pad+off, pad+off);   // dark-green drop shadow
+    logoG.fillStyle="#34ff6e"; logoG.fillText(txt, pad, pad);            // neon green face
+    const scale=Math.min(maxW/logoC.width, 150/logoC.height);
+    const dw=Math.round(logoC.width*scale), dh=Math.round(logoC.height*scale);
+    const prev=ctx.imageSmoothingEnabled; ctx.imageSmoothingEnabled=false;  // nearest-neighbour = 8-bit pixels
+    ctx.drawImage(logoC, Math.round(cx-dw/2), Math.round(baseY-dh), dw, dh);
+    ctx.imageSmoothingEnabled=prev;
+  }
+
+  // ---- team colours for the in-game info panel (primary = shirt, secondary contrasts it) ----
+  function hexLum(hex){ const n=parseInt(hex.slice(1),16); return 0.299*((n>>16)&255)+0.587*((n>>8)&255)+0.114*(n&255); }
+  function teamColors(slug){
+    const t=TEAMBY[slug]||{}, prim=PAL[t.shirt]||"#c8102e", pl=hexLum(prim);
+    const cands=[t.swatch_accent, t.stripe2, (t.sleeves!==t.shirt?t.sleeves:null),
+                 (t.shorts!==t.shirt?t.shorts:null), (t.socks!==t.shirt?t.socks:null)];
+    let sec=null;
+    for (const c of cands){ if (c && PAL[c] && Math.abs(hexLum(PAL[c])-pl)>40){ sec=PAL[c]; break; } }
+    if (!sec) sec = pl>140 ? "#101418" : "#ffffff";          // fallback: contrast by luminance
+    // ensure target tints stay legible: a dimmer version of secondary for sub-labels
+    return { primary:prim, secondary:sec, dark:pl<120 };
+  }
+  let teamHud = { primary:"#c8102e", secondary:"#ffffff", dark:true };
+  function lighten(hex, amt){ const n=parseInt(hex.slice(1),16); let r=(n>>16)&255,g=(n>>8)&255,b=n&255;
+    r=Math.round(r+(255-r)*amt); g=Math.round(g+(255-g)*amt); b=Math.round(b+(255-b)*amt);
+    return "#"+((1<<24)|(r<<16)|(g<<8)|b).toString(16).slice(1); }
+  // a club colour that stays legible on the dark teletext background (used for fixture team names)
+  function teamTextColor(slug){ const t=TEAMBY[slug]||{}; let c=PAL[t.shirt]||"#cccccc"; if (hexLum(c)<95) c=lighten(c,0.45); return c; }
+
+  function drawTitle() {
+    ctx.fillStyle="rgba(4,6,10,0.74)"; ctx.fillRect(0,0,SW,SH);
+    ctx.textAlign="center";
+    ctx.fillStyle="#c8102e"; ctx.font="bold 46px Trebuchet MS";
+    ctx.fillText("VOLLEY CHALLENGE", SW/2, 110);
+    ctx.fillStyle="#f6eb61"; ctx.font="bold 17px Trebuchet MS";
+    ctx.fillText("Anfield Edition · Liverpool FC", SW/2, 140);
+    ctx.fillStyle="#fff"; ctx.font="14px Trebuchet MS";
+    const lines=[
+      "You have 10 balls to beat the keeper.",
+      "◄ ► position your player under the incoming cross.",
+      "Press SPACE to volley — there's a slight wind-up,",
+      "so swing just before the ball reaches you.",
+      "",
+      "Where you meet the ball sets its direction;",
+      "the ball's height sets the loft. Aim past the keeper!",
+      "",
+      "GOAL +4000 (free ball) · SAVE +300 · WOODWORK +150 · CONTACT +100",
+      "Let the ball bounce first and points are HALVED.",
+      "Beat the WIN target to take the three points."
+    ];
+    lines.forEach((l,i)=>ctx.fillText(l, SW/2, 180+i*24));
+    const pulse=0.55+0.45*Math.sin(performance.now()/250);
+    ctx.globalAlpha=pulse; ctx.fillStyle="#f6eb61"; ctx.font="bold 22px Trebuchet MS";
+    ctx.fillText("Press SPACE to kick off", SW/2, 470); ctx.globalAlpha=1;
+    if (M.best>0){ ctx.fillStyle="#9aa7b4"; ctx.font="13px Trebuchet MS"; ctx.fillText("Best score: "+M.best, SW/2, 498); }
+  }
+
+  function drawOver() {
+    let outcome, col;
+    if (M.score>=M.winTarget){ outcome="WIN!"; col=TTX.green; }
+    else if (M.score>=M.drawTarget){ outcome="DRAW"; col=TTX.yellow; }
+    else { outcome="DEFEAT"; col=TTX.red; }
+    ttBar("SCORDAGOL   FULL TIME", 0, 12, SW, 30, TTX.blue, TTX.white, {size:17});
+    ctx.textAlign="center";
+    ttPrint(outcome, 0, 180, col, 0, {size:54, center:true});
+    if (ttDone(1)){
+      ctx.font=ttFont(24); ctx.fillStyle=TTX.white; ctx.fillText("SCORE  "+M.score, SW/2, 252);
+      ctx.font=ttFont(15); ctx.fillStyle=TTX.cyan; ctx.fillText("GOALS "+M.goals+"   WIN TARGET WAS "+M.winTarget, SW/2, 288);
+      if (M.score>=M.best && M.score>0){ ctx.fillStyle=TTX.green; ctx.font=ttFont(18); ctx.fillText("★ NEW BEST! ★", SW/2, 322); }
+      if (ttCursorOn()){ ctx.fillStyle=TTX.yellow; ctx.font=ttFont(20); ctx.fillText("SPACE TO RETURN TO MENU", SW/2, 400); }
+    }
+    ctx.textAlign="left";
+  }
+
+  // ---- career screens ----
+  // Career first so SPACE on the menu starts a career (and asks your name + club).
+  function menuOptions(){ const o=[]; if (loadCareer()) o.push("CONTINUE CAREER"); o.push("NEW CAREER","DAILY CHALLENGE","2 PLAYER"); return o; }
+  const MENU_Y0=246, MENU_DY=44, MENU_BW=360, MENU_BH=36;   // shared by drawMenu + menuHit
+  function drawMenu(){
+    drawLogo(SW/2, 138, SW-36);                                          // SCORDAGOL 8-bit brand mark
+    ctx.textAlign="center";
+    ttPrint("VOLLEY YOUR WAY TO GREATNESS", 0, 172, TTX.white, 0, {size:15, center:true});
+    const opts = menuOptions();
+    menuSel = clamp(menuSel,0,opts.length-1);
+    for (let i=0;i<opts.length;i++){
+      const y=MENU_Y0+i*MENU_DY, sel=i===menuSel, label=(sel?"▶ ":"  ")+opts[i];
+      const sub=ttSub(label, 2+i); if (sub===null) continue;             // print options one by one
+      ctx.font=ttFont(24);
+      if (sel){ ctx.fillStyle=TTX.yellow; ctx.fillRect(SW/2-MENU_BW/2, y-27, MENU_BW, MENU_BH); }   // inverse-video selection
+      ctx.fillStyle = sel ? "#06070b" : TTX.white; ctx.textAlign="left";
+      ctx.fillText(sub, SW/2 - ctx.measureText(label).width/2, y);
+    }
+    ctx.textAlign="center";
+    if (ttDone(2+opts.length)){ ctx.font=ttFont(12); ctx.fillStyle=TTX.grey;
+      ctx.fillText("↑ ↓ CHOOSE    SPACE / CLICK SELECT    F FULLSCREEN", SW/2, 430); }
+    // roster status — so a failed deploy isn't a silent dead-end (options need the roster)
+    if (!TEAMS.length){
+      ctx.font=ttFont(12);
+      if (rosterStatus==="error"){ ctx.fillStyle=TTX.red; ctx.fillText("⚠ COULD NOT LOAD assets/teams.json — CHECK DEPLOYMENT", SW/2, 408); }
+      else { ctx.fillStyle=TTX.yellow; ctx.fillText("LOADING ROSTER…", SW/2, 408); }
+    }
+    // footer — studio credit + copyright
+    ctx.font=ttFont(14); ctx.fillStyle=TTX.green; ctx.fillText("A WIMP STUDIO CREATION", SW/2, 478);
+    ctx.font=ttFont(10,""); ctx.fillStyle=TTX.dim;
+    ctx.fillText("SCORDAGOL ™   © 2026 WIMP STUDIO · ALL RIGHTS RESERVED", SW/2, 498);
+    if (M.best>0){ ctx.font=ttFont(11); ctx.fillStyle=TTX.cyan; ctx.fillText("BEST SCORE  "+M.best, SW/2, 515); }
+    ctx.textAlign="left";
+  }
+  function drawName(){
+    ttBar("SCORDAGOL", 0, 14, SW, 30, TTX.blue, TTX.white, {center:true, size:18});
+    ctx.textAlign="center";
+    ttPrint("ENTER YOUR NAME", 0, 150, TTX.green, 0, {size:24, center:true});
+    // input field box + typed buffer with block cursor
+    if (ttDone(1)){
+      ctx.strokeStyle=TTX.cyan; ctx.lineWidth=2; ctx.strokeRect(SW/2-180, 196, 360, 52);
+      ctx.font=ttFont(30); ctx.textAlign="left"; ctx.fillStyle=TTX.yellow;
+      const txt=(nameBuf||""); const w=ctx.measureText(txt).width; const gx=SW/2-w/2;
+      ctx.fillText(txt, gx, 231);
+      if (ttCursorOn()){ ctx.fillStyle=TTX.yellow; ctx.fillRect(gx+w+3, 210, 14, 26); }
+      ctx.textAlign="center"; ctx.font=ttFont(13); ctx.fillStyle=TTX.grey;
+      ctx.fillText("TYPE YOUR NAME     ENTER TO CONTINUE     ESC BACK", SW/2, 300);
+    }
+    ctx.textAlign="left";
+  }
+  function drawClubSelect(){
+    if (!TEAMS.length){ ctx.textAlign="center"; ttPrint("LOADING CLUBS…",0,200,TTX.cyan,0,{size:16,center:true}); ctx.textAlign="left"; return; }
+    ttBar("SCORDAGOL   CHOOSE YOUR CLUB", 0, 12, SW, 30, TTX.blue, TTX.white, {size:17});
+    ctx.textAlign="right"; ctx.font=ttFont(12); ctx.fillStyle=TTX.yellow;
+    ctx.fillText(pendingMode==="quick"?"QUICK PLAY":("CAREER · "+(nameBuf||"YOU")), SW-10, 33); ctx.textAlign="left";
+    const rows=10, cw=262, ch=30, x0=14, y0=62;     // 2 columns x 10 rows, full names (geometry shared with clubHit)
+    menuSel = clamp(menuSel,0,TEAMS.length-1);
+    TEAMS.forEach((t,i)=>{
+      if (ttSub(t.name, i)===null) return;                         // print clubs in order
+      const col=Math.floor(i/rows), row=i%rows, cx=x0+col*cw, cy=y0+row*ch, sel=i===menuSel, mid=cy+ch/2;
+      if (sel){ ctx.fillStyle=TTX.yellow; ctx.fillRect(cx,cy,cw-6,ch-3); }     // inverse-video selection
+      // kit swatch: striped -> vertical bars; contrasting sleeves -> side bars; accent -> half-and-half; else solid
+      const sw=20, sx=cx+7, sy=mid-sw/2;
+      ctx.fillStyle=PAL[t.shirt]||"#888"; ctx.fillRect(sx,sy,sw,sw);
+      if (t.pattern==="stripes" && t.stripe2){
+        ctx.fillStyle=PAL[t.stripe2]||"#888";
+        const bw=Math.max(2,Math.round(sw/7));
+        for(let s=sx+bw; s<sx+sw-1; s+=bw*2) ctx.fillRect(s,sy,bw,sw);
+      } else if (t.sleeves && t.sleeves!==t.shirt){
+        ctx.fillStyle=PAL[t.sleeves]||"#888";
+        ctx.fillRect(sx,sy,sw*0.28,sw); ctx.fillRect(sx+sw*0.72,sy,sw*0.28,sw);
+      } else if (t.swatch_accent){
+        ctx.fillStyle=PAL[t.swatch_accent]||"#888";
+        ctx.fillRect(sx+sw/2, sy, sw/2, sw);
+      }
+      ctx.strokeStyle="rgba(0,0,0,0.6)"; ctx.lineWidth=1; ctx.strokeRect(sx,sy,sw,sw);
+      ctx.font=ttFont(14); ctx.textAlign="left"; ctx.textBaseline="middle";
+      ctx.fillStyle = sel ? "#06070b" : TTX.cyan;
+      ctx.fillText(t.name, sx+sw+8, mid+1); ctx.textBaseline="alphabetic";
+    });
+    ctx.textAlign="center"; ctx.font=ttFont(13); ctx.fillStyle=TTX.grey;
+    ctx.fillText("← ↑ ↓ →  CHOOSE    SPACE  CONFIRM    ESC  BACK", SW/2, SH-14);
+    ctx.textAlign="left";
+  }
+  function ord(n){ const s=["th","st","nd","rd"],v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); }
+  function drawTable(){
+    if (!TEAMS.length || !CAR){ ctx.textAlign="center"; ttPrint("LOADING…",0,200,TTX.cyan,0,{size:16,center:true}); ctx.textAlign="left"; return; }
+    const tbl = standings(), mypos = myPosition();
+    // ---- CEEFAX-style header: 8-bit SCORDAGOL logo (as on the main menu, smaller) + FOOTBALL ----
+    ctx.fillStyle="#06070b"; ctx.fillRect(0,6,SW,34);
+    ttBar("FOOTBALL", 170, 8, SW-170, 30, TTX.blue, TTX.yellow, {size:18});
+    drawLogo(88, 37, 156);                                            // small green 8-bit brand mark
+    ctx.textAlign="right"; ctx.font=ttFont(12); ctx.fillStyle=TTX.white;
+    ctx.fillText("MD "+(CAR.idx+1)+"/"+CAR.fixtures.length, SW-10, 28); ctx.textAlign="left";
+    ctx.font=ttFont(15); ctx.fillStyle=TTX.green;
+    ctx.fillText("PREMIER LEAGUE TABLE", 10, 56);
+    ctx.textAlign="right"; ctx.font=ttFont(12); ctx.fillStyle=TTX.cyan; ctx.fillText("SEASON "+CAR.season, SW-10, 56); ctx.textAlign="left";
+    // ---- two columns of 10 (PL + PT right-aligned to fixed anchors so they line up) ----
+    const colX=[16,290], colW=244, top=74, rowH=16, PLOFF=34;
+    ctx.font=ttFont(10); ctx.fillStyle=TTX.dim;
+    for (const cx of colX){ ctx.textAlign="left"; ctx.fillText("P TEAM", cx, top-3);
+      ctx.textAlign="right"; ctx.fillText("PL", cx+colW-PLOFF, top-3); ctx.fillText("PT", cx+colW, top-3); }
+    ctx.textAlign="left";
+    for (let i=0;i<tbl.length;i++){
+      if (ttSub(tbl[i].name, i)===null) continue;                   // print rows in order
+      const t=tbl[i], r=CAR.table[t.slug], mine=t.slug===CAR.slug;
+      const col=Math.floor(i/10), row=i%10, x=colX[col], y=top+row*rowH+12;
+      if (mine){ ctx.fillStyle=TTX.yellow; ctx.fillRect(x-4,y-12,colW+8,rowH); }   // inverse-video your row
+      const base = mine ? "#06070b" : (i<4 ? TTX.green : (i>=17 ? TTX.red : TTX.white));
+      ctx.font=ttFont(12); ctx.textAlign="left";
+      ctx.fillStyle = mine ? "#06070b" : TTX.cyan; ctx.fillText((i+1<10?" ":"")+(i+1), x, y);
+      ctx.fillStyle = base; ctx.fillText(t.name, x+22, y);
+      ctx.textAlign="right"; ctx.fillStyle = mine ? "#06070b" : TTX.yellow; ctx.fillText(""+r.pts, x+colW, y);
+      ctx.fillStyle = mine ? "#06070b" : TTX.dim; ctx.fillText(""+r.p, x+colW-PLOFF, y);
+    }
+    ctx.textAlign="left";
+    // ---- recent FORM: oldest LEFT, latest RIGHT ----
+    const form = (CAR.form||[]).slice(0,5).reverse();   // stored newest-first -> reverse so newest is on the RIGHT
+    const chipW=18, chipH=15, gap=4, lblW=46;
+    const groupW = lblW + (form.length ? form.length*(chipW+gap)-gap : 18) + 56;
+    let fcx = SW/2 - groupW/2;
+    ctx.textBaseline="middle"; ctx.font=ttFont(11); ctx.fillStyle=TTX.grey; ctx.textAlign="left";
+    ctx.fillText("FORM", fcx, 250); fcx += lblW;
+    if (!form.length){ ctx.fillStyle=TTX.dim; ctx.fillText("--", fcx, 250); }
+    for (let i=0;i<form.length;i++){ const r=form[i];
+      ctx.fillStyle = r==="W"?TTX.green:(r==="D"?TTX.grey:TTX.red);
+      ctx.fillRect(fcx, 243, chipW, chipH);
+      ctx.fillStyle="#06070b"; ctx.font=ttFont(11); ctx.textAlign="center"; ctx.fillText(r, fcx+chipW/2, 251);
+      ctx.textAlign="left"; fcx += chipW+gap;
+    }
+    if (form.length){ ctx.fillStyle=TTX.dim; ctx.font=ttFont(10); ctx.fillText("LATEST", fcx+2, 250); }
+    ctx.textBaseline="alphabetic";
+    // ---- next fixture + title odds + prompt ----
+    const fx=CAR.fixtures[CAR.idx], opp=TEAMBY[fx.opp], meName=TEAMBY[CAR.slug].name;
+    if (CAR.titleOdds==null) CAR.titleOdds=computeTitleOdds();   // cached; refreshed after each game in commitMatch
+    ctx.textAlign="center";
+    ttBar("NEXT MATCH", SW/2-72, 268, 144, 18, TTX.blue, TTX.white, {center:true, size:12});
+    ctx.textAlign="center";   // ttBar leaves textAlign=left; re-centre the block below it
+    // fixture with a (H)/(A) venue tag on YOUR club (auto-fit so the tag is never clipped)
+    const tag = fx.home ? " (H)" : " (A)";
+    const fixtureStr = fx.home ? (meName+tag+"  v  "+opp.name) : (opp.name+"  v  "+meName+tag);
+    let fsz=20; ctx.font=ttFont(fsz);
+    while (ctx.measureText(fixtureStr).width > SW-24 && fsz>11){ fsz--; ctx.font=ttFont(fsz); }
+    ctx.fillStyle=TTX.white; ctx.fillText(fixtureStr, SW/2, 306);
+    // info split onto separate lines, each its own teletext colour
+    ctx.font=ttFont(13); ctx.fillStyle=TTX.cyan;   ctx.fillText("POSITION    "+ord(mypos).toUpperCase(), SW/2, 330);
+    ctx.font=ttFont(13); ctx.fillStyle=TTX.yellow; ctx.fillText("TITLE ODDS    "+CAR.titleOdds+"%", SW/2, 348);
+    if (CAR.news[0]){ ctx.fillStyle=TTX.grey; ctx.font=ttFont(11,"");
+      let nw=CAR.news[0]; while(nw.length>5 && ctx.measureText('"'+nw+'"').width>SW-50) nw=nw.slice(0,-1);
+      ctx.fillText('"'+nw+(nw===CAR.news[0]?"":"…")+'"', SW/2, 368); }
+    if (ttCursorOn()){ ctx.fillStyle=TTX.neon; ctx.font=ttFont(20); ctx.fillText("SPACE  TO  PLAY", SW/2, 392); }
+    ctx.textAlign="left";
+  }
+  function drawSeasonEnd(){
+    const pos=myPosition(), champ=standings()[0];
+    ttBar("SCORDAGOL   SEASON "+CAR.season+" COMPLETE", 0, 12, SW, 30, TTX.blue, TTX.white, {size:17});
+    ctx.textAlign="center";
+    ttPrint(TEAMBY[CAR.slug].name.toUpperCase()+" FINISHED "+ord(pos).toUpperCase(), 0, 120,
+            pos===1?TTX.green:(pos<=4?TTX.yellow:TTX.white), 0, {size:24, center:true});
+    if (ttDone(1)){
+      ctx.font=ttFont(15); ctx.fillStyle=TTX.cyan; ctx.fillText("CHAMPIONS: "+champ.name.toUpperCase(), SW/2, 160);
+      if (pos===1){ ctx.fillStyle=TTX.green; ctx.font=ttFont(18); ctx.fillText("★ YOU WON THE TITLE! ★", SW/2, 192); }
+      const offer = seasonOffer();
+      let y=236;
+      if (offer){ ctx.fillStyle=TTX.yellow; ctx.font=ttFont(14);
+        ctx.fillText(offer.name.toUpperCase()+" (RATING "+offer.rating+") WANT TO SIGN YOU!", SW/2, y); y+=26;
+        ctx.fillStyle=TTX.white; ctx.font=ttFont(14);
+        ctx.fillText("[Y] JOIN "+offer.name.toUpperCase()+"     [N] STAY", SW/2, y); y+=30;
+      } else { ctx.fillStyle=TTX.grey; ctx.font=ttFont(13); ctx.fillText("NO TRANSFER OFFERS THIS SUMMER.", SW/2, y); y+=26; }
+      if (ttCursorOn()){ ctx.fillStyle=TTX.yellow; ctx.font=ttFont(18); ctx.fillText("SPACE TO START NEXT SEASON", SW/2, 360); }
+    }
+    ctx.textAlign="left";
+  }
+  function seasonOffer(){
+    // a club rated higher than yours makes an offer if you finished in the top half
+    if (myPosition() > 10) return null;
+    const me = TEAMBY[CAR.slug].rating;
+    const cands = TEAMS.filter(t=>t.rating>me && t.slug!==CAR.slug);
+    if (!cands.length) return null;
+    return cands[rnd(cands.length)];
+  }
+  function nextSeason(newSlug){
+    if (myPosition()===1) CAR.titles++;                 // count last season's title before reset
+    CAR.season++; CAR.idx=0;
+    if (newSlug && newSlug!==CAR.slug){ CAR.slug=newSlug; CAR.news.unshift(CAR.name+" joins "+TEAMBY[newSlug].name+"!"); }
+    CAR.fixtures = makeFixtures(CAR.slug); CAR.table = freshTable(); CAR.titleOdds=null;
+    saveCareer(); state=ST.TABLE;
+  }
+
+  // ================= DAILY CHALLENGE (seeded match + local leaderboard) =================
+  function dailyKey(){ const d=new Date(); return ""+d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+String(d.getDate()).padStart(2,"0"); }
+  function dailySeed(){ return parseInt(dailyKey(),10)>>>0; }
+  function loadDaily(){ try{ return JSON.parse(localStorage.getItem("vc_daily")); }catch(e){ return null; } }
+  let dailyLastScore=0, dailyMatchup="";
+  function startDaily(){
+    GMODE="daily"; CAR=null;
+    const seed=dailySeed(), pr=mulberry32(seed);          // same club + opponent for everyone, today
+    const myi=Math.floor(pr()*TEAMS.length); let oi; do{ oi=Math.floor(pr()*TEAMS.length); }while(oi===myi);
+    const mt=TEAMS[myi], ot=TEAMS[oi];
+    MYCLUB={ slug:mt.slug, name:mt.name, rating:mt.rating };
+    OPPONENT={ slug:ot.slug, name:ot.name, rating:ot.rating, home:(Math.floor(pr()*2)===0) };
+    dailyMatchup = OPPONENT.home ? (MYCLUB.name+" v "+OPPONENT.name) : (OPPONENT.name+" v "+MYCLUB.name);
+    loadKits(MYCLUB.slug, OPPONENT.slug, ()=>startMatch({seed:seed, balls:10}));
+  }
+  function dailyDone(){
+    const today=dailyKey(); let bd=loadDaily(); if(!bd || bd.date!==today) bd={date:today, scores:[]};
+    const nm=(localStorage.getItem("vc_name")||"YOU").slice(0,12);
+    bd.scores.push({name:nm, score:M.score}); bd.scores.sort((a,b)=>b.score-a.score); bd.scores=bd.scores.slice(0,12);
+    localStorage.setItem("vc_daily", JSON.stringify(bd));
+    dailyLastScore=M.score; state=ST.DAILYBOARD;
+  }
+
+  // ================= 2-PLAYER HORSE (turn-based beat-my-score) =================
+  // Word length = number of rounds. Each round both players play the SAME seeded serves;
+  // higher score claims that letter. Most letters at the end wins.
+  let H=null, hSetup=["","","HORSE"], hField=0;
+  const COL_A="#5bd0ff", COL_B="#ff8a5b";              // player colours
+  function beginHorse(){
+    const word=(hSetup[2].trim().toUpperCase().replace(/[^A-Z]/g,"")).slice(0,8) || "HORSE";
+    H={ p:[hSetup[0].trim()||"PLAYER 1", hSetup[1].trim()||"PLAYER 2"], word:word, L:word.length,
+        round:0, turn:0, owner:[], scores:[null,null], seedBase:(Date.now()>>>0) };
+    state=ST.HORSEPASS;
+  }
+  function startHorseTurn(){
+    GMODE="horse"; CAR=null;
+    const lp=TEAMBY["Liverpool"]||TEAMS[0];
+    MYCLUB={ slug:lp.slug, name:lp.name, rating:lp.rating };       // both players use the same club (fair)
+    const seed=(H.seedBase + H.round*7919)>>>0, pr=mulberry32(seed);
+    const ot=TEAMS[Math.floor(pr()*TEAMS.length)];
+    OPPONENT={ slug:ot.slug, name:ot.name, rating:ot.rating, home:true };
+    H.roundSeed=seed;
+    loadKits(MYCLUB.slug, OPPONENT.slug, ()=>startMatch({seed:seed, balls:HORSE_BALLS}));
+  }
+  function horseTurnDone(){
+    H.scores[H.turn]=M.score;
+    if (H.turn===0){ H.turn=1; state=ST.HORSEPASS; }              // pass device to player 2, same round
+    else {
+      const a=H.scores[0], b=H.scores[1];
+      H.owner[H.round] = a>b ? "A" : (b>a ? "B" : "T");           // round winner claims this letter
+      H.round++; H.turn=0; H.scores=[null,null];
+      state = (H.round>=H.L) ? ST.HORSEEND : ST.HORSEPASS;
+    }
+  }
+  function horseTally(){ let a=0,b=0; for(const o of H.owner){ if(o==="A")a++; else if(o==="B")b++; } return [a,b]; }
+
+  // ---- new-mode screens (teletext) ----
+  function drawDailyBoard(){
+    ttBar("SCORDAGOL   DAILY CHALLENGE", 0,12,SW,30,TTX.blue,TTX.white,{size:16});
+    ctx.textAlign="center";
+    ctx.font=ttFont(13); ctx.fillStyle=TTX.green; ctx.fillText("TODAY:  "+dailyMatchup.toUpperCase(), SW/2, 62);
+    ctx.font=ttFont(24); ctx.fillStyle=TTX.yellow; ctx.fillText("YOUR SCORE   "+dailyLastScore, SW/2, 98);
+    ctx.font=ttFont(12); ctx.fillStyle=TTX.cyan; ctx.fillText("TODAY'S LEADERBOARD  (THIS DEVICE)", SW/2, 130);
+    const bd=loadDaily()||{scores:[]}, me=(localStorage.getItem("vc_name")||"YOU");
+    let y=156; ctx.font=ttFont(13);
+    (bd.scores||[]).slice(0,10).forEach((e,i)=>{
+      ctx.fillStyle = (e.name===me && e.score===dailyLastScore) ? TTX.yellow : TTX.white;
+      ctx.textAlign="left";  ctx.fillText((i+1)+".  "+e.name, 150, y);
+      ctx.textAlign="right"; ctx.fillText(""+e.score, SW-150, y); y+=21;
+    });
+    ctx.textAlign="center";
+    if (ttCursorOn()){ ctx.fillStyle=TTX.neon; ctx.font=ttFont(18); ctx.fillText("SPACE  TO  RETURN  TO  MENU", SW/2, 470); }
+    ctx.textAlign="left";
+  }
+  function drawHorseWord(y){
+    ctx.textAlign="center"; ctx.font=ttFont(40);
+    const letters=H.word.split(""), gap=ctx.measureText("M").width*1.5, total=letters.length*gap;
+    let x=SW/2-total/2+gap/2;
+    for (let i=0;i<letters.length;i++){ const o=H.owner[i];
+      ctx.fillStyle = o==="A"?COL_A:(o==="B"?COL_B:(o==="T"?TTX.grey:TTX.dim));
+      ctx.fillText(letters[i], x, y); x+=gap; }
+  }
+  function drawHorseSetup(){
+    ttBar("SCORDAGOL   2 PLAYER  -  HORSE", 0,12,SW,30,TTX.blue,TTX.white,{size:16});
+    ctx.textAlign="center"; ctx.font=ttFont(12); ctx.fillStyle=TTX.white;
+    ctx.fillText("TAKE TURNS. WIN A ROUND TO CLAIM A LETTER. MOST LETTERS WINS.", SW/2, 64);
+    const labels=["PLAYER 1 NAME","PLAYER 2 NAME","ROUNDS WORD"];
+    for (let i=0;i<3;i++){
+      const y=112+i*64, sel=i===hField;
+      ctx.font=ttFont(12); ctx.fillStyle=sel?TTX.yellow:TTX.cyan; ctx.textAlign="center"; ctx.fillText(labels[i], SW/2, y-20);
+      ctx.strokeStyle=sel?TTX.yellow:TTX.dim; ctx.lineWidth=2; ctx.strokeRect(SW/2-180, y-10, 360, 38);
+      ctx.font=ttFont(22); ctx.fillStyle=TTX.white; ctx.textAlign="left";
+      const txt=hSetup[i]||"", w=ctx.measureText(txt).width, gx=SW/2-w/2;
+      ctx.fillText(txt, gx, y+16);
+      if (sel && ttCursorOn()){ ctx.fillStyle=TTX.yellow; ctx.fillRect(gx+w+3, y-2, 11, 22); }
+    }
+    ctx.textAlign="center"; ctx.font=ttFont(11); ctx.fillStyle=TTX.grey;
+    ctx.fillText("TYPE · ENTER = NEXT · ENTER ON WORD STARTS · ESC BACK", SW/2, 326);
+    ctx.fillText("WORD LENGTH = NUMBER OF ROUNDS  (HORSE = 5)", SW/2, 346);
+    ctx.textAlign="left";
+  }
+  function drawHorsePass(){
+    ttBar("SCORDAGOL   HORSE", 0,12,SW,30,TTX.blue,TTX.white,{size:16});
+    ctx.textAlign="center";
+    ctx.font=ttFont(13); ctx.fillStyle=TTX.green; ctx.fillText("ROUND "+(H.round+1)+" OF "+H.L, SW/2, 82);
+    drawHorseWord(132);
+    const t=horseTally();
+    ctx.font=ttFont(13); ctx.fillStyle=TTX.cyan;
+    ctx.fillText(H.p[0]+"  "+t[0]+"   -   "+t[1]+"  "+H.p[1], SW/2, 172);
+    ctx.font=ttFont(26); ctx.fillStyle=(H.turn===0?COL_A:COL_B); ctx.fillText("PASS TO  "+H.p[H.turn], SW/2, 244);
+    if (H.turn===1 && H.scores[0]!=null){ ctx.font=ttFont(14); ctx.fillStyle=TTX.white;
+      ctx.fillText(H.p[0]+" SCORED "+H.scores[0]+" — BEAT IT!", SW/2, 282); }
+    if (ttCursorOn()){ ctx.fillStyle=TTX.neon; ctx.font=ttFont(18); ctx.fillText("SPACE TO START  ("+HORSE_BALLS+" BALLS)", SW/2, 342); }
+    ctx.textAlign="left";
+  }
+  function drawHorseEnd(){
+    ttBar("SCORDAGOL   HORSE  -  FULL TIME", 0,12,SW,30,TTX.blue,TTX.white,{size:16});
+    ctx.textAlign="center";
+    drawHorseWord(120);
+    const t=horseTally(), winner = t[0]>t[1]?0:(t[1]>t[0]?1:-1);
+    ctx.font=ttFont(14); ctx.fillStyle=TTX.cyan; ctx.fillText(H.p[0]+"  "+t[0]+"   -   "+t[1]+"  "+H.p[1], SW/2, 168);
+    ctx.font=ttFont(30);
+    if (winner===-1){ ctx.fillStyle=TTX.yellow; ctx.fillText("IT'S A DRAW!", SW/2, 240); }
+    else { ctx.fillStyle=winner===0?COL_A:COL_B; ctx.fillText(H.p[winner]+" WINS!", SW/2, 240); }
+    if (ttCursorOn()){ ctx.fillStyle=TTX.neon; ctx.font=ttFont(18); ctx.fillText("SPACE  TO  RETURN  TO  MENU", SW/2, 360); }
+    ctx.textAlign="left";
+  }
+
+  function pitchBg(dim) {
+    if (IMG.pitch.complete && IMG.pitch.naturalWidth) ctx.drawImage(IMG.pitch,0,0,SW,400);
+    else { ctx.fillStyle="#1c7a34"; ctx.fillRect(0,0,SW,400); }
+    ctx.fillStyle="#04060a"; ctx.fillRect(0,400,SW,SH-400);
+    if (dim){ ctx.fillStyle="rgba(4,6,10,"+dim+")"; ctx.fillRect(0,0,SW,SH); }
+  }
+  function render() {
+    ctx.setTransform(SCALE,0,0,SCALE,0,0);
+    ctx.clearRect(0,0,SW,SH);
+    if (state!==_prevDrawState){ _prevDrawState=state; stateEnterAt=performance.now(); }   // restart the print reveal
+    const inMatch = state===ST.COUNTDOWN||state===ST.SERVE||state===ST.FLIGHT||state===ST.RESULT||state===ST.MATCHEND;
+    if (inMatch) {
+      pitchBg(0);
+      {
+        ctx.save();
+        if (leftFooted){ ctx.translate(2*GCX,0); ctx.scale(-1,1); }   // mirror sprites around the goal centre
+        drawKeeper(); drawDefenders(); drawBall(); drawStriker();      // keeper at the BACK (behind the defenders)
+        ctx.restore();
+      }
+      drawHUD();
+      drawResultText();
+      if (flash>0){ ctx.fillStyle="rgba(255,255,255,"+(flash*0.4)+")"; ctx.fillRect(0,0,SW,400); }
+      if (state===ST.MATCHEND) drawMatchEndBurst();
+      if (state===ST.COUNTDOWN) {
+        ctx.textAlign="center";
+        const posMsg = TOUCH ? "DRAG TO GET INTO POSITION" : "◄ ► GET INTO POSITION";
+        ctx.fillStyle="rgba(0,0,0,0.85)"; ctx.font=ttFont(15); ctx.fillText(posMsg, SW/2+2, 122);
+        ctx.fillStyle=TTX.neon; ctx.fillText(posMsg, SW/2, 120);
+        if (leftFooted){ ctx.fillStyle="rgba(0,0,0,0.85)"; ctx.font=ttFont(14); ctx.fillText("LEFT-FOOTED!", SW/2+2, 101);
+                         ctx.fillStyle=TTX.cyan; ctx.fillText("LEFT-FOOTED!", SW/2, 100); }
+        const n=Math.max(1,Math.ceil(countdownT));
+        ctx.font=ttFont(90);
+        ctx.fillStyle="rgba(0,0,0,0.6)"; ctx.fillText(n, SW/2+4, 234);
+        ctx.fillStyle=TTX.white; ctx.fillText(n, SW/2, 230);
+        ctx.textAlign="left";
+      }
+      if (state===ST.SERVE && !kicked) {
+        const pulse=0.6+0.4*Math.sin(performance.now()/200);
+        const shootMsg = TOUCH ? "DRAG & RELEASE TO SHOOT" : "SPACE TO VOLLEY";
+        ctx.textAlign="center"; ctx.font=ttFont(16);
+        ctx.fillStyle="rgba(0,0,0,0.85)"; ctx.fillText(shootMsg, SW/2+2, 231);
+        ctx.globalAlpha=pulse; ctx.fillStyle=TTX.neon; ctx.fillText(shootMsg, SW/2, 230); ctx.globalAlpha=1;
+        ctx.textAlign="left";
+      }
+      if (paused) {
+        ctx.fillStyle="rgba(6,7,11,0.72)"; ctx.fillRect(0,0,SW,400);
+        ctx.textAlign="center";
+        ctx.fillStyle="rgba(0,0,0,0.85)"; ctx.font=ttFont(40); ctx.fillText("PAUSED", SW/2+3, 192);
+        ctx.fillStyle=TTX.yellow; ctx.fillText("PAUSED", SW/2, 190);
+        ctx.font=ttFont(13); ctx.fillStyle=TTX.white; ctx.fillText("ENTER TO RESUME", SW/2, 222);
+        ctx.fillStyle=TTX.red; ctx.fillText("ESC TO FORFEIT & QUIT TO MENU", SW/2, 244);
+        ctx.textAlign="left";
+      }
+    } else if (state===ST.OVER) { ttClear(); drawOver(); }
+    else if (state===ST.MENU) { ttClear(); drawMenu(); }
+    else if (state===ST.NAME) { ttClear(); drawName(); }
+    else if (state===ST.CLUBSEL) { ttClear(); drawClubSelect(); }
+    else if (state===ST.TABLE) { ttClear(); drawTable(); }
+    else if (state===ST.SEASONEND) { ttClear(); drawSeasonEnd(); }
+    else if (state===ST.DAILYBOARD) { ttClear(); drawDailyBoard(); }
+    else if (state===ST.HORSESETUP) { ttClear(); drawHorseSetup(); }
+    else if (state===ST.HORSEPASS) { ttClear(); drawHorsePass(); }
+    else if (state===ST.HORSEEND) { ttClear(); drawHorseEnd(); }
+  }
+
+  // ---- input ----
+  const input = { left:false, right:false };
+  let spaceLock=false, enterLock=false, dragging=false;
+  // touch detection + a hidden <input> to summon the iOS/Android soft keyboard for text entry
+  const TOUCH = (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) || ("ontouchstart" in window);
+  const kbd = document.getElementById("kbd");
+  function sanitizeField(v,max,wordOnly){ v=(v||"").toUpperCase(); v = wordOnly ? v.replace(/[^A-Z]/g,"") : v.replace(/[^A-Z0-9 .'-]/g,""); return v.slice(0,max); }
+  function kbdOpen(val){ try{ kbd.value=val||""; kbd.focus(); }catch(e){} }
+  function kbdClose(){ try{ kbd.blur(); }catch(e){} }
+  function confirmName(){
+    if(!nameBuf.trim()) return; menuSel=0; kbdClose();
+    if (pendingMode==="daily"){ localStorage.setItem("vc_name", nameBuf.trim().toUpperCase()); startDaily(); }
+    else state=ST.CLUBSEL;
+  }
+  function togglePause(){ if(state===ST.SERVE||state===ST.FLIGHT||state===ST.RESULT) paused=!paused; }
+  function forfeit(){            // give up the current match -> career home (counts as a loss) / menu
+    paused=false;
+    if (GMODE==="career" && CAR){ M.score=0; endMatch(); }
+    else { GMODE="career"; H=null; clearResult(); state=ST.MENU; menuSel=0; }
+  }
+  function goBack(){             // ESC = back / forfeit
+    if (state===ST.NAME){ kbdClose(); state=ST.MENU; menuSel=0; }
+    else if (state===ST.CLUBSEL){ if(pendingMode==="career"){ state=ST.NAME; kbdOpen(nameBuf); } else state=ST.MENU; menuSel=0; }
+    else if (state===ST.TABLE || state===ST.SEASONEND){ GMODE="career"; state=ST.MENU; menuSel=0; }
+    else if (state===ST.HORSESETUP){ kbdClose(); state=ST.MENU; menuSel=0; }
+    else if (state===ST.DAILYBOARD || state===ST.HORSEEND || state===ST.HORSEPASS){ GMODE="career"; H=null; state=ST.MENU; menuSel=0; }
+    else if (state===ST.OVER){ clearResult(); state=ST.MENU; menuSel=0; }
+    else if (state===ST.COUNTDOWN){ forfeit(); }   // not kicked off yet -> straight out
+    else if (state===ST.SERVE||state===ST.FLIGHT||state===ST.RESULT){
+      if (paused) forfeit();                       // ESC again (while paused) forfeits
+      else if (canCheckout()) checkoutEarly();     // WIN secured -> ESC banks it early
+      else paused=true;                            // otherwise ESC pauses
+    }
+  }
+  // SPACE / select pressed (varies by screen)
+  function pressSelect(){
+    audio();
+    if (state===ST.MENU){
+      const opts=menuOptions(), o=opts[menuSel];
+      if (!TEAMS.length) return;                          // wait for roster
+      if (o==="DAILY CHALLENGE"){ if(localStorage.getItem("vc_name")){ startDaily(); } else { pendingMode="daily"; nameBuf=""; state=ST.NAME; kbdOpen(""); } }
+      else if (o==="2 PLAYER"){ hSetup=["","","HORSE"]; hField=0; state=ST.HORSESETUP; kbdOpen(""); }
+      else if (o==="CONTINUE CAREER"){ CAR=loadCareer(); if(CAR){ GMODE="career"; CAR.titleOdds=null; menuSel=0; state=(CAR.idx>=CAR.fixtures.length)?ST.SEASONEND:ST.TABLE; } }
+      else { GMODE="career"; pendingMode="career"; nameBuf=""; state=ST.NAME; kbdOpen(""); }   // NEW CAREER
+    }
+    else if (state===ST.NAME){ confirmName(); }
+    else if (state===ST.CLUBSEL){ if(TEAMS.length){
+      const slug=TEAMS[menuSel].slug; GMODE="career"; newCareer(nameBuf.trim()||"You", slug); state=ST.TABLE;
+    } }
+    else if (state===ST.TABLE){ startFixture(); }
+    else if (state===ST.SEASONEND){ nextSeason(null); }
+    else if (state===ST.MATCHEND){ if(matchEndTimer<2.2) commitMatch(); }   // skip the burst (after a beat)
+    else if (state===ST.DAILYBOARD || state===ST.HORSEEND){ GMODE="career"; H=null; clearResult(); state=ST.MENU; menuSel=0; }
+    else if (state===ST.HORSEPASS){ startHorseTurn(); }
+    else if (state===ST.OVER){ clearResult(); state=ST.MENU; menuSel=0; }
+    else if (state===ST.SERVE){ if(!paused) triggerKick(); }
+  }
+  function pressEnter(){
+    if (state===ST.NAME){ confirmName(); }
+    else if (state===ST.MENU||state===ST.TABLE||state===ST.SEASONEND||state===ST.CLUBSEL||state===ST.OVER||
+             state===ST.MATCHEND||state===ST.DAILYBOARD||state===ST.HORSEPASS||state===ST.HORSEEND) pressSelect();
+    else togglePause();                                   // in-match: ENTER = pause
+  }
+  function moveSel(dx,dy){
+    if (state===ST.MENU){ menuSel += dy; const n=menuOptions().length; menuSel=(menuSel+n)%n; }
+    else if (state===ST.CLUBSEL){ const rows=10, n=TEAMS.length||20;   // 2 cols x 10, column-major
+      let i=menuSel + dy + dx*rows; menuSel=((i%n)+n)%n; }
+    else { if(dx<0) input.left=true; if(dx>0) input.right=true; mouseTargetX=null; }   // in-match: arrows move man (override mouse)
+  }
+  window.addEventListener("keydown",(e)=>{
+    if (document.activeElement===kbd) return;   // text entry handled by the hidden input's own listeners
+    const k=e.code;
+    if (k==="Escape"){ e.preventDefault(); goBack(); return; }
+    if (state===ST.NAME){
+      if (k==="Enter"){ e.preventDefault(); if(!enterLock){enterLock=true; pressEnter();} return; }
+      if (k==="Backspace"){ e.preventDefault(); nameBuf=nameBuf.slice(0,-1); return; }
+      if (e.key && e.key.length===1 && nameBuf.length<14 && /[A-Za-z0-9 .'-]/.test(e.key)){
+        e.preventDefault(); nameBuf += e.key.toUpperCase();                       // CAPS only
+      }
+      return;
+    }
+    if (state===ST.HORSESETUP){      // 3-field entry: P1, P2, ROUNDS WORD
+      if (k==="Enter"){ e.preventDefault(); if(!enterLock){ enterLock=true; if(hField<2) hField++; else beginHorse(); } return; }
+      if (k==="ArrowDown"){ e.preventDefault(); hField=Math.min(2,hField+1); return; }
+      if (k==="ArrowUp"){ e.preventDefault(); hField=Math.max(0,hField-1); return; }
+      if (k==="Backspace"){ e.preventDefault(); hSetup[hField]=hSetup[hField].slice(0,-1); return; }
+      if (e.key && e.key.length===1){
+        const max = hField<2?12:8, ok = hField<2 ? /[A-Za-z0-9 .'-]/.test(e.key) : /[A-Za-z]/.test(e.key);
+        if (ok && hSetup[hField].length<max){ e.preventDefault(); hSetup[hField]+=e.key.toUpperCase(); }
+      }
+      return;
+    }
+    if (k==="KeyF"){ e.preventDefault(); toggleFullscreen(); return; }   // F = fullscreen (typing screens return earlier)
+    if (state===ST.SEASONEND){
+      if (k==="KeyY"){ const o=seasonOffer(); if(o) nextSeason(o.slug); return; }
+      if (k==="KeyN"){ nextSeason(null); return; }
+    }
+    if(k==="ArrowLeft"){ e.preventDefault(); moveSel(-1,0); }
+    else if(k==="ArrowRight"){ e.preventDefault(); moveSel(1,0); }
+    else if(k==="ArrowUp"){ e.preventDefault(); moveSel(0,-1); }
+    else if(k==="ArrowDown"){ e.preventDefault(); moveSel(0,1); }
+    else if(k==="Enter"){ e.preventDefault(); if(!enterLock){ enterLock=true; pressEnter(); } }
+    else if(k==="Space"){ e.preventDefault(); if(!spaceLock){ spaceLock=true; pressSelect(); } }
+  });
+  window.addEventListener("keyup",(e)=>{
+    if(e.code==="ArrowLeft") input.left=false;
+    else if(e.code==="ArrowRight") input.right=false;
+    else if(e.code==="Space") spaceLock=false;
+    else if(e.code==="Enter") enterLock=false;
+  });
+  // ---- hidden-input text entry (soft keyboard on phones; also used on desktop while focused) ----
+  kbd.addEventListener("input",()=>{
+    if (state===ST.NAME){ nameBuf=sanitizeField(kbd.value,14,false); if(kbd.value!==nameBuf) kbd.value=nameBuf; }
+    else if (state===ST.HORSESETUP){ const wordOnly=hField===2, max=wordOnly?8:12;
+      hSetup[hField]=sanitizeField(kbd.value,max,wordOnly); if(kbd.value!==hSetup[hField]) kbd.value=hSetup[hField]; }
+  });
+  kbd.addEventListener("keydown",(e)=>{
+    if (e.key==="Enter"){ e.preventDefault();
+      if (state===ST.NAME) confirmName();
+      else if (state===ST.HORSESETUP){ if(hField<2){ hField++; kbd.value=hSetup[hField]; } else { kbdClose(); beginHorse(); } }
+    } else if (e.key==="Escape"){ e.preventDefault(); kbdClose(); goBack(); }
+    else if (state===ST.HORSESETUP && (e.key==="ArrowUp"||e.key==="ArrowDown")){ e.preventDefault();
+      hField = e.key==="ArrowDown"?Math.min(2,hField+1):Math.max(0,hField-1); kbd.value=hSetup[hField]; }
+  });
+  // ---- mouse / pointer control ----
+  function evToLogical(e){
+    const r=canvas.getBoundingClientRect();
+    return { x:(e.clientX-r.left)/r.width*SW, y:(e.clientY-r.top)/r.height*SH };
+  }
+  function menuHit(mx,my){            // mirrors drawMenu geometry
+    const opts=menuOptions();
+    for(let i=0;i<opts.length;i++){ const y=MENU_Y0+i*MENU_DY;
+      if(mx>=SW/2-MENU_BW/2 && mx<=SW/2+MENU_BW/2 && my>=y-27 && my<=y+9) return i; }
+    return -1;
+  }
+  function clubHit(mx,my){            // mirrors drawClubSelect geometry (2 cols x 10)
+    const rows=10,cw=262,ch=30,x0=14,y0=62;
+    for(let i=0;i<TEAMS.length;i++){ const col=Math.floor(i/rows),row=i%rows,cx=x0+col*cw,cy=y0+row*ch;
+      if(mx>=cx && mx<=cx+cw-6 && my>=cy && my<=cy+ch-3) return i; }
+    return -1;
+  }
+  // map a pointer's on-screen logical x to the striker's logical x (mirror when left-footed)
+  function manTargetFromPointer(px){ return clamp(leftFooted ? (2*GCX - px) : px, MAN_MIN_X, MAN_MAX_X); }
+  function horseFieldHit(p){ for(let i=0;i<3;i++){ const y=112+i*64; if(p.x>=SW/2-180 && p.x<=SW/2+180 && p.y>=y-10 && p.y<=y+28) return i; } return -1; }
+  const inPlay = (s)=> s===ST.SERVE||s===ST.FLIGHT||s===ST.COUNTDOWN;
+  canvas.addEventListener("pointermove",(e)=>{
+    const p=evToLogical(e);
+    if(state===ST.MENU){ const i=menuHit(p.x,p.y); if(i>=0) menuSel=i; }
+    else if(state===ST.CLUBSEL){ const i=clubHit(p.x,p.y); if(i>=0) menuSel=i; }
+    else if(inPlay(state) && (dragging || e.pointerType==="mouse")){
+      e.preventDefault(); mouseTargetX=manTargetFromPointer(p.x);   // drag (or mouse-hover) to aim
+    }
+  },{passive:false});
+  canvas.addEventListener("pointerdown",(e)=>{
+    e.preventDefault(); audio(); const p=evToLogical(e);
+    if(paused){ return; }
+    if(state===ST.MENU){ const i=menuHit(p.x,p.y); if(i>=0){ menuSel=i; pressSelect(); } }
+    else if(state===ST.CLUBSEL){ const i=clubHit(p.x,p.y); if(i>=0){ menuSel=i; pressSelect(); } }
+    else if(state===ST.HORSESETUP){ const f=horseFieldHit(p); if(f>=0){ hField=f; kbdOpen(hSetup[hField]); } else kbdOpen(hSetup[hField]); }
+    else if(inPlay(state)){
+      if(canCheckout() && p.y<42 && p.x<360){ checkoutEarly(); return; }   // tap the banner to bank the win
+      dragging=true; mouseTargetX=manTargetFromPointer(p.x);               // press-drag to aim...
+    }
+    else { pressSelect(); }   // NAME / TABLE / boards advance on tap
+  },{passive:false});
+  canvas.addEventListener("pointerup",(e)=>{
+    e.preventDefault();
+    if(dragging){ dragging=false; if(state===ST.SERVE && !kicked && !paused) triggerKick(); }   // ...release to shoot
+  },{passive:false});
+  canvas.addEventListener("pointercancel",()=>{ dragging=false; });
+
+  // ---- fixed-timestep loop at 28 Hz ----
+  let last=performance.now(), acc=0;
+  function tick(now){
+    let frame=(now-last)/1000; last=now; if(frame>0.25) frame=0.25; acc+=frame;
+    flash=Math.max(0,flash-frame*1.6);
+    while(acc>=DT){ if(assetsReady) swfFrame(); acc-=DT; }
+    render();
+  }
+  const CAP = /[?&]cap=1/.test(location.search);
+  function loop(now){ if(!CAP) tick(now); requestAnimationFrame(loop); }   // in cap mode the interval drives ticks
+  requestAnimationFrame(loop);
+  // Dev/verification aid: rAF is throttled while the tab is backgrounded/offscreen. With ?cap=1
+  // drive the sim+render from a fixed interval (sole driver) so frames advance headlessly,
+  // and expose handles so a connecting shot / a screen can be scripted for verification.
+  if (CAP) {
+    setInterval(function(){ tick(performance.now()); }, DT*1000);
+    window.__dbg = {
+      tick: function(){ tick(performance.now()); },
+      setScore: function(s){ M.score=s; return M.score; },   // dev: force score (e.g. to test early checkout)
+      kick: triggerKick,
+      setMan: function(x){ manX = x; },
+      pause: togglePause,
+      step: function(n){ for(var i=0;i<(n||1);i++) swfFrame(); return {state,xball:Math.round(xball),yball:Math.round(yball),z:Math.round(z),booted,kicked,manFinished,dbx:Math.round(dbx),dive,no_dive,divedirn,hk:hitkeeper}; },
+      forceShot: function(x0,dbxv,zv,keepDef){   // deterministic flight for testing resolution
+        countdownT=0; setTargets(); booted=true; innet=false; bounced=1;
+        xball=x0; yball=250; z=zv; dbx=dbxv; dby=zv; ybit=YBIT; checked=false;
+        dive=false; no_dive=true; divedirn="up"; destination=0; end=0; sc=0;
+        kicked=true; cchecked=true; manFinished=true; held=false;
+        hitkeeper=0; hitbar=false; lposthit=false; rposthit=false; leftcorner=0; rightcorner=0; topnet=0;
+        keeperPose={x:KEEPER_START_X,dir:"up",anim:"idle",frame:1};
+        if(!keepDef) defenders.forEach(d=>d.chk=true); window.__rs=null; window.__df=[]; state=ST.FLIGHT;
+      },
+      vars: function(){ return { state, paused, xball:Math.round(xball), yball:Math.round(yball), z:Math.round(z),
+        booted, dive, no_dive, divedirn, kAnim:keeperPose.anim, kFrame:keeperPose.frame, kx:Math.round(keeperPose.x),
+        manX:Math.round(manX), mouseTargetX:(mouseTargetX==null?null:Math.round(mouseTargetX)),
+        leftFooted, matchEndText, score:M.score }; },
+      forcePause: function(){ paused=!paused; return paused; },
+      setLeft: function(b){ leftFooted=!!b; return leftFooted; },
+      // Measure the keeper sprite's exact pixel bbox as savedCheck() sees it (logical coords).
+      keeperExtent: function(frameNum, kx){
+        keeperPose.frame=frameNum; if(kx!=null) keeperPose.x=kx;
+        offCtx.setTransform(1,0,0,1,0,0); offCtx.clearRect(0,0,SW,420); drawKeeperTo(offCtx);
+        const d=offCtx.getImageData(0,0,SW,420).data;
+        let minx=9999,maxx=-1,miny=9999,maxy=-1;
+        for(let y=0;y<420;y++)for(let x=0;x<SW;x++){ if(d[(y*SW+x)*4+3]>16){ if(x<minx)minx=x; if(x>maxx)maxx=x; if(y<miny)miny=y; if(y>maxy)maxy=y; } }
+        return {frame:frameNum, kx:Math.round(keeperPose.x), minx,maxx,miny,maxy};
+      },
+      // Deterministic serve (fixed velocity/angle), real contact path, no menu needed.
+      serve: function(vel,ang){
+        setTargets();
+        velocity=(vel||20); angle=(ang||37); cangle=Math.cos(angle*DEG); sangle=Math.sin(angle*DEG);
+        t=0; bounce=0; bounced=1; booted=false; innet=false; ay=0;
+        xball=0; yball=SERVE_Y; z=0; dbx=0; dby=0; ybit=YBIT; yscale=93;
+        checked=false; dive=false; no_dive=true; divedirn="up"; destination=0; keeperX=KEEPER_START_X;
+        kicked=false; cchecked=false; kickTick=0; manFinished=false; complete_miss=false; end=0; sc=0;
+        hitkeeper=0; held=false; hitbar=false; lposthit=false; rposthit=false;
+        leftcorner=0; rightcorner=0; topnet=0; znet=0; manKicking=false; manKickT=0;
+        keeperPose={ x:KEEPER_START_X, dir:"up", anim:"idle", frame:1 };
+        defenders=[
+          { ox:117.95, oy:210.25, sx:1.0000, sy:1.0000, thr:240, mag:10, sign:-1, chk:false },
+          { ox: 27.60, oy:163.35, sx:0.8982, sy:0.8960, thr:200, mag:20, sign:-1, chk:false },
+          { ox:471.15, oy:157.75, sx:0.8234, sy:0.8264, thr:200, mag:10, sign:+1, chk:false } ];
+        M.score=0; M.attempts=10; manX=MAN_START_X; mouseTargetX=null; window.__rs=null; clearResult(); state=ST.SERVE;
+      },
+      // Run ONE real shot: serve, position man, trigger kick at tick `kt`, step to result. Returns the outcome.
+      realShot: function(manXpos, kt, vel, ang, noDef){
+        this.serve(vel,ang); manX=manXpos;
+        if (noDef) defenders.forEach(d=>d.chk=true);
+        let contactX=null, contactDbx=null, contactZ=null;
+        for (let i=0;i<260;i++){
+          if (i===kt) triggerKick();
+          const wasBooted=booted; swfFrame();
+          if (!wasBooted && booted){ contactX=Math.round(xball); contactDbx=Math.round(dbx); contactZ=Math.round(z); }
+          if (state===ST.RESULT || state===ST.OVER) break;
+        }
+        const rs = window.__rs||{};
+        return { kt, connected:!!contactX, contactX, contactDbx, contactZ,
+                 finalx:rs.finalx, zres:rs.z, hk:rs.hk, innet:rs.innet, rp:rs.rp, lp:rs.lp, bar:rs.bar,
+                 result:resultText, scored:M.score };
+      },
+      // Sweep all kick timings for a manX; report only CONNECTED shots, tagging wide/over verdicts.
+      sweep: function(manXpos, vel, ang, noDef){
+        const out=[];
+        for (let kt=0; kt<46; kt++){
+          const r=this.realShot(manXpos, kt, vel, ang, noDef);
+          if (!r.connected) continue;
+          const fx=r.finalx, zz=r.zres;
+          const wide = (fx!=null) && (fx>RPOST+POSTTOL || fx<LPOST-POSTTOL);
+          const over = (zz!=null) && (zz>BARH);
+          out.push({kt, cX:r.contactX, cDbx:r.contactDbx, fx, z:zz, hk:r.hk, net:r.innet?1:0,
+                    wide:wide?1:0, over:over?1:0, res:r.result, sc:r.scored});
+        }
+        return out;
+      }
+    };
+  }
+})();
+</script>
+</body>
+</html>
