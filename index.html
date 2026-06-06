@@ -592,6 +592,7 @@
       return;
     }
     if (state===ST.RESULT) {
+      moveMan();   // allow pre-positioning during result animation
       resultTimer -= DT;
       if (resultTimer<=0) {
         if (M.attempts<=0) endMatch();
@@ -1777,7 +1778,7 @@
   function confirmName(){
     if(!nameBuf.trim()) return; menuSel=0; kbdClose();
     if (pendingMode==="daily"){ localStorage.setItem("vc_name", nameBuf.trim().toUpperCase()); startDaily(); }
-    else state=ST.CLUBSEL;
+    else { state=ST.CLUBSEL; stateEnterAt=performance.now(); }   // stamp immediately so debounce works before first rAF
   }
   function togglePause(){ if(state===ST.SERVE||state===ST.FLIGHT||state===ST.RESULT) paused=!paused; }
   function forfeit(){            // give up the current match -> career home (counts as a loss) / menu
@@ -1945,9 +1946,9 @@
     if(TOUCH && touchBackBtn){ const r=touchBackBtn; if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h){ goBack(); return; } }
     if(state===ST.MENU){ const i=menuHit(p.x,p.y); if(i>=0){ menuSel=i; pressSelect(); } }
     else if(state===ST.CLUBSEL){
-      if(TOUCH && performance.now()-stateEnterAt<600) return;
+      if(TOUCH && performance.now()-stateEnterAt<800) return;   // block phantom tap from keyboard dismiss
       const i=clubHit(p.x,p.y);
-      if(i>=0){ if(TOUCH && i!==menuSel){ menuSel=i; } else { menuSel=i; pressSelect(); } }
+      if(i>=0){ menuSel=i; pressSelect(); }
     }
     else if(state===ST.HORSESETUP){ const f=horseFieldHit(p); if(f>=0){ hField=f; kbdOpen(hSetup[hField]); } else kbdOpen(hSetup[hField]); }
     else if(inPlay(state)||state===ST.RESULT){
@@ -1957,6 +1958,7 @@
       dragStartFieldX = p.x-OX;   // anchor for relative drag (raw screen field x)
       dragManStartX = manX;        // physical player x; leftFooted delta sign handled in pointermove
       mouseTargetX = manX;         // hold position until finger moves
+      if(state===ST.RESULT && resultTimer>0.3) resultTimer=0.3;   // fast-forward result to next serve
     }
     else if(state===ST.TABLE){
       if(clinchBtn && p.x>=clinchBtn.x && p.x<=clinchBtn.x+clinchBtn.w && p.y>=clinchBtn.y && p.y<=clinchBtn.y+clinchBtn.h) endSeasonEarly();
