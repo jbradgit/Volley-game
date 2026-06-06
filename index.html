@@ -1923,6 +1923,7 @@
       hSetup[hField]=sanitizeField(kbd.value,max,wordOnly); if(kbd.value!==hSetup[hField]) kbd.value=hSetup[hField]; }
   });
   kbd.addEventListener("keydown",(e)=>{
+    e.stopPropagation();   // confirmName() blurs kbd mid-handler, so without this the event bubbles to window.keydown with stale state
     if (e.key==="Enter"){ e.preventDefault();
       if (state===ST.NAME) confirmName();
       else if (state===ST.HORSESETUP){ if(hField<2){ hField++; kbd.value=hSetup[hField]; } else { kbdClose(); beginHorse(); } }
