@@ -578,7 +578,7 @@
     const L = leftFooted ? input.right : input.left;
     if (R && manX<MAN_MAX_X) manX=Math.min(MAN_MAX_X, manX+5);
     else if (L && manX>MAN_MIN_X) manX=Math.max(MAN_MIN_X, manX-5);
-    else if (mouseTargetX!=null){ const d=mouseTargetX-manX, step=5;
+    else if (mouseTargetX!=null){ const d=mouseTargetX-manX, step=5.75;
       if (Math.abs(d)>0.5) manX=clamp(manX+Math.max(-step,Math.min(step,d)), MAN_MIN_X, MAN_MAX_X); }
   }
   // ---- 28 Hz frame: striker movement + animations; drives the 14 Hz logic loop ----
