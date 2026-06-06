@@ -408,6 +408,8 @@
   let paused=false, countdownT=0;
   let mouseTargetX=null;          // striker target x (null = not steering)
   let dragStartFieldX=null, dragManStartX=null;   // relative-drag anchor (touch only)
+  let manVelX=0;                  // momentum after finger lift (decelerates each frame)
+  let _dragPrevMT=null, _dragVel=0;  // velocity tracking for momentum calculation
   let touchPauseResumeRect=null, touchPauseForfeitRect=null;
   let touchSpeedDecRect=null, touchSpeedIncRect=null;   // speed-adjust tap zones in pause overlay
   let touchBackBtn=null;
@@ -583,10 +585,16 @@
   function moveMan() {
     const R = leftFooted ? input.left : input.right;
     const L = leftFooted ? input.right : input.left;
-    if (R && manX<MAN_MAX_X) manX=Math.min(MAN_MAX_X, manX+5);
-    else if (L && manX>MAN_MIN_X) manX=Math.max(MAN_MIN_X, manX-5);
+    if (R && manX<MAN_MAX_X){ manX=Math.min(MAN_MAX_X, manX+5); manVelX=0; }
+    else if (L && manX>MAN_MIN_X){ manX=Math.max(MAN_MIN_X, manX-5); manVelX=0; }
     else if (mouseTargetX!=null){ const d=mouseTargetX-manX, step=6.9*(1+dragSpeedMod*0.05);
       if (Math.abs(d)>0.5) manX=clamp(manX+Math.max(-step,Math.min(step,d)), MAN_MIN_X, MAN_MAX_X); }
+    // momentum glide after finger lift — decelerates naturally before stopping
+    if (!dragging && Math.abs(manVelX)>0.25){
+      manX=clamp(manX+manVelX, MAN_MIN_X, MAN_MAX_X);
+      manVelX*=0.74;
+      if(Math.abs(manVelX)<0.25) manVelX=0;
+    }
   }
   // ---- 28 Hz frame: striker movement + animations; drives the 14 Hz logic loop ----
   function swfFrame() {
@@ -2192,6 +2200,9 @@
         const fieldX = p.x-OX;
         const delta = leftFooted ? -(fieldX-dragStartFieldX) : (fieldX-dragStartFieldX);
         mouseTargetX=clamp(dragManStartX+delta, MAN_MIN_X, MAN_MAX_X);   // touch: relative drag
+        // track smoothed velocity for momentum on release
+        if(_dragPrevMT!==null) _dragVel=_dragVel*0.3+(mouseTargetX-_dragPrevMT)*0.7;
+        _dragPrevMT=mouseTargetX;
       }
     }
   },{passive:false});
@@ -2215,7 +2226,7 @@
     else if(state===ST.HORSESETUP){ const f=horseFieldHit(p); if(f>=0){ hField=f; kbdOpen(hSetup[hField]); } else kbdOpen(hSetup[hField]); }
     else if(inPlay(state)||state===ST.RESULT){
       if(canCheckout() && p.y<42 && p.x<360){ checkoutEarly(); return; }   // tap the banner (view top-left) to bank the win
-      dragging=true;
+      dragging=true; manVelX=0; _dragPrevMT=null; _dragVel=0;
       try{ canvas.setPointerCapture(e.pointerId); }catch(_){}   // keep pointermove firing even off-canvas
       dragStartFieldX = p.x-OX;   // anchor for relative drag (raw screen field x)
       dragManStartX = manX;        // physical player x; leftFooted delta sign handled in pointermove
@@ -2245,11 +2256,13 @@
     }
     if(dragging){
       dragging=false; dragStartFieldX=null; dragManStartX=null;
+      manVelX=clamp(_dragVel*0.45, -9, 9);   // inject smoothed drag velocity as momentum
+      _dragPrevMT=null; _dragVel=0;
       if(state===ST.SERVE && !kicked && !paused) triggerKick();
     }
     else if(TOUCH && state===ST.NAME){ kbdOpen(nameBuf); }  // touchend: re-focus hidden input so iOS keyboard appears
   },{passive:false});
-  canvas.addEventListener("pointercancel",()=>{ dragging=false; dragStartFieldX=null; dragManStartX=null; tableSwipeAnchorY=null; });
+  canvas.addEventListener("pointercancel",()=>{ dragging=false; dragStartFieldX=null; dragManStartX=null; manVelX=0; _dragPrevMT=null; _dragVel=0; tableSwipeAnchorY=null; });
 
   // ---- fixed-timestep loop at 28 Hz ----
   let last=performance.now(), acc=0;
