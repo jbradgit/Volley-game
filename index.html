@@ -406,7 +406,9 @@
   let hitkeeper, held, hitbar, lposthit, rposthit, leftcorner, rightcorner, topnet, znet;
   let resultText="", resultColor="#fff", resultPoints=0, resultTimer=0, flash=0;
   let paused=false, countdownT=0;
-  let mouseTargetX=null;          // mouse-driven striker target x (null = mouse not steering)
+  let mouseTargetX=null;          // striker target x (null = not steering)
+  let dragStartFieldX=null, dragManStartX=null;   // relative-drag anchor (touch only)
+  let touchPauseResumeRect=null, touchPauseForfeitRect=null;   // tap zones on pause overlay
   let manKicking=false, manKickT=0;
   let defenders = [];
   let keeperPose = { x:KEEPER_START_X, dir:"up", anim:"idle", frame:1 };
@@ -576,9 +578,7 @@
     const L = leftFooted ? input.right : input.left;
     if (R && manX<MAN_MAX_X) manX=Math.min(MAN_MAX_X, manX+5);
     else if (L && manX>MAN_MIN_X) manX=Math.max(MAN_MIN_X, manX-5);
-    else if (mouseTargetX!=null){ const d=mouseTargetX-manX, maxStep=18;
-      const move=Math.sign(d)*Math.min(maxStep,Math.abs(d)*0.4);
-      if (Math.abs(move)>0.5) manX=clamp(manX+move, MAN_MIN_X, MAN_MAX_X); }
+    else if (mouseTargetX!=null){ manX=clamp(mouseTargetX, MAN_MIN_X, MAN_MAX_X); }
   }
   // ---- 28 Hz frame: striker movement + animations; drives the 14 Hz logic loop ----
   function swfFrame() {
@@ -893,9 +893,10 @@
     ctx.font=ttFont(16); ctx.fillStyle="#ffc23d"; ctx.fillText("ADVERTISE HERE", cxv, 456);
     ctx.font=ttFont(10); ctx.fillStyle="#7e8ea4"; ctx.fillText("YOUR MESSAGE IN LIGHTS", cxv, 471);
     ctx.font=ttFont(10); ctx.fillStyle="rgba(255,255,255,0.6)";                                   // controls hint + best
-    ctx.fillText((TOUCH ? "DRAG TO MOVE · RELEASE TO SHOOT" : "◄ ► MOVE   SPACE = SHOOT")+"    BEST "+M.best, cxv, 502);
+    ctx.fillText((TOUCH ? "SWIPE TO MOVE · LIFT TO SHOOT" : "◄ ► MOVE   SPACE = SHOOT")+"    BEST "+M.best, cxv, 502);
     ctx.textAlign="left";
     drawMuteButton(HR);
+    drawPauseButton(HR);
 
     // ===== early checkout banner (top-left), once the WIN target is secured =====
     if (canCheckout()){
@@ -918,6 +919,17 @@
            ctx.beginPath(); ctx.arc(cx+3,cy,10,-0.7,0.7); ctx.stroke(); }
     ctx.font=ttFont(8); ctx.fillStyle="rgba(255,255,255,0.55)"; ctx.textAlign="right";
     ctx.fillText("M", bx+bw-3, by+bh-2); ctx.textAlign="left";
+  }
+  function drawPauseButton(HR){
+    if (!TOUCH) return;
+    const bw=34,bh=28, bx=HR-bw-10-bw-8, by=12, cx=Math.round(bx+bw/2), cy=Math.round(by+bh/2);
+    ctx.fillStyle="rgba(6,10,20,0.72)"; ctx.fillRect(bx,by,bw,bh);
+    ctx.strokeStyle="rgba(255,255,255,0.3)"; ctx.lineWidth=1; ctx.strokeRect(bx+0.5,by+0.5,bw-1,bh-1);
+    ctx.fillStyle = paused ? TTX.yellow : "rgba(255,255,255,0.7)";
+    ctx.fillRect(cx-7, cy-6, 5, 12);
+    ctx.fillRect(cx+2,  cy-6, 5, 12);
+    ctx.font=ttFont(8); ctx.fillStyle="rgba(255,255,255,0.55)"; ctx.textAlign="right";
+    ctx.fillText("P", bx+bw-3, by+bh-2); ctx.textAlign="left";
   }
   function canCheckout(){ return (state===ST.SERVE||state===ST.FLIGHT||state===ST.RESULT) && M.attempts>0 && M.score>=M.winTarget; }
   function checkoutEarly(){ paused=false; sfx.whistle(); endMatch(); }   // bank the win now, skip remaining balls
@@ -1683,10 +1695,26 @@
         ctx.textAlign="center";
         ctx.fillStyle="rgba(0,0,0,0.85)"; ctx.font=ttFont(40); ctx.fillText("PAUSED", SW/2+3, 192);
         ctx.fillStyle=TTX.yellow; ctx.fillText("PAUSED", SW/2, 190);
-        ctx.font=ttFont(13); ctx.fillStyle=TTX.white; ctx.fillText("ENTER TO RESUME", SW/2, 222);
-        ctx.fillStyle=TTX.red; ctx.fillText("ESC TO FORFEIT & QUIT TO MENU", SW/2, 244);
+        if (TOUCH){
+          // RESUME button
+          const rbw=240,rbh=44,rbx=SW/2-rbw/2,rby=210;
+          ctx.fillStyle="#162d1a"; ctx.fillRect(rbx,rby,rbw,rbh);
+          ctx.strokeStyle=TTX.neon; ctx.lineWidth=1.5; ctx.strokeRect(rbx+0.5,rby+0.5,rbw-1,rbh-1);
+          ctx.font=ttFont(16); ctx.fillStyle=TTX.neon; ctx.fillText("▶  RESUME", SW/2, rby+29);
+          touchPauseResumeRect={x:OX+rbx,y:rby,w:rbw,h:rbh};   // view coords
+          // FORFEIT button
+          const fbw=240,fbh=44,fbx=SW/2-fbw/2,fby=264;
+          ctx.fillStyle="#2d1616"; ctx.fillRect(fbx,fby,fbw,fbh);
+          ctx.strokeStyle=TTX.red; ctx.lineWidth=1.5; ctx.strokeRect(fbx+0.5,fby+0.5,fbw-1,fbh-1);
+          ctx.font=ttFont(14); ctx.fillStyle=TTX.red; ctx.fillText("✕  FORFEIT & QUIT", SW/2, fby+29);
+          touchPauseForfeitRect={x:OX+fbx,y:fby,w:fbw,h:fbh};   // view coords
+        } else {
+          ctx.font=ttFont(13); ctx.fillStyle=TTX.white; ctx.fillText("ENTER TO RESUME", SW/2, 222);
+          ctx.fillStyle=TTX.red; ctx.fillText("ESC TO FORFEIT & QUIT TO MENU", SW/2, 244);
+          touchPauseResumeRect=null; touchPauseForfeitRect=null;
+        }
         ctx.textAlign="left";
-      }
+      } else { touchPauseResumeRect=null; touchPauseForfeitRect=null; }
       ctx.restore();   // end field-centring translate
     } else if (state===ST.OVER) { ttClear(); drawOver(); }
     else if (state===ST.MENU) { ttClear(); drawMenu(); }
@@ -1859,20 +1887,35 @@
     if(state===ST.MENU){ const i=menuHit(p.x,p.y); if(i>=0) menuSel=i; }
     else if(state===ST.CLUBSEL){ const i=clubHit(p.x,p.y); if(i>=0) menuSel=i; }
     else if(inPlay(state) && (dragging || e.pointerType==="mouse")){
-      e.preventDefault(); mouseTargetX=manTargetFromPointer(p.x-OX);   // drag (or mouse-hover) to aim (field space)
+      e.preventDefault();
+      if (e.pointerType==="mouse"){
+        mouseTargetX=manTargetFromPointer(p.x-OX);   // mouse: absolute aim
+      } else if (dragStartFieldX!==null){
+        const fieldX = p.x-OX;
+        const delta = leftFooted ? -(fieldX-dragStartFieldX) : (fieldX-dragStartFieldX);
+        mouseTargetX=clamp(dragManStartX+delta, MAN_MIN_X, MAN_MAX_X);   // touch: relative drag
+      }
     }
   },{passive:false});
   canvas.addEventListener("pointerdown",(e)=>{
     e.preventDefault(); audio(); const p=evToLogical(e);
     const _inMatch = state===ST.COUNTDOWN||state===ST.SERVE||state===ST.FLIGHT||state===ST.RESULT||state===ST.MATCHEND;
     if(_inMatch && p.y<46 && p.x>VW-58){ toggleMute(); return; }   // tap the speaker (top-right) to mute
-    if(paused){ return; }
+    if(TOUCH && _inMatch && p.y<46 && p.x>VW-110 && p.x<=VW-58){ togglePause(); return; }   // tap pause button
+    if(paused){
+      if(touchPauseResumeRect){ const r=touchPauseResumeRect; if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h){ togglePause(); return; } }
+      if(touchPauseForfeitRect){ const r=touchPauseForfeitRect; if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h){ forfeit(); return; } }
+      return;
+    }
     if(state===ST.MENU){ const i=menuHit(p.x,p.y); if(i>=0){ menuSel=i; pressSelect(); } }
     else if(state===ST.CLUBSEL){ const i=clubHit(p.x,p.y); if(i>=0){ menuSel=i; pressSelect(); } }
     else if(state===ST.HORSESETUP){ const f=horseFieldHit(p); if(f>=0){ hField=f; kbdOpen(hSetup[hField]); } else kbdOpen(hSetup[hField]); }
     else if(inPlay(state)){
       if(canCheckout() && p.y<42 && p.x<360){ checkoutEarly(); return; }   // tap the banner (view top-left) to bank the win
-      dragging=true; mouseTargetX=manTargetFromPointer(p.x-OX);               // press-drag to aim... (field space)
+      dragging=true;
+      dragStartFieldX = p.x-OX;   // anchor for relative drag (raw screen field x)
+      dragManStartX = manX;        // physical player x; leftFooted delta sign handled in pointermove
+      mouseTargetX = manX;         // hold position until finger moves
     }
     else if(state===ST.TABLE){
       if(clinchBtn && p.x>=clinchBtn.x && p.x<=clinchBtn.x+clinchBtn.w && p.y>=clinchBtn.y && p.y<=clinchBtn.y+clinchBtn.h) endSeasonEarly();
@@ -1884,10 +1927,13 @@
   },{passive:false});
   canvas.addEventListener("pointerup",(e)=>{
     e.preventDefault();
-    if(dragging){ dragging=false; if(state===ST.SERVE && !kicked && !paused) triggerKick(); }   // ...release to shoot
+    if(dragging){
+      dragging=false; dragStartFieldX=null; dragManStartX=null;
+      if(state===ST.SERVE && !kicked && !paused) triggerKick();
+    }
     else if(TOUCH && state===ST.NAME){ kbdOpen(nameBuf); }  // touchend: re-focus hidden input so iOS keyboard appears
   },{passive:false});
-  canvas.addEventListener("pointercancel",()=>{ dragging=false; });
+  canvas.addEventListener("pointercancel",()=>{ dragging=false; dragStartFieldX=null; dragManStartX=null; });
 
   // ---- fixed-timestep loop at 28 Hz ----
   let last=performance.now(), acc=0;
