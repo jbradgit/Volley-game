@@ -25,7 +25,7 @@
   }
   #wrap { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
   canvas { background: #04060a; image-rendering: auto; max-width: 100%; max-height: 100%;
-           box-shadow: 0 0 50px rgba(0,0,0,0.85); }
+           box-shadow: 0 0 50px rgba(0,0,0,0.85); touch-action: none; }
   /* off-screen field used to summon the iOS keyboard for name / word entry */
   #kbd { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: 0;
          border: 0; padding: 0; font-size: 16px; background: transparent; color: transparent; }
@@ -1914,6 +1914,7 @@
     else if(inPlay(state)){
       if(canCheckout() && p.y<42 && p.x<360){ checkoutEarly(); return; }   // tap the banner (view top-left) to bank the win
       dragging=true;
+      try{ canvas.setPointerCapture(e.pointerId); }catch(_){}   // keep pointermove firing even off-canvas
       dragStartFieldX = p.x-OX;   // anchor for relative drag (raw screen field x)
       dragManStartX = manX;        // physical player x; leftFooted delta sign handled in pointermove
       mouseTargetX = manX;         // hold position until finger moves
