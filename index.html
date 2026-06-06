@@ -408,9 +408,11 @@
   let paused=false, countdownT=0;
   let mouseTargetX=null;          // striker target x (null = not steering)
   let dragStartFieldX=null, dragManStartX=null;   // relative-drag anchor (touch only)
-  let touchPauseResumeRect=null, touchPauseForfeitRect=null;   // tap zones on pause overlay
+  let touchPauseResumeRect=null, touchPauseForfeitRect=null;
+  let touchSpeedDecRect=null, touchSpeedIncRect=null;   // speed-adjust tap zones in pause overlay
   let touchBackBtn=null;
-  let clubSelFreshPointer=false;   // true once a pointerup fires after entering CLUBSEL; guards against phantom taps
+  let clubSelConfirmBtn=null;   // explicit confirm button on club select screen
+  let dragSpeedMod = clamp(parseInt(localStorage.getItem("vc_speed")||"0"), -10, 10);
   let manKicking=false, manKickT=0;
   let defenders = [];
   let keeperPose = { x:KEEPER_START_X, dir:"up", anim:"idle", frame:1 };
@@ -580,7 +582,7 @@
     const L = leftFooted ? input.right : input.left;
     if (R && manX<MAN_MAX_X) manX=Math.min(MAN_MAX_X, manX+5);
     else if (L && manX>MAN_MIN_X) manX=Math.max(MAN_MIN_X, manX-5);
-    else if (mouseTargetX!=null){ const d=mouseTargetX-manX, step=6.3;
+    else if (mouseTargetX!=null){ const d=mouseTargetX-manX, step=6.9*(1+dragSpeedMod*0.05);
       if (Math.abs(d)>0.5) manX=clamp(manX+Math.max(-step,Math.min(step,d)), MAN_MIN_X, MAN_MAX_X); }
   }
   // ---- 28 Hz frame: striker movement + animations; drives the 14 Hz logic loop ----
@@ -1328,8 +1330,16 @@
       ctx.fillStyle=TTX.cyan;
       ctx.fillText(t.name, sx+sw+8, mid+1); ctx.textBaseline="alphabetic";
     });
-    ctx.textAlign="center"; ctx.font=ttFont(13); ctx.fillStyle=TTX.grey;
-    ctx.fillText(TOUCH?"TAP A CLUB TO CONFIRM":"← ↑ ↓ →  CHOOSE    SPACE  CONFIRM    ESC  BACK", VW/2, SH-14);
+    // CONFIRM button — explicit tap required so phantom touches can never skip this screen
+    const cbw=280,cbh=40,cbx=VW/2-cbw/2,cby=SH-54;
+    const selName=(TEAMS[menuSel]||TEAMS[0]).name;
+    ctx.fillStyle="#0e1e32"; ctx.fillRect(cbx,cby,cbw,cbh);
+    ctx.strokeStyle=TTX.blue; ctx.lineWidth=1.5; ctx.strokeRect(cbx+0.5,cby+0.5,cbw-1,cbh-1);
+    ctx.font=ttFont(15); ctx.fillStyle=TTX.neon; ctx.textAlign="center";
+    ctx.fillText("▶  PLAY AS  "+selName.toUpperCase(), VW/2, cby+27);
+    clubSelConfirmBtn={x:cbx,y:cby,w:cbw,h:cbh};
+    ctx.font=ttFont(11); ctx.fillStyle=TTX.grey;
+    ctx.fillText(TOUCH?"TAP CLUB TO SELECT · TAP BUTTON ABOVE TO CONFIRM":"← ↑ ↓ →  CHOOSE    SPACE / CLICK ABOVE  CONFIRM    ESC  BACK", VW/2, SH-10);
     ctx.textAlign="left";
   }
   function ord(n){ const s=["th","st","nd","rd"],v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); }
@@ -1732,26 +1742,48 @@
         ctx.textAlign="center";
         ctx.fillStyle="rgba(0,0,0,0.85)"; ctx.font=ttFont(40); ctx.fillText("PAUSED", SW/2+3, 192);
         ctx.fillStyle=TTX.yellow; ctx.fillText("PAUSED", SW/2, 190);
+        // ---- speed control (shown on touch and desktop alike) ----
+        { const scY=208, btnW=50,btnH=34, valW=130, totalW=btnW+8+valW+8+btnW;
+          const scX=SW/2-totalW/2;
+          ctx.font=ttFont(11); ctx.fillStyle=TTX.grey; ctx.fillText("DRAG SPEED", SW/2, scY-4);
+          // dec button
+          ctx.fillStyle="#1a1a2e"; ctx.fillRect(scX,scY,btnW,btnH);
+          ctx.strokeStyle="rgba(255,255,255,0.35)"; ctx.lineWidth=1; ctx.strokeRect(scX+0.5,scY+0.5,btnW-1,btnH-1);
+          ctx.font=ttFont(18); ctx.fillStyle=TTX.white; ctx.fillText("−", scX+btnW/2, scY+24);
+          touchSpeedDecRect={x:OX+scX,y:scY,w:btnW,h:btnH};
+          // value label
+          const pct=dragSpeedMod*5, pctStr=(pct>0?"+":"")+pct+"%";
+          ctx.fillStyle="#0d1525"; ctx.fillRect(scX+btnW+8,scY,valW,btnH);
+          ctx.strokeStyle="rgba(255,255,255,0.2)"; ctx.strokeRect(scX+btnW+8+0.5,scY+0.5,valW-1,btnH-1);
+          ctx.font=ttFont(16); ctx.fillStyle=dragSpeedMod===0?TTX.grey:TTX.cyan;
+          ctx.fillText(pctStr, scX+btnW+8+valW/2, scY+23);
+          // inc button
+          const ibx=scX+btnW+8+valW+8;
+          ctx.fillStyle="#1a1a2e"; ctx.fillRect(ibx,scY,btnW,btnH);
+          ctx.strokeStyle="rgba(255,255,255,0.35)"; ctx.lineWidth=1; ctx.strokeRect(ibx+0.5,scY+0.5,btnW-1,btnH-1);
+          ctx.font=ttFont(18); ctx.fillStyle=TTX.white; ctx.fillText("+", ibx+btnW/2, scY+24);
+          touchSpeedIncRect={x:OX+ibx,y:scY,w:btnW,h:btnH};
+        }
         if (TOUCH){
           // RESUME button
-          const rbw=240,rbh=44,rbx=SW/2-rbw/2,rby=210;
+          const rbw=240,rbh=44,rbx=SW/2-rbw/2,rby=258;
           ctx.fillStyle="#162d1a"; ctx.fillRect(rbx,rby,rbw,rbh);
           ctx.strokeStyle=TTX.neon; ctx.lineWidth=1.5; ctx.strokeRect(rbx+0.5,rby+0.5,rbw-1,rbh-1);
           ctx.font=ttFont(16); ctx.fillStyle=TTX.neon; ctx.fillText("▶  RESUME", SW/2, rby+29);
           touchPauseResumeRect={x:OX+rbx,y:rby,w:rbw,h:rbh};   // view coords
           // FORFEIT button
-          const fbw=240,fbh=44,fbx=SW/2-fbw/2,fby=264;
+          const fbw=240,fbh=44,fbx=SW/2-fbw/2,fby=312;
           ctx.fillStyle="#2d1616"; ctx.fillRect(fbx,fby,fbw,fbh);
           ctx.strokeStyle=TTX.red; ctx.lineWidth=1.5; ctx.strokeRect(fbx+0.5,fby+0.5,fbw-1,fbh-1);
           ctx.font=ttFont(14); ctx.fillStyle=TTX.red; ctx.fillText("✕  FORFEIT & QUIT", SW/2, fby+29);
           touchPauseForfeitRect={x:OX+fbx,y:fby,w:fbw,h:fbh};   // view coords
         } else {
-          ctx.font=ttFont(13); ctx.fillStyle=TTX.white; ctx.fillText("ENTER TO RESUME", SW/2, 222);
-          ctx.fillStyle=TTX.red; ctx.fillText("ESC TO FORFEIT & QUIT TO MENU", SW/2, 244);
+          ctx.font=ttFont(13); ctx.fillStyle=TTX.white; ctx.fillText("ENTER TO RESUME", SW/2, 270);
+          ctx.fillStyle=TTX.red; ctx.fillText("ESC TO FORFEIT & QUIT TO MENU", SW/2, 292);
           touchPauseResumeRect=null; touchPauseForfeitRect=null;
         }
         ctx.textAlign="left";
-      } else { touchPauseResumeRect=null; touchPauseForfeitRect=null; }
+      } else { touchPauseResumeRect=null; touchPauseForfeitRect=null; touchSpeedDecRect=null; touchSpeedIncRect=null; }
       ctx.restore();   // end field-centring translate
     } else if (state===ST.OVER) { ttClear(); drawOver(); drawTouchBack("← MENU"); }
     else if (state===ST.MENU) { ttClear(); drawMenu(); touchBackBtn=null; }
@@ -1779,7 +1811,7 @@
   function confirmName(){
     if(!nameBuf.trim()) return; menuSel=0; kbdClose();
     if (pendingMode==="daily"){ localStorage.setItem("vc_name", nameBuf.trim().toUpperCase()); startDaily(); }
-    else { state=ST.CLUBSEL; stateEnterAt=performance.now(); clubSelFreshPointer=false; }
+    else { state=ST.CLUBSEL; stateEnterAt=performance.now(); menuSel=0; }
   }
   function togglePause(){ if(state===ST.SERVE||state===ST.FLIGHT||state===ST.RESULT) paused=!paused; }
   function forfeit(){            // give up the current match -> career home (counts as a loss) / menu
@@ -1940,6 +1972,8 @@
     if(_inMatch && p.y<46 && p.x>VW-58){ toggleMute(); return; }   // tap the speaker (top-right) to mute
     if(TOUCH && _inMatch && p.y<46 && p.x>VW-110 && p.x<=VW-58){ togglePause(); return; }   // tap pause button
     if(paused){
+      if(touchSpeedDecRect){ const r=touchSpeedDecRect; if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h){ dragSpeedMod=Math.max(-10,dragSpeedMod-1); localStorage.setItem("vc_speed",dragSpeedMod); return; } }
+      if(touchSpeedIncRect){ const r=touchSpeedIncRect; if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h){ dragSpeedMod=Math.min(10,dragSpeedMod+1); localStorage.setItem("vc_speed",dragSpeedMod); return; } }
       if(touchPauseResumeRect){ const r=touchPauseResumeRect; if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h){ togglePause(); return; } }
       if(touchPauseForfeitRect){ const r=touchPauseForfeitRect; if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h){ forfeit(); return; } }
       return;
@@ -1947,9 +1981,8 @@
     if(TOUCH && touchBackBtn){ const r=touchBackBtn; if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h){ goBack(); return; } }
     if(state===ST.MENU){ const i=menuHit(p.x,p.y); if(i>=0){ menuSel=i; pressSelect(); } }
     else if(state===ST.CLUBSEL){
-      if(TOUCH && !clubSelFreshPointer) return;   // wait for a genuine new gesture after entering this state
-      const i=clubHit(p.x,p.y);
-      if(i>=0){ menuSel=i; pressSelect(); }
+      if(clubSelConfirmBtn){ const r=clubSelConfirmBtn; if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h){ pressSelect(); return; } }
+      const i=clubHit(p.x,p.y); if(i>=0) menuSel=i;   // tap club = highlight only; tap CONFIRM button above to proceed
     }
     else if(state===ST.HORSESETUP){ const f=horseFieldHit(p); if(f>=0){ hField=f; kbdOpen(hSetup[hField]); } else kbdOpen(hSetup[hField]); }
     else if(inPlay(state)||state===ST.RESULT){
@@ -1971,7 +2004,6 @@
   },{passive:false});
   canvas.addEventListener("pointerup",(e)=>{
     e.preventDefault();
-    if(state===ST.CLUBSEL) clubSelFreshPointer=true;   // a genuine lift means next pointerdown is a real gesture
     if(dragging){
       dragging=false; dragStartFieldX=null; dragManStartX=null;
       if(state===ST.SERVE && !kicked && !paused) triggerKick();
