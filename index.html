@@ -591,10 +591,10 @@
     else if (mouseTargetX!=null){ const d=mouseTargetX-manX, step=6.9*(1+dragSpeedMod*0.05);
       if (Math.abs(d)>0.5) manX=clamp(manX+Math.max(-step,Math.min(step,d)), MAN_MIN_X, MAN_MAX_X); }
     // momentum glide after finger lift — decelerates naturally before stopping
-    if (!dragging && Math.abs(manVelX)>0.25){
+    if (!dragging && Math.abs(manVelX)>0.18){
       manX=clamp(manX+manVelX, MAN_MIN_X, MAN_MAX_X);
-      manVelX*=0.74;
-      if(Math.abs(manVelX)<0.25) manVelX=0;
+      manVelX*=0.85;
+      if(Math.abs(manVelX)<0.18) manVelX=0;
     }
   }
   // ---- 28 Hz frame: striker movement + animations; drives the 14 Hz logic loop ----
@@ -822,11 +822,11 @@
   }
 
   // chunky 3D arcade panel border: raised (light TL / dark BR) or inset (dark TL / light BR)
-  function bevel(x,y,w,h,fill,inset,t){
-    t=t||3;
+  function bevel(x,y,w,h,fill,inset,t,light){
+    t=t||3; light=light||"#5a5f68";
     ctx.fillStyle=fill; ctx.fillRect(x,y,w,h);
-    ctx.fillStyle=inset?"#0b0d11":"#5a5f68"; ctx.fillRect(x,y,w,t); ctx.fillRect(x,y,t,h);             // top + left (grey)
-    ctx.fillStyle=inset?"#5a5f68":"#0b0d11"; ctx.fillRect(x,y+h-t,w,t); ctx.fillRect(x+w-t,y,t,h);     // bottom + right
+    ctx.fillStyle=inset?"#0b0d11":light; ctx.fillRect(x,y,w,t); ctx.fillRect(x,y,t,h);             // top + left
+    ctx.fillStyle=inset?light:"#0b0d11"; ctx.fillRect(x,y+h-t,w,t); ctx.fillRect(x+w-t,y,t,h);     // bottom + right
   }
   // ---- 7-segment LED readout (arcade scoreboard digits) ----
   const _SEG={'0':'abcdef','1':'bc','2':'abdeg','3':'abcdg','4':'bcfg','5':'acdfg','6':'acdefg','7':'abc','8':'abcdefg','9':'abcdfg','-':'g',' ':''};
@@ -887,10 +887,10 @@
     // scan-line texture for stadium scoreboard feel
     ctx.fillStyle="rgba(0,0,0,0.20)";
     for(let yy=402;yy<SH;yy+=3) ctx.fillRect(HL,yy,VW,1);
-    // dark outer border
-    ctx.fillStyle="rgba(0,0,0,0.55)";
-    ctx.fillRect(HL,400,VW,2); ctx.fillRect(HL,SH-2,VW,2);
-    ctx.fillRect(HL,400,2,SH-400); ctx.fillRect(HR-2,400,2,SH-400);
+    // secondary-colour outer frame (the scoreboard bezel)
+    ctx.fillStyle=S;
+    ctx.fillRect(HL,400,VW,3); ctx.fillRect(HL,SH-3,VW,3);
+    ctx.fillRect(HL,400,3,SH-400); ctx.fillRect(HR-3,400,3,SH-400);
     // team names in clean digital text — white on dark colours, dark on light
     const nameTextCol=teamHud.dark?"#ffffff":"#06070b";
     ctx.textBaseline="alphabetic"; ctx.textAlign="center";
@@ -900,15 +900,15 @@
     { let fs=16; ctx.font=ttFont(fs,"bold ");
       while(ctx.measureText(oppName).width>184&&fs>9){fs--;ctx.font=ttFont(fs,"bold ");}
       ctx.fillStyle=nameTextCol; ctx.fillText(oppName, HR-120, 424); }
-    // LEFT — SCORE (green LED, my club) with primary-colour border
-    bevel(HL+22,430,196,52,"#0c0e11",true,3);
-    ctx.strokeStyle=P; ctx.lineWidth=1.5; ctx.strokeRect(HL+22.75,430.75,194.5,51.5);
+    // LEFT — SCORE (green LED, my club) with secondary-colour bezel
+    bevel(HL+22,430,196,52,"#0c0e11",true,3,S);
+    ctx.strokeStyle=S; ctx.lineWidth=1.5; ctx.strokeRect(HL+22.75,430.75,194.5,51.5);
     drawLED(HL+28,435,184,42, String(M.score), TTX.green, "rgba(120,130,140,0.16)");
     ctx.font=ttFont(11);
     ctx.textAlign="left";  ctx.fillStyle=nameTextCol; ctx.fillText("SCORE", HL+26, 500);
     ctx.textAlign="right"; ctx.fillStyle=nameTextCol; ctx.fillText("BALLS "+M.attempts, HL+214, 500);
-    // RIGHT — TARGET (red LED) with secondary-colour border
-    bevel(HR-218,430,196,52,"#0c0e11",true,3);
+    // RIGHT — TARGET (red LED) with secondary-colour bezel
+    bevel(HR-218,430,196,52,"#0c0e11",true,3,S);
     ctx.strokeStyle=S; ctx.lineWidth=1.5; ctx.strokeRect(HR-217.25,430.75,194.5,51.5);
     drawLED(HR-212,435,184,42, String(M.winTarget), TTX.red, "rgba(120,130,140,0.16)");
     ctx.font=ttFont(11);
@@ -926,7 +926,8 @@
         if(!used){ ctx.fillStyle="rgba(0,0,0,0.22)"; ctx.beginPath(); ctx.arc(bx0+i*ballGap-1, bY-1, ballR-2, 0, Math.PI*2); ctx.fill(); }
       }
     }
-    bevel(adX,428,adW,50,"#0c0e11",true,3);
+    bevel(adX,428,adW,50,"#0c0e11",true,3,S);
+    ctx.strokeStyle=S; ctx.lineWidth=1.5; ctx.strokeRect(adX+0.75,428.75,adW-1.5,48.5);
     ctx.fillStyle="rgba(150,160,170,0.07)";
     for (let yy=434;yy<476;yy+=5) for (let xx=adX+6;xx<adX+adW-4;xx+=5) ctx.fillRect(xx,yy,2,2);
     ctx.font=ttFont(16); ctx.fillStyle="#ffc23d"; ctx.fillText("ADVERTISE HERE", cxv, 456);
@@ -2171,8 +2172,9 @@
     }
     if(dragging){
       dragging=false; dragStartFieldX=null; dragManStartX=null;
-      manVelX=clamp(_dragVel*0.45, -9, 9);   // inject smoothed drag velocity as momentum
+      manVelX=clamp(_dragVel*0.55, -11, 11);   // inject smoothed drag velocity as momentum
       _dragPrevMT=null; _dragVel=0;
+      if(e.pointerType!=="mouse") mouseTargetX=null;   // touch: let the striker glide freely instead of snapping back to the lift point
       if(state===ST.SERVE && !kicked && !paused) triggerKick();
     }
     else if(TOUCH && state===ST.NAME){ kbdOpen(nameBuf); }  // touchend: re-focus hidden input so iOS keyboard appears
