@@ -1454,155 +1454,18 @@
     ctx.textAlign="right"; ctx.font=ttFont(11); ctx.fillStyle=TTX.white;
     ctx.fillText("MD "+(CAR.idx+1)+"/"+CAR.fixtures.length, VW-12, HBY+HBH/2+4); ctx.textAlign="left";
 
-    if (TOUCH) {
-      // ---- TOUCH: Ceefax-style career table ----
-      const xL=10, xR=VW-14, NAMEX=38;
-      const CEN={ PL:108, W:83, D:59, L:35, PT:11 };
-      const rowH=TBL_ROWH;
-      // derive y positions from HBH (=40 on TOUCH)
-      const shY=HBY+HBH;               // section header top (=44)
-      const hdrBase=shY+25;             // column header baseline (=69)
-      const clipY=hdrBase+4;            // clip region top (=73)
-      const clipH=TBL_CLIPH;
-      const maxScroll=Math.max(0,tbl.length*rowH+4-clipH);
-      tableScrollY=clamp(tableScrollY,0,maxScroll);
-
-      // section header bar — "Premier League  SEASON X"
-      ctx.fillStyle="rgba(0,6,28,0.82)"; ctx.fillRect(0,shY,VW,15);
-      ctx.font=ttFont(13); ctx.fillStyle=TTX.green; ctx.textAlign="left";
-      ctx.fillText("PREMIER LEAGUE", xL, shY+12);
-      ctx.font=ttFont(12); ctx.fillStyle=TTX.yellow; ctx.textAlign="right";
-      ctx.fillText("SEASON "+CAR.season, xR, shY+12); ctx.textAlign="left";
-
-      // column headers (# TEAM P W D L PTS)
-      ctx.font=ttFont(12); ctx.fillStyle="#9aaabb"; ctx.textBaseline="alphabetic";
-      ctx.textAlign="left"; ctx.fillText("#",xL,hdrBase); ctx.fillText("TEAM",NAMEX,hdrBase);
-      ctx.textAlign="center";
-      ctx.fillText("P",xR-CEN.PL,hdrBase); ctx.fillText("W",xR-CEN.W,hdrBase);
-      ctx.fillText("D",xR-CEN.D,hdrBase);  ctx.fillText("L",xR-CEN.L,hdrBase);
-      ctx.fillStyle=TTX.yellow; ctx.fillText("PTS",xR-CEN.PT,hdrBase);
-      ctx.textAlign="left";
-      ctx.fillStyle="rgba(255,255,255,0.28)"; ctx.fillRect(xL,hdrBase+2,xR-xL,1);
-
-      // scrollable rows (clipped)
-      ctx.save();
-      ctx.beginPath(); ctx.rect(xL,clipY,xR-xL+8,clipH); ctx.clip();
-      let rowOff=0;
-      for(let i=0;i<tbl.length;i++){
-        const subName=ttSub(tbl[i].name,i); if(subName===null) continue;
-        const t=tbl[i], r=CAR.table[t.slug], mine=t.slug===CAR.slug;
-        // zone dividers: green after top-4, red before relegation zone
-        if(i===4||i===17){
-          const dy=clipY+i*rowH+rowOff-tableScrollY;
-          if(dy>=clipY-2&&dy<clipY+clipH){
-            ctx.fillStyle=i===4?"rgba(80,210,80,0.55)":"rgba(210,60,60,0.55)";
-            ctx.fillRect(xL,dy,xR-xL,2);
-          }
-          rowOff+=2;
-        }
-        const ry=clipY+i*rowH+rowOff-tableScrollY, baseline=ry+rowH-4;
-        if(ry+rowH<clipY||ry>clipY+clipH) continue;
-        // relegation zone: highlighted dark-red background for ALL three spots
-        if(i>=17){ ctx.fillStyle="rgba(120,18,18,0.32)"; ctx.fillRect(xL,ry,xR-xL,rowH); }
-        if(mine){ ctx.fillStyle="rgba(255,255,255,0.09)"; ctx.fillRect(xL,ry,xR-xL,rowH); }
-        else if(i%2===0&&i<17){ ctx.fillStyle="rgba(255,255,255,0.025)"; ctx.fillRect(xL,ry,xR-xL,rowH); }
-        if(mine){ ctx.strokeStyle="rgba(255,255,255,0.52)"; ctx.lineWidth=1.2; ctx.strokeRect(xL+0.6,ry+0.6,xR-xL-1.2,rowH-1.2); }
-        const isFirst=i===0;
-        const nc=isFirst?"#ffd700":(i<4?TTX.cyan:(i>=17?"#ff8888":TTX.white));
-        ctx.font=ttFont(13); ctx.textAlign="left";
-        ctx.fillStyle=nc; ctx.fillText(""+(i+1),xL,baseline);
-        let nm=subName; const nmMaxW=xR-CEN.PL-NAMEX-6;
-        while(nm.length>3&&ctx.measureText(nm).width>nmMaxW){ nm=nm.slice(0,-1); }
-        ctx.fillStyle=nc; ctx.fillText(nm,NAMEX,baseline);
-        ctx.font=ttFont(12); ctx.textAlign="center";
-        ctx.fillStyle=TTX.dim;    ctx.fillText(""+r.p, xR-CEN.PL,baseline);
-        ctx.fillStyle=TTX.green;  ctx.fillText(""+r.w, xR-CEN.W, baseline);
-        ctx.fillStyle=TTX.grey;   ctx.fillText(""+r.d, xR-CEN.D, baseline);
-        ctx.fillStyle="#e08a8a";  ctx.fillText(""+r.l, xR-CEN.L, baseline);
-        ctx.fillStyle=isFirst?"#ffd700":TTX.yellow; ctx.fillText(""+r.pts,xR-CEN.PT,baseline);
-        ctx.textAlign="left";
-        // thin gold line below the leader (1st place) — Ceefax style
-        if(i===0){ ctx.fillStyle="rgba(255,210,0,0.60)"; ctx.fillRect(xL,ry+rowH-1,xR-xL,1); }
-      }
-      ctx.restore();
-      // border + scrollbar
-      ctx.strokeStyle="rgba(255,255,255,0.14)"; ctx.lineWidth=1; ctx.strokeRect(xL+0.5,clipY+0.5,xR-xL-1,clipH-1);
-      if(maxScroll>0){
-        const sbX=xR+1,sbW=3;
-        ctx.fillStyle="rgba(255,255,255,0.06)"; ctx.fillRect(sbX,clipY,sbW,clipH);
-        const thumbH=Math.max(20,clipH*(clipH/(tbl.length*rowH+4)));
-        const thumbY=clipY+(tableScrollY/maxScroll)*(clipH-thumbH);
-        ctx.fillStyle="rgba(255,255,255,0.36)"; ctx.fillRect(sbX,thumbY,sbW,thumbH);
-      }
-
-      // ---- footer: single status strip + prominent NEXT MATCH panel (matches desktop redesign) ----
-      const form=(CAR.form||[]).slice(0,5).reverse();
-      const sY=clipY+clipH+24, c1=VW*0.26, c2=VW*0.50, c3=VW*0.74;
-      ctx.fillStyle="rgba(255,255,255,0.12)"; ctx.fillRect(VW*0.385,sY-13,1,26); ctx.fillRect(VW*0.615,sY-13,1,26);
-      ctx.textBaseline="middle";
-      // FORM cell — label + W/D/L chips, centred on c1
-      const chipW=24,chipH=18,gap=5,lblW=46;
-      const clusterW=lblW+(form.length?form.length*(chipW+gap)-gap:24);
-      let fcx=c1-clusterW/2;
-      ctx.font=ttFont(14); ctx.fillStyle=TTX.grey; ctx.textAlign="left"; ctx.fillText("FORM",fcx,sY); fcx+=lblW;
-      if(!form.length){ ctx.fillStyle=TTX.dim; ctx.fillText("--",fcx,sY); }
-      for(let i=0;i<form.length;i++){ const rf=form[i];
-        ctx.fillStyle=rf==="W"?"#1f9d49":(rf==="D"?"#5a626b":"#c43a3a");
-        ctx.fillRect(fcx,sY-chipH/2,chipW,chipH);
-        ctx.fillStyle="#fff"; ctx.font=ttFont(14); ctx.textAlign="center"; ctx.fillText(rf,fcx+chipW/2,sY+1);
-        ctx.textAlign="left"; fcx+=chipW+gap;
-      }
-      // POSITION cell — centred on c2
-      ctx.textAlign="center";
-      ctx.font=ttFont(12); ctx.fillStyle=TTX.grey; ctx.fillText("POSITION",c2,sY-9);
-      ctx.font=ttFont(18); ctx.fillStyle=TTX.cyan; ctx.fillText(ord(mypos).toUpperCase(),c2,sY+9);
-      // TITLE ODDS / CHAMPIONS cell — centred on c3
-      ctx.font=ttFont(12); ctx.fillStyle=TTX.grey; ctx.fillText(titleClinched()?"STATUS":"TITLE ODDS",c3,sY-9);
-      if(titleClinched()){ ctx.font=ttFont(16); ctx.fillStyle=TTX.neon; ctx.fillText("★ CHAMPIONS",c3,sY+9); }
-      else { ctx.font=ttFont(18); ctx.fillStyle=TTX.yellow; ctx.fillText(CAR.titleOdds+"%",c3,sY+9); }
-      ctx.textBaseline="alphabetic";
-
-      // NEXT MATCH — prominent centred panel
-      const nbW=600, nbX=VW/2-nbW/2, nbY=sY+22, nbH=40;
-      ctx.fillStyle="#0a1224"; ctx.fillRect(nbX,nbY,nbW,nbH);
-      ctx.strokeStyle=TTX.blue; ctx.lineWidth=2; ctx.strokeRect(nbX+1,nbY+1,nbW-2,nbH-2);
-      ttBar("NEXT MATCH",nbX,nbY,nbW,14,TTX.blue,TTX.white,{center:true,size:11});
-      const tag=fx.home?" (H)":" (A)";
-      const fixtureStr=fx.home?(meName+tag+"  v  "+opp.name):(opp.name+"  v  "+meName+tag);
-      let fsz=18; ctx.textAlign="center"; ctx.font=ttFont(fsz);
-      while(ctx.measureText(fixtureStr).width>nbW-20&&fsz>11){fsz--;ctx.font=ttFont(fsz);}
-      ctx.fillStyle=TTX.white; ctx.fillText(fixtureStr,VW/2,nbY+nbH-9);
-
-      // call-to-action / clinch button (clears the bottom-left MENU button)
-      clinchBtn=null;
-      if(titleClinched()){
-        const bx=116,bw=VW-128,bh=26,by=nbY+nbH+12;
-        ctx.fillStyle=TTX.neon; ctx.fillRect(bx,by,bw,bh);
-        ctx.fillStyle="#06070b"; ctx.font=ttFont(13); ctx.textAlign="center"; ctx.textBaseline="middle";
-        ctx.fillText("★ CHAMPIONS · TAP TO END SEASON",bx+bw/2,by+bh/2+1);
-        ctx.textBaseline="alphabetic"; clinchBtn={x:bx,y:by,w:bw,h:bh};
-      } else if(ttCursorOn()){
-        ctx.fillStyle=TTX.neon; ctx.font=ttFont(19); ctx.textAlign="center"; ctx.fillText("TAP  TO  PLAY",VW/2,nbY+nbH+32);
-      }
-      // ← MENU button — bottom-left, clear of the CTA and ticker
-      { const bbW=92,bbH=26,bbX=10,bbY=nbY+nbH+12;
-        ctx.fillStyle="rgba(0,0,10,0.55)"; ctx.fillRect(bbX,bbY,bbW,bbH);
-        ctx.strokeStyle=TTX.yellow; ctx.lineWidth=1; ctx.strokeRect(bbX+0.5,bbY+0.5,bbW-1,bbH-1);
-        ctx.font=ttFont(13); ctx.fillStyle=TTX.yellow; ctx.textAlign="center"; ctx.textBaseline="middle";
-        ctx.fillText("← MENU",bbX+bbW/2,bbY+bbH/2+1); ctx.textBaseline="alphabetic"; ctx.textAlign="left";
-        touchBackBtn={x:bbX,y:bbY,w:bbW,h:bbH}; }
-      drawTicker(CAR.lastResults,512);
-      ctx.textAlign="left";
-
-    } else {
-      // ---- DESKTOP: Ceefax-style full-height league table + clean info footer ----
-      const xPad=20;
+    // ---- Ceefax-style full-height two-column league table + clean info footer ----
+    // Shared by desktop and touch (identical 924x520 stage); only the call-to-action
+    // wording and the on-screen MENU button differ on touch. Vertical start is derived
+    // from the header height (HBH is 8px taller on touch) so nothing collides up top.
+    {
+      const ht=HBY+HBH, xPad=20;
       // section header (teletext): green title + yellow season on a blue rule
-      ctx.font=ttFont(20); ctx.fillStyle=TTX.green; ctx.textAlign="left"; ctx.fillText("PREMIER LEAGUE TABLE", xPad, 60);
-      ctx.textAlign="right"; ctx.font=ttFont(16); ctx.fillStyle=TTX.yellow; ctx.fillText("SEASON "+CAR.season, VW-xPad, 60); ctx.textAlign="left";
-      ctx.fillStyle="#0044bb"; ctx.fillRect(xPad,66,VW-xPad*2,3);
+      ctx.font=ttFont(20); ctx.fillStyle=TTX.green; ctx.textAlign="left"; ctx.fillText("PREMIER LEAGUE TABLE", xPad, ht+24);
+      ctx.textAlign="right"; ctx.font=ttFont(16); ctx.fillStyle=TTX.yellow; ctx.fillText("SEASON "+CAR.season, VW-xPad, ht+24); ctx.textAlign="left";
+      ctx.fillStyle="#0044bb"; ctx.fillRect(xPad,ht+30,VW-xPad*2,3);
       // two balanced columns spanning the full width with a slim centre gutter
-      const colX=[44,490], blockW=394, top=90, rowH=25, hdrY=84, NAMEX=30;
+      const colX=[44,490], blockW=394, top=ht+54, rowH=25, hdrY=ht+48, NAMEX=30;
       const CEN={ W:120, D:94, L:68, PL:40, PT:12 };
       ctx.font=ttFont(13); ctx.textBaseline="alphabetic";
       for (const x of colX){ const xr=x+blockW;
@@ -1644,7 +1507,7 @@
         if (i===16){ ctx.fillStyle="rgba(210,60,60,0.5)";  ctx.fillRect(x-6,ry+rowH-1,blockW+12,2); }
       }
       ctx.textAlign="left";
-      const tblBottom = top+10*rowH;   // = 340
+      const tblBottom = top+10*rowH;
 
       // ---- footer: single status strip + prominent NEXT MATCH panel ----
       const form = (CAR.form||[]).slice(0,5).reverse();
@@ -1684,17 +1547,24 @@
       while (ctx.measureText(fixtureStr).width > nbW-28 && fsz>12){ fsz--; ctx.font=ttFont(fsz); }
       ctx.fillStyle=TTX.white; ctx.fillText(fixtureStr, VW/2, nbY+40);
 
-      // call-to-action / clinch button
+      // call-to-action / clinch button — touch taps, desktop uses keyboard
       clinchBtn=null;
       if (titleClinched()){
         const bw=460,bh=26,bx=VW/2-bw/2,by=nbY+nbH+14;
         ctx.fillStyle=TTX.neon; ctx.fillRect(bx,by,bw,bh);
         ctx.fillStyle="#06070b"; ctx.font=ttFont(14); ctx.textAlign="center"; ctx.textBaseline="middle";
-        ctx.fillText("★ CHAMPIONS · CLICK / E TO END SEASON", VW/2, by+bh/2+1);
+        ctx.fillText(TOUCH?"★ CHAMPIONS · TAP TO END SEASON":"★ CHAMPIONS · CLICK / E TO END SEASON", VW/2, by+bh/2+1);
         ctx.textBaseline="alphabetic"; clinchBtn={x:bx,y:by,w:bw,h:bh};
       } else if (ttCursorOn()){
-        ctx.fillStyle=TTX.neon; ctx.font=ttFont(20); ctx.textAlign="center"; ctx.fillText("SPACE  /  CLICK  TO  PLAY", VW/2, nbY+nbH+30);
+        ctx.fillStyle=TTX.neon; ctx.font=ttFont(20); ctx.textAlign="center"; ctx.fillText(TOUCH?"TAP  TO  PLAY":"SPACE  /  CLICK  TO  PLAY", VW/2, nbY+nbH+30);
       }
+      // ← MENU button (touch only) — bottom-left, clear of the centred CTA and ticker
+      if (TOUCH){ const bbW=92,bbH=26,bbX=10,bbY=nbY+nbH+14;
+        ctx.fillStyle="rgba(0,0,10,0.55)"; ctx.fillRect(bbX,bbY,bbW,bbH);
+        ctx.strokeStyle=TTX.yellow; ctx.lineWidth=1; ctx.strokeRect(bbX+0.5,bbY+0.5,bbW-1,bbH-1);
+        ctx.font=ttFont(13); ctx.fillStyle=TTX.yellow; ctx.textAlign="center"; ctx.textBaseline="middle";
+        ctx.fillText("← MENU",bbX+bbW/2,bbY+bbH/2+1); ctx.textBaseline="alphabetic"; ctx.textAlign="left";
+        touchBackBtn={x:bbX,y:bbY,w:bbW,h:bbH}; }
       drawTicker(CAR.lastResults, 510);
       ctx.textAlign="left";
     }
