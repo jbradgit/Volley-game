@@ -761,7 +761,7 @@
     if (shotOver) {
       if (!booted) flagResult(complete_miss ? "MISSED IT!" : "NO CONTACT", "#9aa7b4", 0);
       if (!sc) M.attempts--;     // goals (sc=1) are free shots
-      resultTimer = 0.7;
+      resultTimer = 1.0;
       state = ST.RESULT;
     }
   }
@@ -1115,22 +1115,22 @@
       ctx.textAlign="center";
       const isGoal = resultPoints>=4000 || resultText.indexOf("GOO")===0;
       if (isGoal){
-        const tt=performance.now()/1000, pulse=1+0.16*Math.sin(tt*18);     // size throb
+        const tt=performance.now()/1000, pulse=1+0.18*Math.sin(tt*18);     // size throb
         const cols=[TTX.green,TTX.yellow,TTX.white,TTX.magenta], col=cols[Math.floor(tt*12)%cols.length];
         ctx.save(); ctx.translate(SW/2,150); ctx.scale(pulse,pulse);
-        ctx.font=ttFont(44);
+        ctx.font=ttFont(56);
         ctx.fillStyle="rgba(0,0,0,0.9)"; ctx.fillText(resultText,4,5);      // hard shadow for legibility
         ctx.fillStyle=col; ctx.fillText(resultText,0,0); ctx.restore();
       } else {
-        ctx.font=ttFont(34);
+        ctx.font=ttFont(42);
         ctx.fillStyle="rgba(0,0,0,0.9)"; ctx.fillText(resultText, SW/2+3, 153);
         ctx.fillStyle=resultColor; ctx.fillText(resultText, SW/2, 150);
       }
       if (resultPoints>0){
-        ctx.font=ttFont(18);
+        ctx.font=ttFont(22);
         const pts = bounced>1 ? Math.round(resultPoints/2) : resultPoints;
-        ctx.fillStyle="rgba(0,0,0,0.9)"; ctx.fillText("+"+pts, SW/2+2, 184);
-        ctx.fillStyle=TTX.white; ctx.fillText("+"+pts, SW/2, 182);
+        ctx.fillStyle="rgba(0,0,0,0.9)"; ctx.fillText("+"+pts, SW/2+2, 196);
+        ctx.fillStyle=TTX.white; ctx.fillText("+"+pts, SW/2, 194);
       }
       ctx.textAlign="left";
     }
@@ -1279,12 +1279,17 @@
 
   // ---- team colours for the in-game info panel (primary = shirt, secondary contrasts it) ----
   function hexLum(hex){ const n=parseInt(hex.slice(1),16); return 0.299*((n>>16)&255)+0.587*((n>>8)&255)+0.114*(n&255); }
+  function colDist(a,b){ const x=parseInt(a.slice(1),16), y=parseInt(b.slice(1),16);
+    const dr=((x>>16)&255)-((y>>16)&255), dg=((x>>8)&255)-((y>>8)&255), db=(x&255)-(y&255);
+    return Math.sqrt(dr*dr+dg*dg+db*db); }
   function teamColors(slug){
     const t=TEAMBY[slug]||{}, prim=PAL[t.shirt]||"#c8102e", pl=hexLum(prim);
     const cands=[t.swatch_accent, t.stripe2, (t.sleeves!==t.shirt?t.sleeves:null),
                  (t.shorts!==t.shirt?t.shorts:null), (t.socks!==t.shirt?t.socks:null)];
     let sec=null;
-    for (const c of cands){ if (c && PAL[c] && Math.abs(hexLum(PAL[c])-pl)>40){ sec=PAL[c]; break; } }
+    // pick the first kit accent that's a visibly different COLOUR from the shirt — RGB distance
+    // catches same-luminance hues (e.g. red vs blue) that a luminance-only test would miss
+    for (const c of cands){ if (c && PAL[c] && colDist(PAL[c],prim)>80){ sec=PAL[c]; break; } }
     if (!sec) sec = pl>140 ? "#101418" : "#ffffff";          // fallback: contrast by luminance
     // ensure target tints stay legible: a dimmer version of secondary for sub-labels
     return { primary:prim, secondary:sec, dark:pl<120 };
@@ -1488,7 +1493,7 @@
       ctx.fillStyle="#0044bb"; ctx.fillRect(xPad,ht+30,VW-xPad*2,3);
       // two balanced columns spanning the full width with a slim centre gutter
       const colX=[44,490], blockW=394, top=ht+54, rowH=25, hdrY=ht+48, NAMEX=30;
-      const CEN={ W:120, D:94, L:68, PL:40, PT:12 };
+      const CEN={ PL:120, W:92, D:66, L:40, PT:12 };   // PL (played) sits left of W D L
       ctx.font=ttFont(13); ctx.textBaseline="alphabetic";
       for (const x of colX){ const xr=x+blockW;
         ctx.fillStyle="#9aaabb";
@@ -1514,7 +1519,7 @@
         const base = isFirst ? "#ffd700" : (i<4 ? TTX.cyan : (i>=17 ? "#ff8888" : TTX.white));
         ctx.font=ttFont(16); ctx.textAlign="left";
         ctx.fillStyle=base; ctx.fillText(""+(i+1), x, y);
-        let nm=t.name; while (nm.length>3 && ctx.measureText(nm).width > blockW-CEN.W-30){ nm=nm.slice(0,-1); }
+        let nm=t.name; while (nm.length>3 && ctx.measureText(nm).width > blockW-CEN.PL-30){ nm=nm.slice(0,-1); }
         ctx.fillStyle=base; ctx.fillText(nm, x+NAMEX, y);
         ctx.font=ttFont(15); ctx.textAlign="center";
         ctx.fillStyle=TTX.green;  ctx.fillText(""+r.w,   xr-CEN.W,  y);
