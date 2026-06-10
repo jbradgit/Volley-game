@@ -1,10 +1,9 @@
-"""Generate assets/ui/logo_gold.png — the SCORDAGOL logo, Joe Montana Football style.
+"""Generate assets/ui/logo.png — the SCORDAGOL logo.
 
-A faithful recreation of the Sega title treatment: tall condensed SERIF letters,
-gold chrome vertical gradient, chiselled bevel (bright top-left facets, dark
-bottom-right), black outline, dark-bronze 3D extrude. Rendered at high res with
-supersampling, shipped as a transparent PNG the game scales down (always crisp,
-identical on every device/browser font stack).
+The ORIGINAL letterform (chunky heavy italic sans, plain O's — no footballs) with a
+GREEN METALLIC finish: vertical green chrome gradient, chiselled bevel, and bright
+diagonal polish streaks across the face. Dark-green outline + 3D extrude.
+Rendered hi-res with supersampling, shipped as a transparent PNG.
 
 Run:  python3 artgen/gen_logo.py
 """
@@ -13,19 +12,23 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 TXT = "SCORDAGOL"
-F = 220                    # glyph size at working res (final asset is half this)
-SERIF = "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"
+F = 200
+SANS = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
+STROKE = max(2, F // 26)         # fatten Bold toward an Arial-Black weight
+SKEW = 0.22                      # the original logo's italic lean
 
-# ---- 1. condensed-tall serif mask (Montana letters are narrow and tall) ----
-font = ImageFont.truetype(SERIF, F)
+# ---- 1. heavy italic sans mask ----
+font = ImageFont.truetype(SANS, F)
 tmp = Image.new("L", (1, 1)); td = ImageDraw.Draw(tmp)
-bb = td.textbbox((0, 0), TXT, font=font)
+bb = td.textbbox((0, 0), TXT, font=font, stroke_width=STROKE)
 tw, th = bb[2] - bb[0], bb[3] - bb[1]
-m0 = Image.new("L", (tw + 8, th + 8), 0)
-ImageDraw.Draw(m0).text((4 - bb[0], 4 - bb[1]), TXT, font=font, fill=255)
-m0 = m0.resize((int(m0.width * 0.80), int(m0.height * 1.14)), Image.LANCZOS)   # condense + heighten
+m0 = Image.new("L", (tw + 12, th + 12), 0)
+ImageDraw.Draw(m0).text((6 - bb[0], 6 - bb[1]), TXT, font=font, fill=255, stroke_width=STROKE, stroke_fill=255)
+# italic shear (lean right, like the original)
+sh_w = int(m0.width + SKEW * m0.height)
+m0 = m0.transform((sh_w, m0.height), Image.AFFINE, (1, SKEW, -SKEW * m0.height, 0, 1, 0), resample=Image.BILINEAR)
 
-PAD = 26
+PAD = 24
 W, H = m0.width + PAD * 2, m0.height + PAD * 2
 mask = Image.new("L", (W, H), 0); mask.paste(m0, (PAD, PAD))
 M = (np.asarray(mask, dtype=np.float32) / 255.0 > 0.5).astype(np.float32)
@@ -41,22 +44,21 @@ def shift(a, dy, dx):
 rgb = np.zeros((H, W, 3), dtype=np.float32)
 alpha = np.zeros((H, W), dtype=np.float32)
 
-OUT_W, EXTRUDE = 4, 9
+OUT_W, EXTRUDE = 4, 8
 dil = np.asarray(mask.filter(ImageFilter.MaxFilter(OUT_W * 2 + 1)), np.float32) / 255.0
-ext_col = np.array([34, 16, 4]); out_col = np.array([12, 6, 2])
-for s in range(EXTRUDE, 0, -1):                       # dark-bronze 3D extrude, down-right
+ext_col = np.array([5, 42, 20]); out_col = np.array([2, 20, 10])
+for s in range(EXTRUDE, 0, -1):                       # dark-green 3D extrude, down-right
     e = shift(dil, s, s)
-    rgb[e > 0.5] = ext_col + (s / EXTRUDE) * np.array([26, 12, 4])
+    rgb[e > 0.5] = ext_col + (s / EXTRUDE) * np.array([6, 18, 10])
     alpha[e > 0.5] = 1
-rgb[dil > 0.5] = out_col; alpha[dil > 0.5] = 1        # black outline
+rgb[dil > 0.5] = out_col; alpha[dil > 0.5] = 1        # dark outline
 
-# gold chrome face: vertical gradient across the glyph height
-ys, xs = np.nonzero(M); gy0, gy1 = ys.min(), ys.max()
-g = (np.arange(H, dtype=np.float32) - gy0) / max(1, gy1 - gy0)
-g = np.clip(g, 0, 1)
-stops = [(0.00, (255, 252, 232)), (0.13, (255, 233, 128)), (0.32, (244, 197, 56)),
-         (0.46, (200, 138, 24)),  (0.52, (255, 246, 200)), (0.60, (224, 160, 32)),
-         (0.80, (160, 100, 16)),  (1.00, (96, 56, 8))]
+# green chrome: vertical gradient...
+ys_, xs_ = np.nonzero(M); gy0, gy1 = ys_.min(), ys_.max()
+g = np.clip((np.arange(H, dtype=np.float32) - gy0) / max(1, gy1 - gy0), 0, 1)
+stops = [(0.00, (236, 255, 232)), (0.16, (150, 255, 140)), (0.36, (52, 224, 96)),
+         (0.48, (20, 150, 60)),   (0.54, (196, 255, 200)), (0.62, (40, 190, 80)),
+         (0.82, (16, 120, 48)),   (1.00, (6, 70, 28))]
 grad = np.zeros((H, 3), dtype=np.float32)
 for i in range(len(stops) - 1):
     (p0, c0), (p1, c1) = stops[i], stops[i + 1]
@@ -65,22 +67,32 @@ for i in range(len(stops) - 1):
     grad[sel] = np.outer(1 - t, c0) + np.outer(t, c1)
 face = grad[:, None, :].repeat(W, axis=1)
 
-# chiselled bevel: edge band facing up-left glints, facing down-right darkens
-BEV = 7
+# ...with DIAGONAL polish streaks (bright sweeps + a couple of dark ones between)
+yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+diag = (xx + yy * 0.9) / (W + H * 0.9)               # 0..1 along the 45-ish degree axis
+streak = np.ones((H, W), dtype=np.float32)
+for c, amp, wd in [(0.16, 0.42, 0.030), (0.40, 0.30, 0.022), (0.66, 0.46, 0.034), (0.88, 0.26, 0.020)]:
+    streak += amp * np.exp(-((diag - c) / wd) ** 2)   # bright glints
+for c, amp, wd in [(0.28, 0.16, 0.030), (0.54, 0.14, 0.026), (0.78, 0.14, 0.028)]:
+    streak -= amp * np.exp(-((diag - c) / wd) ** 2)   # dark counter-streaks
+face = np.clip(face * streak[:, :, None], 0, 255)
+
+# chiselled bevel: up-left facets glint, down-right facets darken
+BEV = 6
 er = np.asarray(mask.filter(ImageFilter.MinFilter(BEV * 2 + 1)), np.float32) / 255.0
 edge = (M > 0.5) & (er < 0.5)
-lit = edge & (shift(M, BEV, BEV) < 0.5)               # up-left facet
-drk = edge & (shift(M, -BEV, -BEV) < 0.5)             # down-right facet
-face[lit] = face[lit] * 0.25 + np.array([255, 250, 224]) * 0.75
-face[drk] = face[drk] * 0.35 + np.array([110, 62, 10]) * 0.65
+lit = edge & (shift(M, BEV, BEV) < 0.5)
+drk = edge & (shift(M, -BEV, -BEV) < 0.5)
+face[lit] = face[lit] * 0.25 + np.array([232, 255, 228]) * 0.75
+face[drk] = face[drk] * 0.35 + np.array([8, 74, 30]) * 0.65
 
 rgb[M > 0.5] = face[M > 0.5]; alpha[M > 0.5] = 1
 
-# ---- 3. compose + downsample for smooth edges ----
+# ---- 3. compose + downsample ----
 img = np.dstack([np.clip(rgb, 0, 255), alpha * 255]).astype(np.uint8)
 out = Image.fromarray(img, "RGBA").resize((W // 2, H // 2), Image.LANCZOS)
 dst = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "ui")
 os.makedirs(dst, exist_ok=True)
-path = os.path.join(dst, "logo_gold.png")
+path = os.path.join(dst, "logo.png")
 out.save(path, optimize=True)
 print("wrote", os.path.normpath(path), out.size)
