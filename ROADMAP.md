@@ -26,7 +26,7 @@ transcribed physics — the one thing that must never change.
 | # | Task | Why | Effort | Status |
 |---|---|---|---|---|
 | 0.1 | Quick-win fixes from AUDIT.md: keeper-atlas error surfacing, `saveCareer` try/catch, dead-code deletion, stop loading `crowd.jpg`/`kit.jpg`, UTC daily seed, `serve.py` → 127.0.0.1, fix stale 14 Hz comment | Correctness + clears the decks | S each | ⬜ |
-| 0.2 | **CI safety net**: GitHub Actions + Playwright loads `index.html?cap=1`, asserts zero console errors / no failed asset loads, runs `__dbg.sweep()` against committed golden outcomes, plays one seeded match to MATCHEND | Locks the physics before art swaps and refactors; the `__dbg` harness already exists (index.html:2198) | L | ⬜ |
+| 0.2 | **CI safety net**: GitHub Actions + Playwright loads `index.html?cap=1`, asserts zero console errors / no failed asset loads, runs `__dbg.sweep()` against committed golden outcomes, plays one seeded match to MATCHEND | Locks the physics before art swaps and refactors; the `__dbg` harness already exists (index.html:2198). *Started:* `ci/smoke.js` runs the game headlessly in Node (DOM stubs) and drives real shots + render frames — wire into GitHub Actions next | L | 🟨 |
 | 0.3 | Delete stale duplicates & junk: `scordagol_web/` (stale fork of the game), 9 MB `Gemini_Generated_Image_*.png`, `game2.zip`, older Ruffle generation + `.js.map` files, `page_flashmuseum.html` | One canonical game; repo ~½ size | S | ⬜ |
 | 0.4 | README.md: what SCORDAGOL is now, how to run (Windows + other OS), **the sacred/evolvable split** (physics & scoring are transcribed from the SWF — never change without re-verifying; rendering/UI/modes are fair game), deploy story. Mark HANDOVER.md as historical. | Docs currently contradict the code (AUDIT M-1) | M | ⬜ |
 
@@ -58,11 +58,11 @@ The background becomes three independent layers — exactly the split you propos
 
 | # | Task | Effort | Status |
 |---|---|---|---|
-| A.1 | Code: layer plumbing — `drawBackdrop`/`drawHoardings`/`drawGoal` replacing `drawStadiumSides`+`pitchBg`; ads manifest with visible fallback; goal bulge + woodwork shake triggers (spec §5) | M–L | ⬜ |
-| A.2 | Produce backdrop v1 (generate → 3-slice fit → validate against template) | M | ⬜ |
-| A.3 | Produce house hoarding boards ("SCORDAGOL", "ADVERTISE HERE") + 3–4 placeholder sponsors | S | ⬜ |
-| A.4 | Procedural goal + net bulge (incl. left-footed mirror gotcha, spec §3) | M | ⬜ |
-| A.5 | Validate: template overlay checklist (spec §4) on desktop + phone; physics CI unchanged; then delete `pitch_hd.png`/`pitch.jpg` | S | ⬜ |
+| A.1 | Code: layer plumbing — `drawBackdrop`/`drawHoardings`/`drawGoal` replacing `drawStadiumSides`+`pitchBg`; ads manifest with visible fallback; goal bulge + woodwork shake triggers (spec §5) | M–L | ✅ |
+| A.2 | Produce backdrop v1 — procedural early-2000s stadium (`artgen/gen_backdrop.py` → `assets/stadium/backdrop.png`), template-aligned | M | ✅ |
+| A.3 | House + placeholder sponsor boards (`artgen/gen_boards.py` → `assets/ads/` ×7 + `ads.json`, all fictional brands) | S | ✅ |
+| A.4 | Procedural goal + net bulge + woodwork shake (drawn inside the leftFooted mirror; `drawGoal()` in index.html) | M | ✅ |
+| A.5 | Validate: compositor mock vs template ✅ (`artgen/preview_mock.py`); headless smoke ✅ (`ci/smoke.js`). **Remaining: owner plays it in a real browser + approves, then delete `pitch_hd.png`/`pitch.jpg`/`crowd.jpg`/`kit.jpg`** | S | 🟨 |
 
 ### Track B — Characters, ball, sounds
 

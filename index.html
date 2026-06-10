@@ -71,9 +71,9 @@
 
   // ---- Static assets (kits are loaded dynamically per club, see loadKits) ----
   const IMG = {};
-  const sources = { pitch:"assets/pitch_hd.png?v=hr5", crowd:"assets/crowd.jpg",
+  const sources = { backdrop:"assets/stadium/backdrop.png?v=1",
                     katlas0:"assets/keeper_atlas_0.png?v=dd", katlas1:"assets/keeper_atlas_1.png?v=dd",
-                    kit:"assets/kit.jpg", ball:"assets/ball.png?v=hr", shadow:"assets/shadow.png?v=hr",
+                    ball:"assets/ball.png?v=hr", shadow:"assets/shadow.png?v=hr",
                     defmap:"assets/defender_regionmap.png?v=live2" };
   let loaded = 0, total = Object.keys(sources).length, assetsReady = false;
   for (const k in sources) {
@@ -159,6 +159,25 @@
   // Keeper sprite-atlas manifest (per-frame rects + offsets, all 371-frame anims packed).
   let KMAN = null;
   fetch("assets/keeper_atlas.json?v=dd").then(r=>r.json()).then(j=>{ KMAN = j.frames; }).catch(()=>{});
+  // ---- L1 perimeter ad boards: manifest + images (sold sponsor boards just replace files in
+  // assets/ads/ + ads.json — no code change). Failure falls back to procedural house boards.
+  const HOARD_Y = 104, HOARD_H = 34, HOARD_SLOT = 132, HOARD_N = 7;   // 7 x 132 = 924 = VW (docs/STADIUM_ASSET_SPEC.md §3)
+  let ADS = [], ADS_IMG = {}, matchBoards = [];
+  fetch("assets/ads/ads.json?v=1")
+    .then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
+    .then(j=>{ ADS = j.boards||[];
+      for (const b of ADS){ const im=new Image(); im.src="assets/ads/"+b.img+"?v=1"; ADS_IMG[b.id]=im; } })
+    .catch(e=>{ try{ console.error("ads.json failed to load:", e); }catch(_){} });
+  function pickBoards(pr){       // weighted pick of 7 boards; pr = match RNG so seeded (daily/HORSE) matches show identical boards
+    matchBoards = [];
+    if (!ADS.length) return;
+    const tot = ADS.reduce((s,b)=>s+(b.weight||1), 0);
+    for (let i=0;i<HOARD_N;i++){
+      let x = pr()*tot, id = ADS[ADS.length-1].id;
+      for (const b of ADS){ x -= (b.weight||1); if (x<=0){ id=b.id; break; } }
+      matchBoards.push(id);
+    }
+  }
   // Keeper labelled animation ranges actually used by the original (frame_10 / frame_9):
   //   dive_left/right = gotoandplay; central catch = gotoandstop a single frame by height.
   const KEEPER_ANIMS = { idle:[1,1], dive_left:[50,99], dive_right:[100,149],
@@ -460,9 +479,10 @@
     if (opts.seed!=null){                 // seeded: a reproducible serve sequence (daily / HORSE round)
       const pr=mulberry32(opts.seed>>>0);
       serveQueue=[]; for (let i=0;i<M.attempts+4;i++) serveQueue.push({v:Math.floor(pr()*5)+18, a:Math.floor(pr()*5)+35});
-      serveIdx=0; leftFooted = Math.floor(pr()*5)===0; RAND = Math.random;   // keeper/defenders stay reactive to play
+      serveIdx=0; leftFooted = Math.floor(pr()*5)===0; pickBoards(pr); RAND = Math.random;   // keeper/defenders stay reactive to play
     } else {
       serveQueue=null; serveIdx=0; leftFooted = rnd(5)===0;   // ~1 in 5 matches mirror the play (left-footed)
+      pickBoards(Math.random);
     }
     teamHud = teamColors(MYCLUB.slug);   // info panel themed to your club's kit
     buildHairFrames();                   // random hair colour this match
@@ -656,13 +676,13 @@
         // ===== EXACT transcription of frame_9 resolution =====
         if (hitkeeper===0) {
           if (Math.abs(xball-RPOST)<POSTTOL && z<BARH) {
-            rposthit=true; ybit=-ybit; dbx=-10; M.score+=Math.round(150/bounced); flagResult("WOODWORK!","#ff9f1c",150); sfx.post();
+            rposthit=true; ybit=-ybit; dbx=-10; M.score+=Math.round(150/bounced); flagResult("WOODWORK!","#ff9f1c",150); sfx.post(); barShakeT=0.35;
           }
           if (Math.abs(xball-LPOST)<POSTTOL && z<BARH) {
-            lposthit=true; ybit=-ybit; dbx=10; M.score+=Math.round(150/bounced); flagResult("WOODWORK!","#ff9f1c",150); sfx.post();
+            lposthit=true; ybit=-ybit; dbx=10; M.score+=Math.round(150/bounced); flagResult("WOODWORK!","#ff9f1c",150); sfx.post(); barShakeT=0.35;
           }
           if (z>=BARH-15 && z<=BARH && xball>LPOST && xball<RPOST) {
-            if (!(lposthit||rposthit)) { hitbar=true; dby=10; M.score+=Math.round(150/bounced); flagResult("OFF THE BAR!","#ff9f1c",150); sfx.post(); }
+            if (!(lposthit||rposthit)) { hitbar=true; dby=10; M.score+=Math.round(150/bounced); flagResult("OFF THE BAR!","#ff9f1c",150); sfx.post(); barShakeT=0.35; }
           }
           if (xball>LPOST && xball<RPOST && z<BARH && !rposthit && !lposthit && !hitbar) {
             innet=true;   // GOAL
@@ -684,6 +704,7 @@
       if (topnet===1){ z=znet-20; }
       if (yball<NET_GOAL_Y) {
         end=1; M.score+=Math.round(4000/bounced); sc=1; M.goals++;
+        netBulgeT=0.5; netBulgeX=xball; netBulgeY=clamp(yball-z, 72, 158);   // ripple the net at the entry point
         flagResult("GOOOOAL!","#46e36b",4000); sfx.goal(); flash=0.6;
       }
     }
@@ -1807,29 +1828,77 @@
     ctx.textAlign="left";
   }
 
-  // Landscape side-fill: a stretched, dimmed copy of the pitch spans the FULL view width so the
-  // margins either side of the centred 550-wide field read as continuous crowd + grass. The crisp,
-  // correctly-proportioned pitch is then drawn on top, centred, by pitchBg (under translate(OX)).
-  // Drawn in VIEW space (before the translate). Replaced later by dedicated 16:9 stadium art.
-  function drawStadiumSides() {
-    const im=IMG.pitch;
-    if (im.complete && im.naturalWidth){
-      // The crisp centre pitch is drawn by pitchBg (under translate(OX)). Here we extend the LEFT and
-      // RIGHT margins by reflecting the pitch's GOAL-FREE outer strips (left of LPOST / right of RPOST),
-      // stretched to fill each margin: crowd, hoardings and grass continue seamlessly (the shared edge
-      // column matches exactly → no seam, no greying) and the posts stay off-screen at the edges.
-      // Placeholder until the dedicated 16:9 stadium art lands.
-      const nW=im.naturalWidth, nH=im.naturalHeight, lpx=nW*LPOST/SW, rpx=nW*RPOST/SW;
-      ctx.save(); ctx.translate(OX,0); ctx.scale(-1,1); ctx.drawImage(im, 0,0, lpx,nH, 0,0, OX,400); ctx.restore();          // left strip (u:0..LPOST), u=0 at seam
-      ctx.save(); ctx.translate(VW,0); ctx.scale(-1,1); ctx.drawImage(im, rpx,0, nW-rpx,nH, 0,0, VW-OX-SW,400); ctx.restore(); // right strip (u:RPOST..SW), u=SW at seam
-    } else { ctx.fillStyle="#155f29"; ctx.fillRect(0,0,VW,400); }
+  // ================= STADIUM LAYERS (docs/STADIUM_ASSET_SPEC.md) =================
+  // L0 backdrop (924x400 art, no goal/boards) -> L1 hoardings -> L2 goal+net -> sprites.
+  // All purely cosmetic: the only pixel-sensitive system is the keeper hit-test, which
+  // samples its own offscreen canvas — backgrounds can never affect physics.
+  function drawBackdrop() {        // view space (drawn before translate(OX))
+    const im=IMG.backdrop;
+    if (im.complete && im.naturalWidth) ctx.drawImage(im, 0,0, VW,400);
+    else {                         // stand-in so a failed deploy is obvious but playable
+      ctx.fillStyle="#15171d"; ctx.fillRect(0,0,VW,143);
+      ctx.fillStyle="#1c7a34"; ctx.fillRect(0,143,VW,400-143);
+    }
     ctx.fillStyle="#04060a"; ctx.fillRect(0,400,VW,SH-400);
   }
-  function pitchBg(dim) {
-    if (IMG.pitch.complete && IMG.pitch.naturalWidth) ctx.drawImage(IMG.pitch,0,0,SW,400);
-    else { ctx.fillStyle="#1c7a34"; ctx.fillRect(0,0,SW,400); }
-    ctx.fillStyle="#04060a"; ctx.fillRect(0,400,SW,SH-400);
-    if (dim){ ctx.fillStyle="rgba(4,6,10,"+dim+")"; ctx.fillRect(0,0,SW,SH); }
+  // L1: 7 static perimeter boards across the full view (early-2000s style). A board that
+  // hasn't loaded gets a procedural house board — the band must never be empty.
+  function drawHoardings() {       // view space
+    if (!matchBoards.length && ADS.length) pickBoards(Math.random);   // manifest arrived after match start
+    for (let i=0;i<HOARD_N;i++){
+      const x=i*HOARD_SLOT, id=matchBoards[i], im=id && ADS_IMG[id];
+      if (im && im.complete && im.naturalWidth) ctx.drawImage(im, x, HOARD_Y, HOARD_SLOT, HOARD_H);
+      else {
+        ctx.fillStyle="#06070b"; ctx.fillRect(x, HOARD_Y, HOARD_SLOT, HOARD_H);
+        ctx.strokeStyle="#e8e8e8"; ctx.lineWidth=1.5; ctx.strokeRect(x+1.75, HOARD_Y+1.75, HOARD_SLOT-3.5, HOARD_H-3.5);
+        ctx.font=ttFont(13); ctx.textAlign="center"; ctx.fillStyle=TTX.neon;
+        ctx.fillText("SCORDAGOL", x+HOARD_SLOT/2, HOARD_Y+22); ctx.textAlign="left";
+      }
+    }
+  }
+  // L2: procedural goal + net — pixel-exact at LPOST/RPOST/BARH by construction, finally
+  // animatable (HANDOVER §3.4): the net bulges on a goal, the frame shakes on woodwork.
+  // Drawn INSIDE the leftFooted mirror so the bulge follows the (mirrored) ball.
+  let netBulgeT=0, netBulgeX=GCX, netBulgeY=120, barShakeT=0;   // decay in tick()
+  function drawGoal() {            // field space
+    const L=LPOST, R=RPOST, T=KEEPER_STAGE_Y-BARH, B=KEEPER_STAGE_Y;   // 135,430,58,163
+    const bl=L+24, br=R-24, bt=T+12, bb=B-3;        // back frame (net depth at this perspective)
+    let sx=0, sy=0;
+    if (barShakeT>0){ const k=barShakeT/0.35; sx=Math.sin(barShakeT*70)*2.6*k; sy=Math.cos(barShakeT*53)*1.4*k; }
+    ctx.save(); ctx.translate(sx, sy);
+    // mesh displacement: radial push from the ball's entry point, decaying after a goal
+    const amp = netBulgeT>0 ? 9*(netBulgeT/0.5) : 0;
+    const dis = (x,y)=>{ if (!amp) return [x,y];
+      const dx=x-netBulgeX, dy=y-netBulgeY, d2=dx*dx+dy*dy, r2=55*55;
+      if (d2>r2) return [x,y];
+      const f=amp*(1-d2/r2), d=Math.sqrt(d2)||1;
+      return [x+dx/d*f*0.5, y-f];                   // outward + up-back
+    };
+    const net=(x0,y0,x1,y1,n)=>{                    // displaced polyline
+      ctx.beginPath();
+      for (let i=0;i<=n;i++){ const p=dis(x0+(x1-x0)*i/n, y0+(y1-y0)*i/n);
+        i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1]); }
+      ctx.stroke();
+    };
+    ctx.strokeStyle="rgba(235,238,240,0.32)"; ctx.lineWidth=1;
+    for (let x=bl;x<=br;x+=9) net(x,bt,x,bb,6);                            // back panel mesh
+    for (let y=bt;y<=bb;y+=9) net(bl,y,br,y,8);
+    for (let x=L;x<=R;x+=14){ const k=(x-L)/(R-L); net(x,T, bl+(br-bl)*k,bt, 4); }     // roof panel
+    for (let y=T;y<=B;y+=14){ const k=(y-T)/(B-T);                                      // side panels
+      net(L,y, bl, bt+(bb-bt)*k, 4); net(R,y, br, bt+(bb-bt)*k, 4); }
+    ctx.strokeStyle="rgba(230,232,235,0.5)"; ctx.lineWidth=2;              // rear skeleton frame
+    ctx.strokeRect(bl, bt, br-bl, bb-bt);
+    ctx.fillStyle="#f1f3f4";                                                // front frame
+    ctx.fillRect(L-3.5, T-3.5, (R-L)+7, 7);                                 // crossbar
+    ctx.fillRect(L-3.5, T-3.5, 7, (B-T)+3.5);                               // left post
+    ctx.fillRect(R-3.5, T-3.5, 7, (B-T)+3.5);                               // right post
+    ctx.fillStyle="rgba(120,128,134,0.5)";                                  // inner shading = roundness
+    ctx.fillRect(L+1.5, T+3.5, 2, B-T-3.5); ctx.fillRect(R+1.5, T+3.5, 2, B-T-3.5);
+    ctx.fillRect(L+3.5, T+1.5, R-L-7, 2);
+    ctx.fillStyle="rgba(10,20,12,0.30)";                                    // contact shadows ground the posts
+    ctx.beginPath(); ctx.ellipse(L, B+1.5, 9, 2.5, 0, 0, 2*Math.PI); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(R, B+1.5, 9, 2.5, 0, 0, 2*Math.PI); ctx.fill();
+    ctx.restore();
   }
   function render() {
     ctx.setTransform(SCALE,0,0,SCALE,0,0);
@@ -1842,12 +1911,13 @@
     //      the teletext MENUS draw natively across the full VW (ttClear fills the whole view) ----
     if (inMatch) {
       touchBackBtn=null;                  // never let a stale menu back-button fire during gameplay
-      drawStadiumSides();                 // extended stadium fills the side margins
+      drawBackdrop();                     // L0 stadium art across the full view
+      drawHoardings();                    // L1 perimeter ad boards (view space)
       ctx.save(); ctx.translate(OX,0);    // centre the field/sprites/HUD
-      pitchBg(0);
       {
         ctx.save();
         if (leftFooted){ ctx.translate(2*GCX,0); ctx.scale(-1,1); }   // mirror sprites around the goal centre
+        drawGoal();                                                    // L2 goal+net (mirrored with the ball)
         drawKeeper(); drawDefenders(); drawBall(); drawStriker();      // keeper at the BACK (behind the defenders)
         ctx.restore();
       }
@@ -2186,6 +2256,7 @@
   function tick(now){
     let frame=(now-last)/1000; last=now; if(frame>0.25) frame=0.25; acc+=frame;
     flash=Math.max(0,flash-frame*1.6);
+    netBulgeT=Math.max(0,netBulgeT-frame); barShakeT=Math.max(0,barShakeT-frame);   // goal-net / woodwork animation decay
     while(acc>=DT){ if(assetsReady) swfFrame(); acc-=DT; }
     render();
   }
