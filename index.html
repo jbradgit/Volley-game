@@ -72,7 +72,7 @@
   // ---- Static assets (kits are loaded dynamically per club, see loadKits) ----
   const IMG = {};
   const sources = { backdrop:"assets/stadium/backdrop.png?v=1",
-                    logo:"assets/ui/logo.png?v=2",
+                    logo:"assets/ui/logo.png?v=2", trophyL:"assets/ui/trophy_league.png?v=1",
                     katlas0:"assets/keeper_atlas_0.png?v=dd", katlas1:"assets/keeper_atlas_1.png?v=dd",
                     ball:"assets/ball.png?v=hr", shadow:"assets/shadow.png?v=hr",
                     defmap:"assets/defender_regionmap.png?v=live2" };
@@ -240,7 +240,7 @@
 
   // ---- Game state ----
   const ST = { MENU:"menu", NAME:"name", CLUBSEL:"clubsel", TABLE:"table", SEASONEND:"seasonend",
-               INBOX:"inbox", EMAIL:"email",
+               INBOX:"inbox", EMAIL:"email", TROPHY:"trophy",
                TITLE:"title", COUNTDOWN:"countdown", SERVE:"serve", FLIGHT:"flight", RESULT:"result",
                MATCHEND:"matchend", OVER:"over",
                DAILYBOARD:"dailyboard", HORSESETUP:"horsesetup", HORSEPASS:"horsepass", HORSEEND:"horseend" };
@@ -248,6 +248,7 @@
   let menuSel = 0;          // menu / club-select cursor
   let inboxSel = 0, openedOffer = 0;   // transfer-inbox cursor + opened email index
   let clinchBtn = null;                // clickable "end season" button rect on the career home (when title clinched)
+  let trophyRoomBtn = null;            // clickable "trophies" button rect on the career home
   let nameBuf = "";         // player-name entry buffer
   let pendingMode = "career";  // 'quick' or 'career' — what the club-select confirms into
   let GMODE = "career";     // active game mode: 'career' | 'daily' | 'horse'
@@ -259,7 +260,14 @@
 
   // ---- Career ----
   let CAR = null;   // {name, slug, season, idx, fixtures:[{opp,home}], table:{slug:{p,w,d,l,pts,gd}}, news:[]}
-  function loadCareer(){ try { return JSON.parse(localStorage.getItem("vc_career")); } catch(e){ return null; } }
+  function loadCareer(){
+    try {
+      const c = JSON.parse(localStorage.getItem("vc_career"));
+      if (c && c.titles>0 && !c.trophies)                                   // migrate pre-trophy-room saves
+        c.trophies = Array.from({length:c.titles}, ()=>({t:"league", s:null, club:c.slug}));
+      return c;
+    } catch(e){ return null; }
+  }
   function saveCareer(){ if (CAR) localStorage.setItem("vc_career", JSON.stringify(CAR)); }
   function freshTable(){ const t={}; for (const tm of TEAMS) t[tm.slug]={p:0,w:0,d:0,l:0,pts:0,gd:0}; return t; }
   function shuffle(a){ for (let i=a.length-1;i>0;i--){ const j=rnd(i+1); [a[i],a[j]]=[a[j],a[i]]; } return a; }
@@ -288,17 +296,22 @@
   // number visibly MOVES as you win or lose (the old model pinned everyone outside the top 2 at 1%).
   // ODDS_FORM = per-season form variance. Higher = more upsets => a points lead is worth less,
   // so a 5pt lead with 15 games left reads ~60% (like a real betting market) instead of ~74%.
-  const ODDS_W0 = 0.22, ODDS_WS = 0.34, ODDS_DRAW = 0.26, ODDS_FORM = 0.32;
+  // Calibrated against real recent EPL tables (sim-verified over 400 seasons):
+  // champions avg ~87 (range ~71-105), 4th ~71, 7th ~60, 10th ~50, 17th ~32, bottom ~22.
+  // ODDS_EXP makes the strength curve convex so elite clubs stay elite while mid-table
+  // drops to realistic totals; the observed-ppg blend is capped so leaders don't regress.
+  const ODDS_W0 = 0.16, ODDS_WS = 0.52, ODDS_EXP = 1.4, ODDS_DRAW = 0.24, ODDS_FORM = 0.14;
+  const winProb = (s)=> clamp(ODDS_W0 + ODDS_WS*Math.pow(s, ODDS_EXP), 0.10, 0.78);
   function teamStrength(slug){
     const t=TEAMBY[slug], r=CAR.table[slug]; let s=(t.rating-1)/9;
-    if (r.p>=3){ const ppg=r.pts/r.p, sImp=ppg/3, w=Math.min(1, r.p/10); s=(1-w)*s + w*sImp; }
+    if (r.p>=3){ const ppg=r.pts/r.p, sImp=ppg/3, w=Math.min(0.35, r.p/24); s=(1-w)*s + w*sImp; }
     return clamp(s, 0, 1);
   }
   // simulate one matchday for all teams except those given (player's + opponent's real result handled separately)
   function simRound(exclude){
     for (const tm of TEAMS){
       if (exclude.indexOf(tm.slug)>=0) continue;
-      const pW = clamp(ODDS_W0 + ODDS_WS*teamStrength(tm.slug), 0.05, 0.88);
+      const pW = winProb(teamStrength(tm.slug));
       const row = CAR.table[tm.slug]; row.p++; const x=Math.random();
       if (x < pW){ row.w++; row.pts+=3; row.gd+=1+rnd(2); }
       else if (x < pW+ODDS_DRAW){ row.d++; row.pts+=1; }
@@ -314,7 +327,7 @@
       const pts={}, gd={};
       for (const t of TEAMS){ const r=CAR.table[t.slug]; pts[t.slug]=r.pts; gd[t.slug]=r.gd;
         const form=(Math.random()*2-1)*ODDS_FORM;                          // this team runs hot/cold this season
-        const pW=clamp(ODDS_W0 + ODDS_WS*sT[t.slug] + form, 0.05, 0.88);
+        const pW=clamp(winProb(sT[t.slug]) + form, 0.08, 0.82);
         for (let g=total-r.p; g>0; g--){ const x=Math.random();
           if (x<pW){ pts[t.slug]+=3; gd[t.slug]++; } else if (x<pW+ODDS_DRAW){ pts[t.slug]++; } else { gd[t.slug]--; } }
       }
@@ -352,7 +365,7 @@
   function endSeasonEarly(){    // simulate the dead-rubber run-in and jump to the summer
     while (CAR.idx < CAR.fixtures.length){
       const fx=CAR.fixtures[CAR.idx], me=CAR.table[CAR.slug], op=CAR.table[fx.opp];
-      const pW=clamp(ODDS_W0+ODDS_WS*teamStrength(CAR.slug),0.05,0.9), x=Math.random();
+      const pW=winProb(teamStrength(CAR.slug)), x=Math.random();
       const res = x<pW ? "W" : (x<pW+ODDS_DRAW ? "D" : "L");
       me.p++; op.p++;
       if (res==="W"){ me.w++; me.pts+=3; me.gd+=2; op.l++; op.gd-=2; }
@@ -391,19 +404,65 @@
       if (c && c!==t.shirt && COLOUR_WORD[c]){ b=COLOUR_WORD[c]; break; } }
     return b ? (a+" and "+b) : a;
   }
-  function offerSubject(fp){
-    if (fp===1) return "Join the Champions";
-    if (fp<=4)  return "Champions League football awaits";
-    if (fp<=7)  return "A new challenge for you";
-    if (fp<=12) return "We'd love to sign you";
-    return "Help us climb the table";
-  }
-  function offerBody(t, fp){
+  // ---- Smail transfer-offer generator: scenario pools stuffed with the classics ----
+  const OFFER_SIGN=[ ["Ron Hedgerley","Chairman"], ["Barry Quill","Director of Football"],
+    ["Trevor Dunmow","Chief Executive"], ["Sir Reg Ollerton","Club President"],
+    ["Dave Calloway","Sporting Director"], ["Maureen Bracewell","Club Secretary"],
+    ["Big Sam Trundle","First Team Manager"], ["Keith Mowbray","Head of Recruitment"] ];
+  const OFFER_FLATTER=[
+    "The gaffer has been purring about you all season. His exact words: \"different gravy\".",
+    "Our scouts watched you home and away and filed the same report every week: top, top player.",
+    "The lads in the boot room can't stop talking about that volley of yours. Unplayable, son.",
+    "You give 110 percent every single week, and frankly that's the kind of maths we like here.",
+    "They say the first five yards are in your head. Yours are absolutely rapid.",
+    "There are no easy games at this level, yet you make it look like a training session.",
+    "Week in, week out, you put it in the mixer and ask serious questions of the keeper. We've run out of answers.",
+    "Our analysts ran your numbers through the computer. The computer asked for your autograph." ];
+  const OFFER_CLOSE=[
+    "At the end of the day, when all's said and done, it's a no-brainer.",
+    "Come and write your name into folklore. Early doors, ideally.",
+    "It's squeaky-bum time in our boardroom until you say yes.",
+    "We'll leave the light on. And the chairman's jet fuelled.",
+    "Football, eh? Bloody hell. Just say yes.",
+    "No pressure, but the season-ticket waiting list doubled when this leaked.",
+    "The ball is in your court. Ideally arriving on the volley.",
+    "We took it one game at a time all season. Now we're taking it one email at a time." ];
+  const OFFER_SCEN=[
+    { max:1, subj:["Join the Champions","Best signs for best. Simple.","Winners want winners","Champagne football awaits"],
+      hook:["As champions we shop in one aisle only: the very top shelf. And there you are.",
+            "We have just won the league, but the gaffer says standing still is going backwards."],
+      pitch:["Picture our famous {kit} kit with a gold badge on it, and you front and centre of the team photo.",
+             "Come and defend the title with us. The open-top bus is practically the club car at this point."] },
+    { max:4, subj:["Champions League football awaits","Big nights need big players","You belong under the lights","The big stage is calling"],
+      hook:["We finished {posth} and the famous European nights are back at our place.",
+            "Midweek anthems under the floodlights — that's just a normal Tuesday for us now."],
+      pitch:["We're a big club in every sense of the word, and we don't say that lightly. Our stadium announcer does, though.",
+             "Add your volleys to this squad and, whisper it quietly, we might just go all the way."] },
+    { max:8, subj:["A new challenge for you","One piece missing: you","Ready for the next step?","Ambition. Trajectory. You."],
+      hook:["We finished {posth} this season and the board agrees we are exactly one marquee signing away.",
+            "We've been knocking on the door all season. You, my friend, are both the key AND the knocker."],
+      pitch:["We punch above our weight here. With you, we'd be punching in a different weight class altogether.",
+             "Our fans would take to you straight away — they love a player who leaves absolutely everything out there."] },
+    { max:13, subj:["A team built around YOU","Be our main man","The Project (it's you)","Come and be the crown jewel"],
+      hook:["Cards on the table: we finished {posth}. But the new owners have a five-year plan and a laminated PowerPoint.",
+            "We're calling it The Project. Phase one: sign you. Phase two: build the entire team around you. Phase three: glory."],
+      pitch:["You'd be the first name on the teamsheet, on the free-kicks, on the corners, and probably on the programme cover.",
+             "The training ground is getting redone, the pies are award-winning, and the number 10 shirt in {kit} is hanging up with your name on it."] },
+    { max:99, subj:["Help us climb the table","A sleeping giant stirs","Roll your sleeves up","Real football. Proper club."],
+      hook:["Look, we finished {posth}. The table doesn't lie, but we feel it does occasionally exaggerate.",
+            "We are a sleeping giant, and frankly the alarm has been going off for years. Be our snooze-proof signing."],
+      pitch:["It'll be backs-to-the-wall stuff some weeks, but when our fortress is bouncing there's no place like it.",
+             "It's a results business, and our results need you. We can offer mud, passion, and surprisingly good floodlights."] } ];
+  function offerScen(fp){ for (const s of OFFER_SCEN) if (fp<=s.max) return s; return OFFER_SCEN[OFFER_SCEN.length-1]; }
+  function offerSubject(fp){ const s=offerScen(fp); return s.subj[rnd(s.subj.length)]; }
+  function offerBody(t, fp, sign){
+    const s=offerScen(fp), fill=(x)=>x.replace(/{posth}/g, ord(fp)).replace(/{kit}/g, kitDesc(t.slug));
     return "Dear "+CAR.name+",\n\n"+
-      "We've had an eye on you throughout this very impressive campaign and think you'd be a perfect fit for us here at "+t.name+".\n\n"+
-      "We finished "+ord(fp)+" in the league this season, and we're certain you'd look right at home in our "+kitDesc(t.slug)+".\n\n"+
-      "We do hope you'll consider joining us.\n\n"+
-      "Kind regards,\nThe Board, "+t.name;
+      fill(s.hook[rnd(s.hook.length)])+"\n\n"+
+      OFFER_FLATTER[rnd(OFFER_FLATTER.length)]+"\n\n"+
+      fill(s.pitch[rnd(s.pitch.length)])+"\n\n"+
+      OFFER_CLOSE[rnd(OFFER_CLOSE.length)]+"\n\n"+
+      "Yours in football,\n"+sign[0]+", "+sign[1]+"\n"+t.name;
   }
   function genOffers(){
     const pos=myPosition();
@@ -416,8 +475,11 @@
     // …and if you're at/near the top, the rest of the elite court you too
     if (cands.length<nMax){ const below=std.filter(t=>t.slug!==CAR.slug && clubFinishPos(t.slug)>pos);
       cands=cands.concat(below.slice(0, nMax-cands.length)); }
-    return cands.map(t=>{ const fp=clubFinishPos(t.slug);
-      return { slug:t.slug, name:t.name, rating:TEAMBY[t.slug].rating, pos:fp, subject:offerSubject(fp), body:offerBody(t,fp), read:false }; });
+    return cands.map(t=>{ const fp=clubFinishPos(t.slug), sign=OFFER_SIGN[rnd(OFFER_SIGN.length)];
+      return { slug:t.slug, name:t.name, rating:TEAMBY[t.slug].rating, pos:fp,
+               subject:offerSubject(fp), body:offerBody(t,fp,sign), read:false,
+               sign:sign[0]+" · "+sign[1],
+               from:sign[0].toLowerCase().split(" ").join(".")+"@"+t.slug.toLowerCase()+".smail.co.uk" }; });
   }
   function enterSeasonEnd(){ if (!CAR.offers) CAR.offers=genOffers(); inboxSel=0; openedOffer=0; state=ST.SEASONEND; }
 
@@ -1574,6 +1636,14 @@
       } else if (ttCursorOn()){
         ctx.fillStyle=TTX.neon; ctx.font=ttFont(20); ctx.textAlign="center"; ctx.fillText(TOUCH?"TAP  TO  PLAY":"SPACE  /  CLICK  TO  PLAY", VW/2, nbY+nbH+30);
       }
+      // ★ TROPHIES button — bottom-right (click/tap; desktop also key T)
+      { const tbW=116,tbH=26,tbX=VW-tbW-10,tbY=nbY+nbH+14;
+        ctx.fillStyle="rgba(0,0,10,0.55)"; ctx.fillRect(tbX,tbY,tbW,tbH);
+        ctx.strokeStyle="#ffd700"; ctx.lineWidth=1; ctx.strokeRect(tbX+0.5,tbY+0.5,tbW-1,tbH-1);
+        ctx.font=ttFont(13); ctx.fillStyle="#ffd700"; ctx.textAlign="center"; ctx.textBaseline="middle";
+        ctx.fillText("★ TROPHIES", tbX+tbW/2, tbY+tbH/2+1); ctx.textBaseline="alphabetic"; ctx.textAlign="left";
+        trophyRoomBtn={x:tbX,y:tbY,w:tbW,h:tbH};
+      }
       // ← MENU button (touch only) — bottom-left, clear of the centred CTA and ticker
       if (TOUCH){ const bbW=92,bbH=26,bbX=10,bbY=nbY+nbH+14;
         ctx.fillStyle="rgba(0,0,10,0.55)"; ctx.fillRect(bbX,bbY,bbW,bbH);
@@ -1595,21 +1665,99 @@
     for (let x=-off; x<VW; x+=tw) ctx.fillText(text, x, y);
     ctx.restore(); ctx.textAlign="center";
   }
+  // ---- Smail wordmark: multicoloured parody webmail brand, drawn at any size ----
+  function drawSmailMark(x, cy, px){
+    const cols=["#5b8cff","#ff5252","#ffce3d","#5b8cff","#4dff7a"], word="Smail";
+    ctx.font="bold "+px+"px 'Trebuchet MS','Arial',sans-serif"; ctx.textBaseline="middle"; ctx.textAlign="left";
+    let gx=x;
+    for (let i=0;i<word.length;i++){ ctx.fillStyle=cols[i]; ctx.fillText(word[i], gx, cy+1); gx+=ctx.measureText(word[i]).width; }
+    ctx.textBaseline="alphabetic";
+    return gx-x;
+  }
   function drawSeasonEnd(){
-    const pos=myPosition(), champ=standings()[0];
-    ttBar("SCORDAGOL   SEASON "+CAR.season+" COMPLETE", 0, 12, VW, 30, TTX.blue, TTX.white, {size:17});
+    const pos=myPosition(), champ=standings()[0], r=CAR.table[CAR.slug];
+    // header row matches the career home: logo box | review bar | FULL TIME
+    const HBY=4, LOGOW=220, HBH=TOUCH?40:32;
+    ctx.fillStyle="#06070b"; ctx.fillRect(0,HBY,VW,HBH);
+    ctx.strokeStyle=LOGO_ACCENT; ctx.lineWidth=2; ctx.strokeRect(1.5,HBY+1.5,LOGOW-3,HBH-3);
+    drawLogo(LOGOW/2, 0, LOGOW-28, {cy:HBY+HBH/2, maxH:HBH-10});
+    ttBar("SEASON "+CAR.season+" REVIEW", LOGOW, HBY, VW-LOGOW, HBH, TTX.blue, TTX.yellow, {size:TOUCH?26:20});
+    pxText("FULL TIME", VW-14, HBY+HBH/2+1, TOUCH?16:14, TTX.white, 'r', 'm');
+    const ht=HBY+HBH;
+    const medal = pos===1?"#ffd700":(pos===2?"#cfd6dd":(pos===3?"#cd8a4b":(pos<=4?TTX.cyan:(pos>=18?TTX.red:TTX.white))));
     ctx.textAlign="center";
-    ttPrint(TEAMBY[CAR.slug].name.toUpperCase()+" FINISHED "+ord(pos).toUpperCase(), 0, 120,
-            pos===1?TTX.green:(pos<=4?TTX.yellow:TTX.white), 0, {size:24, center:true});
+    ttPrint(TEAMBY[CAR.slug].name.toUpperCase(), 0, ht+40, teamTextColor(CAR.slug), 0, {size:20, center:true});
     if (ttDone(1)){
-      ctx.font=ttFont(15); ctx.fillStyle=TTX.cyan; ctx.fillText("CHAMPIONS: "+champ.name.toUpperCase(), VW/2, 160);
-      if (pos===1){ ctx.fillStyle=TTX.green; ctx.font=ttFont(18); ctx.fillText("★ YOU WON THE TITLE! ★", VW/2, 192); }
+      // the headline: giant finishing position in medal colour, trophies flanking a title win
+      ctx.font=ttFont(84);
+      ctx.fillStyle="rgba(0,0,0,0.85)"; ctx.fillText(ord(pos).toUpperCase(), VW/2+4, ht+134);
+      ctx.fillStyle=medal; ctx.fillText(ord(pos).toUpperCase(), VW/2, ht+130);
+      if (pos===1){
+        const im=IMG.trophyL;
+        if (im && im.naturalWidth){ ctx.drawImage(im, VW/2-208, ht+44, 78, 104); ctx.drawImage(im, VW/2+130, ht+44, 78, 104); }
+        pxText("C H A M P I O N S", VW/2, ht+162, 20, "#ffd700", 'c', 'm');
+      } else {
+        ctx.font=ttFont(15); ctx.fillStyle=TTX.cyan; ctx.fillText("CHAMPIONS:  "+champ.name.toUpperCase(), VW/2, ht+164);
+      }
+      // aligned stats strip — same thirds pattern as the career home footer
+      const c1=VW*0.25, c2=VW*0.50, c3=VW*0.75, hY=ht+200, vY=hY+24;
+      ctx.fillStyle="rgba(255,255,255,0.12)";
+      ctx.fillRect(VW*0.375,hY-10,1,(vY-hY)+22); ctx.fillRect(VW*0.625,hY-10,1,(vY-hY)+22);
+      ctx.textBaseline="middle"; ctx.textAlign="center";
+      ctx.font=ttFont(13); ctx.fillStyle=TTX.grey;
+      ctx.fillText("RECORD", c1, hY); ctx.fillText("POINTS", c2, hY); ctx.fillText("CAREER TITLES", c3, hY);
+      ctx.font=ttFont(18);
+      ctx.fillStyle=TTX.white;  ctx.fillText(r.w+"W  "+r.d+"D  "+r.l+"L", c1, vY);
+      ctx.fillStyle=TTX.yellow; ctx.fillText(""+r.pts, c2, vY);
+      ctx.fillStyle="#ffd700";  ctx.fillText(""+((CAR.titles||0)+(pos===1?1:0)), c3, vY);
+      ctx.textBaseline="alphabetic";
+      // Smail panel: the summer's post
       const n=(CAR.offers||[]).length;
-      ctx.font=ttFont(15); ctx.fillStyle = n>0?TTX.yellow:TTX.grey;
-      ctx.fillText(n>0 ? (n+" TRANSFER OFFER"+(n>1?"S":"")+" IN YOUR INBOX") : "NO TRANSFER OFFERS THIS SUMMER", VW/2, 252);
+      const pbW=560, pbX=VW/2-pbW/2, pbY=vY+30, pbH=54;
+      ctx.fillStyle="#0a1224"; ctx.fillRect(pbX,pbY,pbW,pbH);
+      ctx.strokeStyle=TTX.blue; ctx.lineWidth=2; ctx.strokeRect(pbX+1,pbY+1,pbW-2,pbH-2);
+      const mw=drawSmailMark(pbX+18, pbY+pbH/2, 24);
+      ctx.textAlign="left"; ctx.font=ttFont(15);
+      ctx.fillStyle = n>0?TTX.yellow:TTX.grey;
+      ctx.fillText(n>0 ? ("YOU'VE GOT MAIL  —  "+n+" TRANSFER OFFER"+(n>1?"S":"")) : "NO NEW MAIL. A QUIET SUMMER.", pbX+18+mw+22, pbY+pbH/2+5);
+      ctx.textAlign="center";
       if (ttCursorOn()){ ctx.fillStyle=TTX.neon; ctx.font=ttFont(18);
-        ctx.fillText(n>0 ? (TOUCH?"TAP  TO  OPEN  INBOX":"SPACE  TO  OPEN  INBOX") : (TOUCH?"TAP  TO  START  NEXT  SEASON":"SPACE  TO  START  NEXT  SEASON"), VW/2, 360); }
+        ctx.fillText(n>0 ? (TOUCH?"TAP  TO  OPEN  SMAIL":"SPACE  TO  OPEN  SMAIL")
+                         : (TOUCH?"TAP  TO  START  NEXT  SEASON":"SPACE  TO  START  NEXT  SEASON"), VW/2, pbY+pbH+34); }
     }
+    ctx.textAlign="left";
+  }
+  // ---- trophy room: Sega-style renders on cabinet shelves ----
+  function drawTrophyRoom(){
+    ttBar("TROPHY ROOM", 0, 12, VW, 30, TTX.blue, "#ffd700", {size:17});
+    const tr=(CAR && CAR.trophies)||[];
+    ctx.textAlign="right"; ctx.font=ttFont(12); ctx.fillStyle=TTX.grey;
+    ctx.fillText(tr.length+" TROPH"+(tr.length===1?"Y":"IES"), VW-14, 34); ctx.textAlign="left";
+    // cabinet
+    ctx.fillStyle="#15100c"; ctx.fillRect(40,56,VW-80,SH-104);
+    ctx.strokeStyle="#3a2a18"; ctx.lineWidth=3; ctx.strokeRect(41.5,57.5,VW-83,SH-107);
+    const shelfY=[226,408], shX=72, shW=VW-144;
+    for (const sy of shelfY){
+      ctx.fillStyle="#54381c"; ctx.fillRect(shX,sy,shW,9);
+      ctx.fillStyle="#33220f"; ctx.fillRect(shX,sy+9,shW,4);
+    }
+    if (!tr.length){
+      ctx.textAlign="center";
+      ctx.font=ttFont(20); ctx.fillStyle=TTX.grey; ctx.fillText("NOTHING IN THE CABINET YET.", VW/2, 150);
+      ctx.font=ttFont(14); ctx.fillStyle=TTX.dim;  ctx.fillText("EARLY DOORS. TAKE EACH GAME AS IT COMES.", VW/2, 178);
+    } else {
+      const im=IMG.trophyL, perShelf=8, tw=66, th=88, slot=96;
+      tr.slice(0,perShelf*2).forEach((tp,i)=>{
+        const sh=Math.floor(i/perShelf), onShelf=Math.min(tr.length-sh*perShelf, perShelf);
+        const x0=VW/2-(onShelf*slot)/2, x=x0+(i%perShelf)*slot+(slot-tw)/2, yb=shelfY[sh];
+        if (im && im.naturalWidth) ctx.drawImage(im, x, yb-th, tw, th);
+        pxText(tp.s ? "S"+tp.s : "★", x+tw/2, yb+24, 12, "#ffd700", 'c', 'm');
+      });
+      if (tr.length>perShelf*2){ ctx.textAlign="center"; ctx.font=ttFont(13); ctx.fillStyle=TTX.grey;
+        ctx.fillText("+"+(tr.length-perShelf*2)+" MORE IN STORAGE", VW/2, SH-60); }
+    }
+    ctx.textAlign="center"; ctx.font=ttFont(12); ctx.fillStyle=TTX.grey;
+    if (!TOUCH) ctx.fillText("ESC / SPACE  BACK", VW/2, SH-22);
     ctx.textAlign="left";
   }
   // ---- transfer inbox (teletext email client) ----
@@ -1625,30 +1773,44 @@
     }
     return out;
   }
-  function drawInbox(){
-    const offers=CAR.offers||[];
-    ttBar("SCORDAGOL   TRANSFER INBOX", 0,12,VW,30,TTX.blue,TTX.white,{size:16});
-    ctx.textAlign="left"; ctx.font=ttFont(11); ctx.fillStyle=TTX.dim;
-    ctx.fillText("FROM", 44, 58); ctx.fillText("SUBJECT", 232, 58);
-    ctx.textAlign="right"; ctx.fillStyle=TTX.cyan; ctx.fillText(offers.length+" MESSAGE"+(offers.length===1?"":"S"), VW-16, 58);
+  // Smail chrome shared by the inbox + open-email screens
+  function drawSmailChrome(rightText){
+    ctx.fillStyle="#0b0d13"; ctx.fillRect(0,0,VW,52);
+    drawSmailMark(18, 27, 26);
+    ctx.font=ttFont(10); ctx.fillStyle=TTX.dim; ctx.textAlign="left";
+    ctx.fillText("the net's favourite post", 19, 45);
+    // mock search box
+    ctx.fillStyle="#10141d"; ctx.fillRect(190,12,VW-430,28);
+    ctx.strokeStyle="rgba(255,255,255,0.22)"; ctx.lineWidth=1; ctx.strokeRect(190.5,12.5,VW-431,27);
+    ctx.font=ttFont(13); ctx.fillStyle=TTX.dim; ctx.fillText("Search mail…", 204, 31);
+    ctx.textAlign="right"; ctx.font=ttFont(13); ctx.fillStyle=TTX.cyan; ctx.fillText(rightText, VW-16, 24);
+    ctx.font=ttFont(11); ctx.fillStyle=TTX.dim;
+    ctx.fillText((CAR.name||"you").toLowerCase().split(" ").join(".")+"@smail.co.uk", VW-16, 41);
     ctx.textAlign="left";
-    const y0=70, rowH=42; inboxRects=[];
+    ctx.fillStyle="rgba(255,255,255,0.14)"; ctx.fillRect(0,52,VW,1);
+  }
+  function drawInbox(){
+    const offers=CAR.offers||[], unread=offers.filter(o=>!o.read).length;
+    drawSmailChrome("INBOX ("+unread+")");
+    const y0=64, rowH=46; inboxRects=[];
     inboxSel = clamp(inboxSel, 0, offers.length);
     for (let i=0;i<offers.length+1;i++){
       const y=y0+i*rowH, sel=i===inboxSel;
-      if (sel){ ctx.strokeStyle="rgba(255,255,255,0.7)"; ctx.lineWidth=1.5; ctx.strokeRect(8.75, y+0.75, VW-17.5, rowH-7.5); }
+      if (sel){ ctx.fillStyle="rgba(91,140,255,0.10)"; ctx.fillRect(8, y, VW-16, rowH-6);
+        ctx.strokeStyle="rgba(255,255,255,0.7)"; ctx.lineWidth=1.5; ctx.strokeRect(8.75, y+0.75, VW-17.5, rowH-7.5); }
       if (i<offers.length){
         const o=offers[i];
         ctx.font=ttFont(14,"bold "); ctx.fillStyle = o.read?TTX.dim:TTX.green;
         ctx.fillText(o.read?"  ":"●", 18, y+22);
-        ctx.fillStyle=TTX.cyan; ctx.fillText(o.name+" FC", 44, y+20);
-        ctx.font=ttFont(14); ctx.fillStyle = o.read?TTX.grey:TTX.yellow;
-        ctx.fillText(o.subject, 232, y+20);
+        ctx.font=ttFont(14); ctx.fillStyle = o.read?TTX.grey:TTX.cyan;
+        ctx.fillText(o.sign ? o.sign.split(" · ")[0] : (o.name+" FC"), 44, y+19);
+        ctx.fillStyle = o.read?TTX.grey:TTX.yellow;
+        ctx.fillText(o.subject, 250, y+19);
         ctx.font=ttFont(10); ctx.fillStyle=TTX.dim;
-        ctx.fillText("finished "+ord(o.pos)+"  ·  "+kitDesc(o.slug)+" kit", 44, y+34);
+        ctx.fillText((o.from||("theboard@"+o.slug.toLowerCase()+".smail.co.uk"))+"   ·   "+o.name+" finished "+ord(o.pos), 44, y+35);
       } else {
         ctx.font=ttFont(14,"bold "); ctx.fillStyle=TTX.neon;
-        ctx.fillText("» STAY  &  START NEXT SEASON", 24, y+25);
+        ctx.fillText("» NO THANKS — STAY AT "+(TEAMBY[CAR.slug]?TEAMBY[CAR.slug].name.toUpperCase():"YOUR CLUB")+" & START NEXT SEASON", 24, y+27);
       }
       inboxRects.push({x:8, y:y, w:VW-16, h:rowH-6, i:i});
     }
@@ -1658,18 +1820,23 @@
   }
   function drawEmail(){
     const o=(CAR.offers||[])[openedOffer]; if(!o){ state=ST.INBOX; return; }
-    ttBar("SCORDAGOL   TRANSFER OFFER", 0,12,VW,30,TTX.blue,TTX.white,{size:16});
+    drawSmailChrome("TRANSFER OFFER");
     ctx.textAlign="left";
-    ctx.font=ttFont(12); ctx.fillStyle=TTX.dim;  ctx.fillText("FROM:", 24, 62);
-    ctx.font=ttFont(14,"bold "); ctx.fillStyle=TTX.cyan; ctx.fillText(o.name+" FC", 92, 62);
-    ctx.font=ttFont(12); ctx.fillStyle=TTX.dim;  ctx.fillText("SUBJECT:", 24, 84);
-    ctx.font=ttFont(14,"bold "); ctx.fillStyle=TTX.yellow; ctx.fillText(o.subject, 118, 84);
-    ctx.strokeStyle=TTX.dim; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(16,96); ctx.lineTo(VW-16,96); ctx.stroke();
+    ctx.font=ttFont(12); ctx.fillStyle=TTX.dim;  ctx.fillText("FROM:", 24, 72);
+    ctx.font=ttFont(13,"bold "); ctx.fillStyle=TTX.cyan;
+    ctx.fillText((o.sign||("The Board · "+o.name))+"   <"+(o.from||("theboard@"+o.slug.toLowerCase()+".smail.co.uk"))+">", 92, 72);
+    ctx.font=ttFont(12); ctx.fillStyle=TTX.dim;  ctx.fillText("SUBJECT:", 24, 92);
+    ctx.font=ttFont(14,"bold "); ctx.fillStyle=TTX.yellow; ctx.fillText(o.subject, 118, 92);
+    ctx.strokeStyle=TTX.dim; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(16,102); ctx.lineTo(VW-16,102); ctx.stroke();
     ctx.font=ttFont(13); ctx.fillStyle=TTX.white;
-    let y=120; for (const ln of wrapText(o.body, VW-48, ttFont(13))){ ctx.fillText(ln, 24, y); y+=18; }
+    let y=124;
+    for (const ln of wrapText(o.body, VW-64, ttFont(13))){
+      if (ln===""){ y+=9; continue; }                  // tighter blank lines so long letters fit
+      ctx.fillText(ln, 24, y); y+=16;
+    }
     // action buttons
     const defs=[{k:"accept",label:"ACCEPT",col:TTX.green},{k:"decline",label:"DECLINE",col:TTX.red},{k:"back",label:"BACK TO INBOX",col:TTX.blue}];
-    const bw=160,bh=34,gap=14,total=defs.length*bw+(defs.length-1)*gap,bx=VW/2-total/2,by=400; emailBtns=[];
+    const bw=160,bh=34,gap=14,total=defs.length*bw+(defs.length-1)*gap,bx=VW/2-total/2,by=Math.max(404, y+14); emailBtns=[];
     for (let i=0;i<defs.length;i++){ const x=bx+i*(bw+gap);
       ctx.fillStyle=defs[i].col; ctx.fillRect(x,by,bw,bh);
       ctx.fillStyle="#06070b"; ctx.font=ttFont(13,"bold "); ctx.textAlign="center"; ctx.textBaseline="middle";
@@ -1686,7 +1853,10 @@
     else if (k==="decline" || k==="back"){ state=ST.INBOX; }
   }
   function nextSeason(newSlug){
-    if (myPosition()===1) CAR.titles++;                 // count last season's title before reset
+    if (myPosition()===1){                              // count last season's title before reset
+      CAR.titles++;
+      (CAR.trophies=CAR.trophies||[]).push({t:"league", s:CAR.season, club:CAR.slug});
+    }
     CAR.season++; CAR.idx=0;
     if (newSlug && newSlug!==CAR.slug){ CAR.slug=newSlug; CAR.news.unshift(CAR.name+" joins "+TEAMBY[newSlug].name+"!"); }
     CAR.fixtures = makeFixtures(CAR.slug); CAR.table = freshTable(); CAR.titleOdds=null;
@@ -2006,6 +2176,7 @@
     else if (state===ST.TABLE) { ttClear(); drawTable(); if(!TOUCH) drawTouchBack("← MENU"); }
     else if (state===ST.SEASONEND) { ttClear(); drawSeasonEnd(); drawTouchBack("← MENU"); }
     else if (state===ST.INBOX) { ttClear(); drawInbox(); drawTouchBack("← BACK"); }
+    else if (state===ST.TROPHY) { ttClear(); drawTrophyRoom(); drawTouchBack("← BACK"); }
     else if (state===ST.EMAIL) { ttClear(); drawEmail(); drawTouchBack("← BACK"); }
     else if (state===ST.DAILYBOARD) { ttClear(); drawDailyBoard(); drawTouchBack("← MENU"); }
     else if (state===ST.HORSESETUP) { ttClear(); drawHorseSetup(); drawTouchBack("← MENU"); }
@@ -2042,6 +2213,7 @@
     else if (state===ST.CLUBSEL){ if(pendingMode==="career"){ state=ST.NAME; kbdOpen(nameBuf); } else state=ST.MENU; menuSel=0; }
     else if (state===ST.EMAIL){ state=ST.INBOX; }
     else if (state===ST.INBOX){ state=ST.SEASONEND; }
+    else if (state===ST.TROPHY){ state=ST.TABLE; }
     else if (state===ST.TABLE || state===ST.SEASONEND){ GMODE="career"; state=ST.MENU; menuSel=0; }
     else if (state===ST.HORSESETUP){ kbdClose(); state=ST.MENU; menuSel=0; }
     else if (state===ST.DAILYBOARD || state===ST.HORSEEND || state===ST.HORSEPASS){ GMODE="career"; H=null; state=ST.MENU; menuSel=0; }
@@ -2069,6 +2241,7 @@
       const slug=TEAMS[menuSel].slug; GMODE="career"; newCareer(nameBuf.trim()||"You", slug); state=ST.TABLE;
     } }
     else if (state===ST.TABLE){ startFixture(); }
+    else if (state===ST.TROPHY){ state=ST.TABLE; }
     else if (state===ST.SEASONEND){ if((CAR.offers||[]).length>0){ inboxSel=0; state=ST.INBOX; } else nextSeason(null); }
     else if (state===ST.INBOX){ const n=(CAR.offers||[]).length; if(inboxSel<n) openEmail(inboxSel); else nextSeason(null); }
     else if (state===ST.COUNTDOWN){ countdownT=0; state=ST.SERVE; }   // skip the 3-2-1
@@ -2117,6 +2290,7 @@
     if (k==="KeyF"){ e.preventDefault(); toggleFullscreen(); return; }   // F = fullscreen (typing screens return earlier)
     if (k==="KeyM"){ e.preventDefault(); toggleMute(); return; }          // M = mute toggle
     if (state===ST.TABLE && k==="KeyE" && titleClinched()){ e.preventDefault(); endSeasonEarly(); return; }   // skip the run-in
+    if (state===ST.TABLE && k==="KeyT"){ e.preventDefault(); state=ST.TROPHY; return; }    // trophy room
     if (state===ST.EMAIL){
       if (k==="KeyA"){ e.preventDefault(); emailAction("accept"); return; }
       if (k==="KeyD"){ e.preventDefault(); emailAction("decline"); return; }
@@ -2225,7 +2399,8 @@
     else if(state===ST.TABLE){
       if(TOUCH){ tableSwipeAnchorY=p.y; tableSwipeAnchorScroll=tableScrollY; }
       else {
-        if(clinchBtn && p.x>=clinchBtn.x && p.x<=clinchBtn.x+clinchBtn.w && p.y>=clinchBtn.y && p.y<=clinchBtn.y+clinchBtn.h) endSeasonEarly();
+        if(trophyRoomBtn && p.x>=trophyRoomBtn.x && p.x<=trophyRoomBtn.x+trophyRoomBtn.w && p.y>=trophyRoomBtn.y && p.y<=trophyRoomBtn.y+trophyRoomBtn.h) state=ST.TROPHY;
+        else if(clinchBtn && p.x>=clinchBtn.x && p.x<=clinchBtn.x+clinchBtn.w && p.y>=clinchBtn.y && p.y<=clinchBtn.y+clinchBtn.h) endSeasonEarly();
         else pressSelect();
       }
     }
@@ -2238,7 +2413,8 @@
     const p=evToLogical(e);
     if(TOUCH && state===ST.TABLE && tableSwipeAnchorY!==null){
       if(Math.abs(p.y-tableSwipeAnchorY)<10){   // small movement = tap
-        if(clinchBtn && p.x>=clinchBtn.x && p.x<=clinchBtn.x+clinchBtn.w && p.y>=clinchBtn.y && p.y<=clinchBtn.y+clinchBtn.h) endSeasonEarly();
+        if(trophyRoomBtn && p.x>=trophyRoomBtn.x && p.x<=trophyRoomBtn.x+trophyRoomBtn.w && p.y>=trophyRoomBtn.y && p.y<=trophyRoomBtn.y+trophyRoomBtn.h) state=ST.TROPHY;
+        else if(clinchBtn && p.x>=clinchBtn.x && p.x<=clinchBtn.x+clinchBtn.w && p.y>=clinchBtn.y && p.y<=clinchBtn.y+clinchBtn.h) endSeasonEarly();
         else pressSelect();
       }
       tableSwipeAnchorY=null; return;

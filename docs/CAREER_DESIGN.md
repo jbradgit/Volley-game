@@ -30,13 +30,22 @@ league sim, transfer-offer inbox, seeded matches, the HORSE turn engine.
 
 Five leagues at launch, early-2000s flavour:
 
-| id | League (working name) | Teams | Rating band | Character |
+Difficulty ordering (owner decision): **England hardest, Spain second, then Italy /
+Germany / France equal** — and the differences are slight, not dramatic.
+
+| id | League (working name) | Teams | Difficulty | Character |
 |---|---|---|---|---|
-| ENG | Premier League | 20 | 1–10 | the default start |
-| ESP | Liga Estelar | 20 | 2–10 | two giants, technical |
-| ITA | Serie Argento | 20 | 2–10 | low-scoring: win targets ↑, draw targets ↓ |
-| GER | Bundesturnier | 18 | 2–9 | high-scoring: targets ↓, goals flow |
-| FRA | Ligue Royale | 18 | 1–8 | one dominant club |
+| ENG | Premier League | 20 | 1.00 (hardest) | the default start |
+| ESP | Liga Estelar | 20 | 0.95 | two giants, technical |
+| ITA | Serie Argento | 20 | 0.90 | low-scoring flavour |
+| GER | Bundesturnier | 18 | 0.90 | high-scoring flavour |
+| FRA | Ligue Royale | 18 | 0.90 | one dominant club |
+
+Difficulty scales the AI strength curve only (the `winProb` constants); per-match
+score targets are NOT changed by league. **League points realism (shipped):** the
+sim is calibrated against recent real EPL tables — champions average ~87 pts
+(range ~71–105), 4th ~71, 10th ~50, bottom ~22 — so running away with the title
+now requires a genuinely great season, not just a decent one.
 
 - Each league entry: `{ id, name, teams:[...same schema as teams.json...],
   targetMod, drawMod }` — the per-league personality is just two multipliers on

@@ -115,5 +115,12 @@ if (!dbg) fail("__dbg harness not exposed under ?cap=1");
   if (!sw.length) fail("sweep found no connecting kick timings");
   console.log("sweep:", sw.length, "connecting timings, first:", JSON.stringify(sw[0]));
 
+  // 5. season end -> Smail offers carry the new sender fields; screen renders
+  const se = dbg.fakeSeasonEnd(1);
+  if (se.state !== "seasonend") fail("fakeSeasonEnd did not reach SEASONEND: " + JSON.stringify(se));
+  if (!se.offers.length) fail("champion season generated no transfer offers");
+  dbg.tick(); dbg.tick();
+  console.log("season end ok, offers:", se.offers.join(", "));
+
   console.log("SMOKE PASS");
 })().catch(e => fail(e.stack || e));
