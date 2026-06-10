@@ -25,10 +25,10 @@ bd = Image.open(os.path.join(ROOT, "assets/stadium/backdrop.png")).resize((VW * 
 img.paste(bd, (0, 0))
 
 # L1 hoardings — same board order the game would pick (just take them in manifest order here)
-ads = json.load(open(os.path.join(ROOT, "assets/ads/ads.json")))["boards"]
+ads = json.load(open(os.path.join(ROOT, "assets/boards/boards.json")))["boards"]
 for i in range(7):
     b = ads[i % len(ads)]
-    im = Image.open(os.path.join(ROOT, "assets/ads", b["img"])).resize((132 * S, 34 * S))
+    im = Image.open(os.path.join(ROOT, "assets/boards", b["img"])).resize((132 * S, 34 * S))
     img.paste(im, (i * 132 * S, 104 * S))
 
 # L2 goal (PIL port of drawGoal(), rest state)

@@ -15,6 +15,7 @@ const ctxStub = () => new Proxy({}, {
     if (p === "measureText") return () => ({ width: 10 });
     if (p === "getImageData") return (x, y, w, h) => ({ data: new Uint8ClampedArray((w || 1) * (h || 1) * 4) });
     if (p === "createImageData") return (w, h) => ({ data: new Uint8ClampedArray(w * h * 4), width: w, height: h });
+    if (p === "createLinearGradient" || p === "createRadialGradient") return () => ({ addColorStop: () => {} });
     if (typeof p === "string") return () => {};
     return undefined;
   },
@@ -82,6 +83,10 @@ if (!dbg) fail("__dbg harness not exposed under ?cap=1");
 
 (async () => {
   await new Promise(r => setTimeout(r, 0) || setImmediate(r));   // let fetch promises settle
+
+  // 0. render the title screen (exercises ttClear/drawMenu/_buildLogo/_ball8)
+  dbg.tick(); dbg.tick();
+  console.log("menu render ok");
 
   // 1. the timing sweep finds connecting shots, and a full shot resolves to a result
   const sw0 = dbg.sweep(300, 20, 37, true);

@@ -1,0 +1,39 @@
+{
+ "boards": [
+  {
+   "id": "board_scordagol",
+   "img": "board_scordagol.png",
+   "weight": 1
+  },
+  {
+   "id": "board_pitchside",
+   "img": "board_pitchside.png",
+   "weight": 1
+  },
+  {
+   "id": "board_kestrel",
+   "img": "board_kestrel.png",
+   "weight": 2
+  },
+  {
+   "id": "board_volt",
+   "img": "board_volt.png",
+   "weight": 2
+  },
+  {
+   "id": "board_netlink",
+   "img": "board_netlink.png",
+   "weight": 2
+  },
+  {
+   "id": "board_portlys",
+   "img": "board_portlys.png",
+   "weight": 2
+  },
+  {
+   "id": "board_megasport",
+   "img": "board_megasport.png",
+   "weight": 2
+  }
+ ]
+}

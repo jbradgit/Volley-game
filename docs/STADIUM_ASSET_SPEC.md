@@ -79,7 +79,7 @@ Content rules:
 | Band | view-space, y **104..138**, full 924 width |
 | Slots | **7 slots × 132 × 34 logical** (7 × 132 = 924 exactly) |
 | Board asset size | **396 × 102 px** (@3×) PNG, opaque |
-| Files | `assets/ads/<id>.png` + `assets/ads/ads.json` manifest |
+| Files | `assets/boards/<id>.png` + `assets/boards/boards.json` manifest |
 
 Manifest sketch:
 
@@ -92,9 +92,10 @@ Manifest sketch:
 ```
 
 Runtime behaviour (when implemented):
+- **URL rule: never use "ads"/"advert" in paths or filenames** — desktop ad-blockers (EasyList) block such URLs, which hides every board. This is why the folder is `assets/boards/`.
 - Per match, pick 7 boards (weighted, seeded by the match RNG so daily-challenge players see identical boards).
 - **Failure must be visible-safe** (lesson from the keeper-atlas bug): if the manifest or an
-  image fails to load, draw a flat club-coloured board with "SCORDAGOL" text — never an empty band.
+  image fails to load (see URL rule above), draw a flat club-coloured board with "SCORDAGOL" text — never an empty band.
 - Boards are *impressions only* — no tap/click handling in-match (a mis-tap would move the striker). Clickable sponsorship belongs on menu screens / the scoreboard "ADVERTISE HERE" panel.
 - Later: fetch a remote `ads.json` (with the bundled one as fallback) so sold boards update without redeploying the game. Needs CORS-enabled hosting; cache with a date key.
 
@@ -159,7 +160,7 @@ big generated image, and both are hidden under the hoarding band.
 - Replace `drawStadiumSides()` + `pitchBg()` with `drawBackdrop()` (view space) and add
   `drawHoardings()` (view space) + `drawGoal()` (field space, drawn before the keeper, exactly
   where the baked goal sits today — keeper stays in front of the net, as in the original).
-- Add `ads.json` fetch **with a visible fallback** (see L1).
+- Add `boards.json` fetch **with a visible fallback** (see L1).
 - Trigger `goalAnim` next to `flash=0.6` (:687); woodwork shake next to `sfx.post()` (:659–665).
 - Keep old assets until the visual diff is approved, then delete `pitch_hd.png`/`pitch.jpg`/`crowd.jpg`/`kit.jpg`.
 - Acceptance: physics CI goldens unchanged (rendering only); screenshot diff approved on desktop + one phone aspect.

@@ -160,14 +160,15 @@
   let KMAN = null;
   fetch("assets/keeper_atlas.json?v=dd").then(r=>r.json()).then(j=>{ KMAN = j.frames; }).catch(()=>{});
   // ---- L1 perimeter ad boards: manifest + images (sold sponsor boards just replace files in
-  // assets/ads/ + ads.json — no code change). Failure falls back to procedural house boards.
+  // assets/boards/ + boards.json — no code change). Failure falls back to procedural house boards.
+  // NB: paths must never contain "ads"/"advert" — desktop ad-blockers block such URLs.
   const HOARD_Y = 104, HOARD_H = 34, HOARD_SLOT = 132, HOARD_N = 7;   // 7 x 132 = 924 = VW (docs/STADIUM_ASSET_SPEC.md §3)
   let ADS = [], ADS_IMG = {}, matchBoards = [];
-  fetch("assets/ads/ads.json?v=1")
+  fetch("assets/boards/boards.json?v=1")
     .then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
     .then(j=>{ ADS = j.boards||[];
-      for (const b of ADS){ const im=new Image(); im.src="assets/ads/"+b.img+"?v=1"; ADS_IMG[b.id]=im; } })
-    .catch(e=>{ try{ console.error("ads.json failed to load:", e); }catch(_){} });
+      for (const b of ADS){ const im=new Image(); im.src="assets/boards/"+b.img+"?v=1"; ADS_IMG[b.id]=im; } })
+    .catch(e=>{ try{ console.error("boards.json failed to load:", e); }catch(_){} });
   function pickBoards(pr){       // weighted pick of 7 boards; pr = match RNG so seeded (daily/HORSE) matches show identical boards
     matchBoards = [];
     if (!ADS.length) return;
@@ -431,6 +432,7 @@
   let _dragPrevMT=null, _dragVel=0;  // velocity tracking for momentum calculation
   let touchPauseResumeRect=null, touchPauseForfeitRect=null;
   let touchSpeedDecRect=null, touchSpeedIncRect=null;   // speed-adjust tap zones in pause overlay
+  let touchGlideDecRect=null, touchGlideIncRect=null;   // release-glide tap zones in pause overlay
   let touchBackBtn=null;
   let tableMenuBtns=[];
   let tableScrollY=0, tableSwipeAnchorY=null, tableSwipeAnchorScroll=0;
@@ -438,6 +440,7 @@
   let matchBalls=10;        // total balls for current match (used by ball counter)
   let firstShotShown=false; // true after first kick, hides drag-prompt on subsequent shots
   let dragSpeedMod = clamp(parseInt(localStorage.getItem("vc_speed")||"0"), -10, 10);
+  let dragGlideMod = clamp(parseInt(localStorage.getItem("vc_glide")||"0"), -8, 10);   // release glide: -80%..+100% momentum
   let manKicking=false, manKickT=0;
   let defenders = [];
   let keeperPose = { x:KEEPER_START_X, dir:"up", anim:"idle", frame:1 };
@@ -852,15 +855,20 @@
   // ---- 7-segment LED readout (arcade scoreboard digits) ----
   const _SEG={'0':'abcdef','1':'bc','2':'abdeg','3':'abcdg','4':'bcfg','5':'acdfg','6':'acdefg','7':'abc','8':'abcdefg','9':'abcdfg','-':'g',' ':''};
   function ledDigit(x,y,w,h,ch,on,off){
-    const t=Math.max(3,Math.round(Math.min(w,h)*0.22)), m=y+h/2, segs=_SEG[ch]!=null?_SEG[ch]:'';   // chunky segments
-    const S={ a:[x+t,y,w-2*t,t], g:[x+t,m-t/2,w-2*t,t], d:[x+t,y+h-t,w-2*t,t],
-              f:[x,y+t,t,h/2-1.5*t], b:[x+w-t,y+t,t,h/2-1.5*t],
-              e:[x,m+t/2,t,h/2-1.5*t], c:[x+w-t,m+t/2,t,h/2-1.5*t] };
-    for (const k in S){ const r=S[k]; ctx.fillStyle = segs.indexOf(k)>=0?on:off; ctx.fillRect(r[0],r[1],r[2],r[3]); }
+    // Thick block segments that MEET at the corners (alarm-clock style) — the old thin
+    // segments left big gaps that made digits hard to read at scoreboard size.
+    const t=Math.max(4,Math.round(Math.min(w,h)*0.30)), m=y+h/2, segs=_SEG[ch]!=null?_SEG[ch]:'';
+    const S={ a:[x,y,w,t], g:[x,m-t/2,w,t], d:[x,y+h-t,w,t],
+              f:[x,y,t,h/2+t/2], b:[x+w-t,y,t,h/2+t/2],
+              e:[x,m-t/2,t,h/2+t/2], c:[x+w-t,m-t/2,t,h/2+t/2] };
+    for (const k of "adgfbec"){ const r=S[k]; if (segs.indexOf(k)<0) continue; ctx.fillStyle=on; ctx.fillRect(r[0],r[1],r[2],r[3]); }
+    if (segs===''){ ctx.fillStyle=off; ctx.fillRect(x,y,w,t); }   // blank keeps box rhythm
   }
   function drawLED(x,y,w,h,str,on,off){
-    const n=str.length||1, dw=Math.min(w/n, h*0.74), gap=dw*0.14, sx=x+w-dw*n;   // wider digits, right-aligned in box
-    for (let i=0;i<n;i++) ledDigit(sx+i*dw, y, dw-gap, h, str[i], on, off);
+    const n=str.length||1, dw=Math.min(w/n, h*0.66), gap=Math.max(3,dw*0.18), sx=x+w-dw*n;   // right-aligned in box
+    ctx.fillStyle=off;                                            // faint "all segments" ghost behind
+    for (let i=0;i<n;i++) ctx.fillRect(sx+i*dw, y, dw-gap, h);
+    for (let i=0;i<n;i++) ledDigit(sx+i*dw, y, dw-gap, h, str[i], on, "rgba(0,0,0,0)");
   }
   // ---- club nameplate (coloured edge tabs + auto-fit name) ----
   function nameplate(x,y,w,h,name,slug){
@@ -915,11 +923,12 @@
     // team names in clean digital text — white on dark colours, dark on light
     const nameTextCol=teamHud.dark?"#ffffff":"#06070b";
     ctx.textBaseline="alphabetic"; ctx.textAlign="center";
-    { let fs=16; ctx.font=ttFont(fs,"bold ");
-      while(ctx.measureText(myName).width>184&&fs>9){fs--;ctx.font=ttFont(fs,"bold ");}
+    // plain VT323 (no faux-bold — canvas bold smears this font into illegibility), a notch larger
+    { let fs=19; ctx.font=ttFont(fs);
+      while(ctx.measureText(myName).width>184&&fs>10){fs--;ctx.font=ttFont(fs);}
       ctx.fillStyle=nameTextCol; ctx.fillText(myName, HL+120, 424); }
-    { let fs=16; ctx.font=ttFont(fs,"bold ");
-      while(ctx.measureText(oppName).width>184&&fs>9){fs--;ctx.font=ttFont(fs,"bold ");}
+    { let fs=19; ctx.font=ttFont(fs);
+      while(ctx.measureText(oppName).width>184&&fs>10){fs--;ctx.font=ttFont(fs);}
       ctx.fillStyle=nameTextCol; ctx.fillText(oppName, HR-120, 424); }
     // LEFT — SCORE (green LED, my club) with secondary-colour bezel
     bevel(HL+22,430,196,52,"#0c0e11",true,3,S);
@@ -938,13 +947,13 @@
     ctx.textAlign="center";
     // CENTRE — ball counter dots above, advert board below
     const adW=Math.min(356,VW*0.38), adX=cxv-adW/2;
-    { const ballR=5, ballGap=11, nb=matchBalls, bCountW=(nb-1)*ballGap;
+    { const ballR=6, ballGap=15, nb=matchBalls, bCountW=(nb-1)*ballGap;
       const bx0=cxv-bCountW/2, bY=420;
       for(let i=0;i<nb;i++){
         const used=i<(nb-M.attempts);
-        ctx.fillStyle=used?"rgba(0,0,0,0.30)":nameTextCol;
-        ctx.beginPath(); ctx.arc(bx0+i*ballGap, bY, ballR, 0, Math.PI*2); ctx.fill();
-        if(!used){ ctx.fillStyle="rgba(0,0,0,0.22)"; ctx.beginPath(); ctx.arc(bx0+i*ballGap-1, bY-1, ballR-2, 0, Math.PI*2); ctx.fill(); }
+        if (used){ ctx.fillStyle="rgba(0,0,0,0.32)";              // spent ball: dark slot
+          ctx.beginPath(); ctx.arc(bx0+i*ballGap, bY, ballR-1, 0, Math.PI*2); ctx.fill(); }
+        else _ball8(ctx, bx0+i*ballGap, bY, ballR);               // remaining: classic pixel football
       }
     }
     bevel(adX,428,adW,50,"#0c0e11",true,3,S);
@@ -1235,39 +1244,39 @@
       g.fillStyle = v===2 ? "#0b0b0b" : "#f4f4f4"; g.fillRect(px,py,pw,ph);
     }
   }
-  // The composed low-res logo is STATIC, so build it once per (size,depth,colour) and cache it —
-  // rebuilding the silhouette + threshold + footballs every frame was needlessly expensive.
+  // The composed low-res logo is STATIC, so build it once per (size,depth) and cache it.
+  // Shiny metallic gold lettering (Joe Montana Football style): chrome gradient face with a
+  // white shine band, dark outline, dark-bronze 3D extrude. Plain O's (no footballs).
   const _logoCache={};
-  function _buildLogo(F, depth, face, shadow){
-    const key=F+"|"+depth+"|"+face+"|"+shadow;
+  function _buildLogo(F, depth){
+    const key=F+"|"+depth;
     if (_logoCache[key]) return _logoCache[key];
-    const txt="SCORDAGOL", SKEW=0.22, pad=2, slant=Math.ceil(F*SKEW);
-    lMaskG.font="900 "+F+"px 'Arial Black','Arial',sans-serif";
+    const txt="SCORDAGOL", pad=2;
+    const FONT="900 "+F+"px 'Arial Black','Arial',sans-serif";
+    lMaskG.font=FONT;
     const tw=Math.ceil(lMaskG.measureText(txt).width);
-    const W=tw+slant+pad*2+depth, H=F+pad*2+depth+3;
+    const W=tw+pad*2+depth+2, H=F+pad*2+depth+4;
     lMask.width=W; lMask.height=H;
-    // 1-bit ITALIC silhouette, char-by-char, leaving the O's EMPTY (footballs replace them)
-    lMaskG.setTransform(1,0,-SKEW,1,0,0);
-    lMaskG.font="900 "+F+"px 'Arial Black','Arial',sans-serif"; lMaskG.textBaseline="top"; lMaskG.textAlign="left"; lMaskG.fillStyle="#fff";
-    let penX=pad+slant; const oC=[];
-    for (const ch of txt){ const cw=lMaskG.measureText(ch).width;
-      if (ch==="O") oC.push({x:penX+cw/2, y:pad+F*0.52, r:F*0.47}); else lMaskG.fillText(ch, penX, pad);
-      penX+=cw; }
-    lMaskG.setTransform(1,0,0,1,0,0);
+    lMaskG.font=FONT; lMaskG.textBaseline="top"; lMaskG.textAlign="left"; lMaskG.fillStyle="#fff";
+    lMaskG.fillText(txt, pad+1, pad);
     const id=lMaskG.getImageData(0,0,W,H), d=id.data;
-    for (let i=3;i<d.length;i+=4) d[i] = d[i]>100 ? 255 : 0;   // crisp hard edges (letters only)
+    for (let i=3;i<d.length;i+=4) d[i] = d[i]>100 ? 255 : 0;   // 1-bit silhouette = hard pixel edges
     lMaskG.putImageData(id,0,0);
     const c=document.createElement("canvas"); c.width=W; c.height=H; const cg=c.getContext("2d");
-    for (let s=depth;s>=1;s--) cg.drawImage(_logoTint(shadow), s, s);   // 3D extrude
-    cg.drawImage(_logoTint(face), 0, 0);                                // bright face
-    for (const o of oC){ const bx=o.x-SKEW*o.y, by=o.y;                 // footballs in the O slots
-      cg.fillStyle=shadow; cg.beginPath(); cg.arc(bx+depth,by+depth,o.r,0,2*Math.PI); cg.fill();
-      _ball8(cg, bx, by, o.r); }
+    for (let s=depth;s>=1;s--) cg.drawImage(_logoTint("#3a1606"), s, s);          // dark-bronze extrude
+    for (const [ox,oy] of [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,1],[1,-1],[-1,1]])
+      cg.drawImage(_logoTint("#241303"), ox, oy);                                  // dark outline
+    const grad=cg.createLinearGradient(0,0,0,F+pad*2);                             // gold chrome face
+    grad.addColorStop(0.00,"#fdf6c8"); grad.addColorStop(0.16,"#f7d94c");
+    grad.addColorStop(0.40,"#dba122"); grad.addColorStop(0.47,"#fffbe9");          // horizon shine line
+    grad.addColorStop(0.54,"#d8951c"); grad.addColorStop(0.78,"#a96a10");
+    grad.addColorStop(1.00,"#6f4207");
+    cg.drawImage(_logoTint(grad), 0, 0);
     return (_logoCache[key]={c:c, W:W, H:H});
   }
   function drawLogo(cx, baseY, maxW, opts){
     opts=opts||{};
-    const L=_buildLogo(opts.F||18, (opts.depth!=null?opts.depth:2), opts.face||"#34ff6e", opts.shadow||"#06371a");
+    const L=_buildLogo(opts.F||18, (opts.depth!=null?opts.depth:2));
     const scale=Math.min(maxW/L.W, (opts.maxH||150)/L.H);
     const dw=Math.round(L.W*scale), dh=Math.round(L.H*scale);
     const dx=Math.round(cx-dw/2), dy=(opts.cy!=null)?Math.round(opts.cy-dh/2):Math.round(baseY-dh);
@@ -1364,12 +1373,17 @@
   const MENU_Y0=276, MENU_DY=50, MENU_BW=480, MENU_BH=42;   // shared by drawMenu + menuHit (CX = VW/2)
   const MENU_OPTCOL=[TTX.cyan, TTX.yellow, "#5fff9e", "#ff8af0", TTX.white];   // teletext multi-colour options
   function drawMenu(){
-    // teletext colour frame (Ceefax/Lardiland style)
-    ctx.strokeStyle=TTX.blue;    ctx.lineWidth=5; ctx.strokeRect(9,9,VW-18,SH-18);
-    ctx.strokeStyle=TTX.magenta; ctx.lineWidth=2; ctx.strokeRect(16,16,VW-32,SH-32);
-    drawLogo(VW/2, 198, Math.min(VW-120, 808), {maxH:150});              // SCORDAGOL — bigger + lower, footballs for O's
+    // Title screen in the 16-bit console mould (Joe Montana Football): black field,
+    // big metallic gold logo upper-left, © line beneath, pixel football as the "portrait".
+    drawLogo(40+560/2, 168, 560, {maxH:120});                            // metallic SCORDAGOL, top-left
+    ctx.textAlign="left";
+    ctx.font=ttFont(15); ctx.fillStyle="#e7d9a8";
+    ctx.fillText("© 2026 WIMP STUDIO, INC.", 44, 196);
+    ttPrint("VOLLEY YOUR WAY TO GREATNESS", 44, 228, "#f7d94c", 0, {size:19});
+    _ball8(ctx, VW-180, 128, 86);                                        // giant classic football, right
+    ctx.strokeStyle="rgba(247,217,76,0.35)"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(VW-180, 128, 96, 0, 2*Math.PI); ctx.stroke();   // gold ring accent
     ctx.textAlign="center";
-    ttPrint("VOLLEY VOLLEY VOLLEY OI OI OI", 0, 232, "#ff5fd0", 0, {size:22, center:true});   // magenta complements the green logo
     const opts = menuOptions();
     menuSel = clamp(menuSel,0,opts.length-1);
     for (let i=0;i<opts.length;i++){
@@ -1477,9 +1491,9 @@
     ctx.fillStyle="#06070b"; ctx.fillRect(0,HBY,VW,HBH);
     ctx.fillStyle="#ffffff"; ctx.fillRect(0,HBY,LOGOW,HBH);
     drawLogo(LOGOW/2, 0, LOGOW-26, {cy:HBY+HBH/2, maxH:HBH-6, depth:1});
+    // header row: [logo][CAREER MODE .................. SEASON N] — one shared vertical centre
     ttBar("CAREER MODE", LOGOW, HBY, VW-LOGOW, HBH, TTX.blue, TTX.yellow, {size:TOUCH?26:20});
-    ctx.textAlign="right"; ctx.font=ttFont(11); ctx.fillStyle=TTX.white;
-    ctx.fillText("MD "+(CAR.idx+1)+"/"+CAR.fixtures.length, VW-12, HBY+HBH/2+4); ctx.textAlign="left";
+    pxText("SEASON "+CAR.season, VW-14, HBY+HBH/2+1, TOUCH?16:14, TTX.white, 'r', 'm');
 
     // ---- Ceefax-style full-height two-column league table + clean info footer ----
     // Shared by desktop and touch (identical 924x520 stage); only the call-to-action
@@ -1487,9 +1501,10 @@
     // from the header height (HBH is 8px taller on touch) so nothing collides up top.
     {
       const ht=HBY+HBH, xPad=20;
-      // section header (teletext): green title + yellow season on a blue rule
+      // section header: green title left, matchday indicator far right, on a blue rule
       ctx.font=ttFont(20); ctx.fillStyle=TTX.green; ctx.textAlign="left"; ctx.fillText("PREMIER LEAGUE TABLE", xPad, ht+24);
-      ctx.textAlign="right"; ctx.font=ttFont(16); ctx.fillStyle=TTX.yellow; ctx.fillText("SEASON "+CAR.season, VW-xPad, ht+24); ctx.textAlign="left";
+      ctx.textAlign="right"; ctx.font=ttFont(16); ctx.fillStyle=TTX.yellow;
+      ctx.fillText("MATCHDAY "+(CAR.idx+1)+" OF "+CAR.fixtures.length, VW-xPad, ht+24); ctx.textAlign="left";
       ctx.fillStyle="#0044bb"; ctx.fillRect(xPad,ht+30,VW-xPad*2,3);
       // two balanced columns spanning the full width with a slim centre gutter
       const colX=[44,490], blockW=394, top=ht+54, rowH=25, hdrY=ht+48, NAMEX=30;
@@ -1536,35 +1551,34 @@
       ctx.textAlign="left";
       const tblBottom = top+10*rowH;
 
-      // ---- footer: single status strip + prominent NEXT MATCH panel ----
+      // ---- footer: two aligned rows — headings (FORM | POSITION | TITLE ODDS) then values
+      //      (W/D/L chips | 1ST | 34%) on a shared baseline, all centred on thirds ----
       const form = (CAR.form||[]).slice(0,5).reverse();
-      const sY = tblBottom+26, c1=VW*0.26, c2=VW*0.50, c3=VW*0.74;
-      ctx.fillStyle="rgba(255,255,255,0.12)"; ctx.fillRect(VW*0.385,sY-13,1,26); ctx.fillRect(VW*0.615,sY-13,1,26);
-      ctx.textBaseline="middle";
-      // FORM cell — label + W/D/L chips, centred on c1
-      const chipW=26, chipH=20, gap=5, lblW=48;
-      const clusterW = lblW + (form.length ? form.length*(chipW+gap)-gap : 24);
-      let fcx = c1 - clusterW/2;
-      ctx.font=ttFont(14); ctx.fillStyle=TTX.grey; ctx.textAlign="left"; ctx.fillText("FORM", fcx, sY); fcx += lblW;
-      if (!form.length){ ctx.fillStyle=TTX.dim; ctx.fillText("--", fcx, sY); }
-      for (let i=0;i<form.length;i++){ const rf=form[i];
-        ctx.fillStyle = rf==="W"?"#1f9d49":(rf==="D"?"#5a626b":"#c43a3a");
-        ctx.fillRect(fcx, sY-chipH/2, chipW, chipH);
-        ctx.fillStyle="#ffffff"; ctx.font=ttFont(14); ctx.textAlign="center"; ctx.fillText(rf, fcx+chipW/2, sY+1);
-        ctx.textAlign="left"; fcx += chipW+gap;
-      }
-      // POSITION cell — centred on c2
-      ctx.textAlign="center";
-      ctx.font=ttFont(12); ctx.fillStyle=TTX.grey; ctx.fillText("POSITION", c2, sY-9);
-      ctx.font=ttFont(18); ctx.fillStyle=TTX.cyan; ctx.fillText(ord(mypos).toUpperCase(), c2, sY+8);
-      // TITLE ODDS / CHAMPIONS cell — centred on c3
-      ctx.font=ttFont(12); ctx.fillStyle=TTX.grey; ctx.fillText(titleClinched()?"STATUS":"TITLE ODDS", c3, sY-9);
-      if (titleClinched()){ ctx.font=ttFont(17); ctx.fillStyle=TTX.neon; ctx.fillText("★ CHAMPIONS", c3, sY+8); }
-      else { ctx.font=ttFont(18); ctx.fillStyle=TTX.yellow; ctx.fillText(CAR.titleOdds+"%", c3, sY+8); }
-      ctx.textBaseline="alphabetic";
+      const c1=VW*0.25, c2=VW*0.50, c3=VW*0.75;
+      const hY=tblBottom+20, vY=hY+24;
+      ctx.fillStyle="rgba(255,255,255,0.12)";
+      ctx.fillRect(VW*0.375,hY-10,1,(vY-hY)+22); ctx.fillRect(VW*0.625,hY-10,1,(vY-hY)+22);
+      ctx.textBaseline="middle"; ctx.textAlign="center";
+      ctx.font=ttFont(13); ctx.fillStyle=TTX.grey;
+      ctx.fillText("FORM", c1, hY); ctx.fillText("POSITION", c2, hY);
+      ctx.fillText(titleClinched()?"STATUS":"TITLE ODDS", c3, hY);
+      // value row — roomy W/D/L chips with truly centred letters
+      const chipW=24, chipH=22, gap=6;
+      if (!form.length){ ctx.font=ttFont(16); ctx.fillStyle=TTX.dim; ctx.fillText("--", c1, vY); }
+      else { let fcx = c1 - (form.length*(chipW+gap)-gap)/2;
+        for (const rf of form){
+          ctx.fillStyle = rf==="W"?"#1f9d49":(rf==="D"?"#5a626b":"#c43a3a");
+          ctx.fillRect(fcx, vY-chipH/2, chipW, chipH);
+          ctx.font=ttFont(15); ctx.fillStyle="#ffffff"; ctx.fillText(rf, fcx+chipW/2, vY+1);
+          fcx += chipW+gap;
+        } }
+      ctx.font=ttFont(18); ctx.fillStyle=TTX.cyan; ctx.fillText(ord(mypos).toUpperCase(), c2, vY);
+      if (titleClinched()){ ctx.font=ttFont(17); ctx.fillStyle=TTX.neon; ctx.fillText("★ CHAMPIONS", c3, vY); }
+      else { ctx.font=ttFont(18); ctx.fillStyle=TTX.yellow; ctx.fillText(CAR.titleOdds+"%", c3, vY); }
+      ctx.textBaseline="alphabetic"; ctx.textAlign="left";
 
       // NEXT MATCH — prominent centred panel
-      const nbW=600, nbX=VW/2-nbW/2, nbY=sY+26, nbH=48;
+      const nbW=600, nbX=VW/2-nbW/2, nbY=vY+16, nbH=48;
       ctx.fillStyle="#0a1224"; ctx.fillRect(nbX,nbY,nbW,nbH);
       ctx.strokeStyle=TTX.blue; ctx.lineWidth=2; ctx.strokeRect(nbX+1,nbY+1,nbW-2,nbH-2);
       ttBar("NEXT MATCH", nbX, nbY, nbW, 18, TTX.blue, TTX.white, {center:true, size:13});
@@ -1960,48 +1974,48 @@
         ctx.textAlign="center";
         ctx.fillStyle="rgba(0,0,0,0.85)"; ctx.font=ttFont(40); ctx.fillText("PAUSED", SW/2+3, 192);
         ctx.fillStyle=TTX.yellow; ctx.fillText("PAUSED", SW/2, 190);
-        // ---- speed control (shown on touch and desktop alike) ----
-        { const scY=208, btnW=50,btnH=34, valW=130, totalW=btnW+8+valW+8+btnW;
-          const scX=SW/2-totalW/2;
-          ctx.font=ttFont(11); ctx.fillStyle=TTX.grey; ctx.fillText("DRAG SPEED", SW/2, scY-4);
-          // dec button
+        // ---- tuning rows (touch + desktop): drag speed, then release glide ----
+        const ctlRow=(label, scY, val, pctStr)=>{          // one −/value/+ row; returns tap rects (view coords)
+          const btnW=50,btnH=34, valW=130, totalW=btnW+8+valW+8+btnW, scX=SW/2-totalW/2;
+          ctx.font=ttFont(11); ctx.fillStyle=TTX.grey; ctx.fillText(label, SW/2, scY-4);
           ctx.fillStyle="#1a1a2e"; ctx.fillRect(scX,scY,btnW,btnH);
           ctx.strokeStyle="rgba(255,255,255,0.35)"; ctx.lineWidth=1; ctx.strokeRect(scX+0.5,scY+0.5,btnW-1,btnH-1);
           ctx.font=ttFont(18); ctx.fillStyle=TTX.white; ctx.fillText("−", scX+btnW/2, scY+24);
-          touchSpeedDecRect={x:OX+scX,y:scY,w:btnW,h:btnH};
-          // value label
-          const pct=dragSpeedMod*5, pctStr=(pct>0?"+":"")+pct+"%";
           ctx.fillStyle="#0d1525"; ctx.fillRect(scX+btnW+8,scY,valW,btnH);
           ctx.strokeStyle="rgba(255,255,255,0.2)"; ctx.strokeRect(scX+btnW+8+0.5,scY+0.5,valW-1,btnH-1);
-          ctx.font=ttFont(16); ctx.fillStyle=dragSpeedMod===0?TTX.grey:TTX.cyan;
+          ctx.font=ttFont(16); ctx.fillStyle=val===0?TTX.grey:TTX.cyan;
           ctx.fillText(pctStr, scX+btnW+8+valW/2, scY+23);
-          // inc button
           const ibx=scX+btnW+8+valW+8;
           ctx.fillStyle="#1a1a2e"; ctx.fillRect(ibx,scY,btnW,btnH);
-          ctx.strokeStyle="rgba(255,255,255,0.35)"; ctx.lineWidth=1; ctx.strokeRect(ibx+0.5,scY+0.5,btnW-1,btnH-1);
+          ctx.strokeStyle="rgba(255,255,255,0.35)"; ctx.strokeRect(ibx+0.5,scY+0.5,btnW-1,btnH-1);
           ctx.font=ttFont(18); ctx.fillStyle=TTX.white; ctx.fillText("+", ibx+btnW/2, scY+24);
-          touchSpeedIncRect={x:OX+ibx,y:scY,w:btnW,h:btnH};
-        }
+          return { dec:{x:OX+scX,y:scY,w:btnW,h:btnH}, inc:{x:OX+ibx,y:scY,w:btnW,h:btnH} };
+        };
+        { const p=dragSpeedMod*5, r=ctlRow("DRAG SPEED", 212, dragSpeedMod, (p>0?"+":"")+p+"%");
+          touchSpeedDecRect=r.dec; touchSpeedIncRect=r.inc; }
+        { const p=dragGlideMod*10, r=ctlRow("RELEASE GLIDE — SLIDE AFTER YOU LET GO", 266, dragGlideMod, (p>0?"+":"")+p+"%");
+          touchGlideDecRect=r.dec; touchGlideIncRect=r.inc; }
         if (TOUCH){
           // RESUME button
-          const rbw=240,rbh=44,rbx=SW/2-rbw/2,rby=258;
+          const rbw=240,rbh=44,rbx=SW/2-rbw/2,rby=316;
           ctx.fillStyle="#162d1a"; ctx.fillRect(rbx,rby,rbw,rbh);
           ctx.strokeStyle=TTX.neon; ctx.lineWidth=1.5; ctx.strokeRect(rbx+0.5,rby+0.5,rbw-1,rbh-1);
           ctx.font=ttFont(16); ctx.fillStyle=TTX.neon; ctx.fillText("▶  RESUME", SW/2, rby+29);
           touchPauseResumeRect={x:OX+rbx,y:rby,w:rbw,h:rbh};   // view coords
           // FORFEIT button
-          const fbw=240,fbh=44,fbx=SW/2-fbw/2,fby=312;
+          const fbw=240,fbh=44,fbx=SW/2-fbw/2,fby=368;
           ctx.fillStyle="#2d1616"; ctx.fillRect(fbx,fby,fbw,fbh);
           ctx.strokeStyle=TTX.red; ctx.lineWidth=1.5; ctx.strokeRect(fbx+0.5,fby+0.5,fbw-1,fbh-1);
           ctx.font=ttFont(14); ctx.fillStyle=TTX.red; ctx.fillText("✕  FORFEIT & QUIT", SW/2, fby+29);
           touchPauseForfeitRect={x:OX+fbx,y:fby,w:fbw,h:fbh};   // view coords
         } else {
-          ctx.font=ttFont(13); ctx.fillStyle=TTX.white; ctx.fillText("ENTER TO RESUME", SW/2, 270);
-          ctx.fillStyle=TTX.red; ctx.fillText("ESC TO FORFEIT & QUIT TO MENU", SW/2, 292);
+          ctx.font=ttFont(13); ctx.fillStyle=TTX.white; ctx.fillText("ENTER TO RESUME", SW/2, 322);
+          ctx.fillStyle=TTX.red; ctx.fillText("ESC TO FORFEIT & QUIT TO MENU", SW/2, 344);
           touchPauseResumeRect=null; touchPauseForfeitRect=null;
         }
         ctx.textAlign="left";
-      } else { touchPauseResumeRect=null; touchPauseForfeitRect=null; touchSpeedDecRect=null; touchSpeedIncRect=null; }
+      } else { touchPauseResumeRect=null; touchPauseForfeitRect=null;
+               touchSpeedDecRect=null; touchSpeedIncRect=null; touchGlideDecRect=null; touchGlideIncRect=null; }
       ctx.restore();   // end field-centring translate
     } else if (state===ST.OVER) { ttClear(); drawOver(); drawTouchBack("← MENU"); }
     else if (state===ST.MENU) { ttClear(); drawMenu(); touchBackBtn=null; }
@@ -2205,6 +2219,8 @@
     if(paused){
       if(touchSpeedDecRect){ const r=touchSpeedDecRect; if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h){ dragSpeedMod=Math.max(-10,dragSpeedMod-1); localStorage.setItem("vc_speed",dragSpeedMod); return; } }
       if(touchSpeedIncRect){ const r=touchSpeedIncRect; if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h){ dragSpeedMod=Math.min(10,dragSpeedMod+1); localStorage.setItem("vc_speed",dragSpeedMod); return; } }
+      if(touchGlideDecRect){ const r=touchGlideDecRect; if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h){ dragGlideMod=Math.max(-8,dragGlideMod-1); localStorage.setItem("vc_glide",dragGlideMod); return; } }
+      if(touchGlideIncRect){ const r=touchGlideIncRect; if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h){ dragGlideMod=Math.min(10,dragGlideMod+1); localStorage.setItem("vc_glide",dragGlideMod); return; } }
       if(touchPauseResumeRect){ const r=touchPauseResumeRect; if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h){ togglePause(); return; } }
       if(touchPauseForfeitRect){ const r=touchPauseForfeitRect; if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h){ forfeit(); return; } }
       return;
@@ -2247,7 +2263,7 @@
     }
     if(dragging){
       dragging=false; dragStartFieldX=null; dragManStartX=null;
-      manVelX=clamp(_dragVel*0.55, -11, 11);   // inject smoothed drag velocity as momentum
+      manVelX=clamp(_dragVel*0.55*(1+dragGlideMod*0.1), -13, 13);   // momentum, scaled by the RELEASE GLIDE setting
       _dragPrevMT=null; _dragVel=0;
       if(e.pointerType!=="mouse") mouseTargetX=null;   // touch: let the striker glide freely instead of snapping back to the lift point
       if(state===ST.SERVE && !kicked && !paused) triggerKick();
