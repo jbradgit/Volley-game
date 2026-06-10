@@ -72,6 +72,7 @@
   // ---- Static assets (kits are loaded dynamically per club, see loadKits) ----
   const IMG = {};
   const sources = { backdrop:"assets/stadium/backdrop.png?v=1",
+                    logo:"assets/ui/logo_gold.png?v=1",
                     katlas0:"assets/keeper_atlas_0.png?v=dd", katlas1:"assets/keeper_atlas_1.png?v=dd",
                     ball:"assets/ball.png?v=hr", shadow:"assets/shadow.png?v=hr",
                     defmap:"assets/defender_regionmap.png?v=live2" };
@@ -173,9 +174,11 @@
     matchBoards = [];
     if (!ADS.length) return;
     const tot = ADS.reduce((s,b)=>s+(b.weight||1), 0);
+    const draw = ()=>{ let x=pr()*tot, id=ADS[ADS.length-1].id;
+      for (const b of ADS){ x -= (b.weight||1); if (x<=0){ id=b.id; break; } } return id; };
     for (let i=0;i<HOARD_N;i++){
-      let x = pr()*tot, id = ADS[ADS.length-1].id;
-      for (const b of ADS){ x -= (b.weight||1); if (x<=0){ id=b.id; break; } }
+      let id = draw();
+      for (let tries=0; ADS.length>1 && id===matchBoards[i-1] && tries<8; tries++) id = draw();   // no same board twice in a row
       matchBoards.push(id);
     }
   }
@@ -852,23 +855,39 @@
     ctx.fillStyle=inset?"#0b0d11":light; ctx.fillRect(x,y,w,t); ctx.fillRect(x,y,t,h);             // top + left
     ctx.fillStyle=inset?light:"#0b0d11"; ctx.fillRect(x,y+h-t,w,t); ctx.fillRect(x+w-t,y,t,h);     // bottom + right
   }
-  // ---- 7-segment LED readout (arcade scoreboard digits) ----
-  const _SEG={'0':'abcdef','1':'bc','2':'abdeg','3':'abcdg','4':'bcfg','5':'acdfg','6':'acdefg','7':'abc','8':'abcdefg','9':'abcdfg','-':'g',' ':''};
+  // ---- 16-bit scoreboard numerals: 5x7 pixel bitmap digits with per-row shading and a
+  // hard drop shadow — the digitised Mega Drive scoreboard look (not flat 7-seg).
+  const _DIG={ '0':["01110","10001","10001","10001","10001","10001","01110"],
+               '1':["00100","01100","00100","00100","00100","00100","01110"],
+               '2':["01110","10001","00001","00010","00100","01000","11111"],
+               '3':["11110","00001","00001","01110","00001","00001","11110"],
+               '4':["00010","00110","01010","10010","11111","00010","00010"],
+               '5':["11111","10000","11110","00001","00001","10001","01110"],
+               '6':["00110","01000","10000","11110","10001","10001","01110"],
+               '7':["11111","00001","00010","00100","01000","01000","01000"],
+               '8':["01110","10001","10001","01110","10001","10001","01110"],
+               '9':["01110","10001","10001","01111","00001","00010","01100"],
+               '-':["00000","00000","00000","01110","00000","00000","00000"],
+               ' ':["00000","00000","00000","00000","00000","00000","00000"] };
+  function _shadeHex(hex, amt){           // amt>0 lighten toward white, amt<0 darken toward black
+    const n=parseInt(hex.slice(1),16); let r=(n>>16)&255, g=(n>>8)&255, b=n&255;
+    if (amt>=0){ r+= (255-r)*amt; g+=(255-g)*amt; b+=(255-b)*amt; } else { r*=1+amt; g*=1+amt; b*=1+amt; }
+    return "rgb("+Math.round(r)+","+Math.round(g)+","+Math.round(b)+")";
+  }
   function ledDigit(x,y,w,h,ch,on,off){
-    // Thick block segments that MEET at the corners (alarm-clock style) — the old thin
-    // segments left big gaps that made digits hard to read at scoreboard size.
-    const t=Math.max(4,Math.round(Math.min(w,h)*0.30)), m=y+h/2, segs=_SEG[ch]!=null?_SEG[ch]:'';
-    const S={ a:[x,y,w,t], g:[x,m-t/2,w,t], d:[x,y+h-t,w,t],
-              f:[x,y,t,h/2+t/2], b:[x+w-t,y,t,h/2+t/2],
-              e:[x,m-t/2,t,h/2+t/2], c:[x+w-t,m-t/2,t,h/2+t/2] };
-    for (const k of "adgfbec"){ const r=S[k]; if (segs.indexOf(k)<0) continue; ctx.fillStyle=on; ctx.fillRect(r[0],r[1],r[2],r[3]); }
-    if (segs===''){ ctx.fillStyle=off; ctx.fillRect(x,y,w,t); }   // blank keeps box rhythm
+    const g=_DIG[ch]||_DIG[' '], c=Math.max(2,Math.floor(Math.min(w/5,h/7)));
+    const dx=x+Math.round((w-5*c)/2), dy=y+Math.round((h-7*c)/2), sh=Math.max(1,Math.round(c*0.45));
+    ctx.fillStyle="rgba(0,0,0,0.55)";                              // hard pixel drop shadow
+    for(let r=0;r<7;r++) for(let q=0;q<5;q++) if(g[r][q]==="1") ctx.fillRect(dx+q*c+sh, dy+r*c+sh, c, c);
+    for(let r=0;r<7;r++){                                          // shaded face: bright crown, dark base
+      ctx.fillStyle=_shadeHex(on, r<1?0.45 : r<2?0.22 : r>=6?-0.30 : r>=5?-0.15 : 0);
+      for(let q=0;q<5;q++) if(g[r][q]==="1") ctx.fillRect(dx+q*c, dy+r*c, c, c);
+    }
   }
   function drawLED(x,y,w,h,str,on,off){
-    const n=str.length||1, dw=Math.min(w/n, h*0.66), gap=Math.max(3,dw*0.18), sx=x+w-dw*n;   // right-aligned in box
-    ctx.fillStyle=off;                                            // faint "all segments" ghost behind
-    for (let i=0;i<n;i++) ctx.fillRect(sx+i*dw, y, dw-gap, h);
-    for (let i=0;i<n;i++) ledDigit(sx+i*dw, y, dw-gap, h, str[i], on, "rgba(0,0,0,0)");
+    const n=str.length||1, c=Math.max(2,Math.floor(Math.min(w/(6*n), h/7)));
+    const dw=c*6, x0=x+w-n*dw, y0=y+Math.round((h-7*c)/2);         // right-aligned in box
+    for (let i=0;i<n;i++) ledDigit(x0+i*dw, y0, c*5, c*7, str[i], on, off);
   }
   // ---- club nameplate (coloured edge tabs + auto-fit name) ----
   function nameplate(x,y,w,h,name,slug){
@@ -948,7 +967,7 @@
     // CENTRE — ball counter dots above, advert board below
     const adW=Math.min(356,VW*0.38), adX=cxv-adW/2;
     { const ballR=6, ballGap=15, nb=matchBalls, bCountW=(nb-1)*ballGap;
-      const bx0=cxv-bCountW/2, bY=420;
+      const bx0=cxv-bCountW/2, bY=415;                            // centred in the 400..430 strip above the panel
       for(let i=0;i<nb;i++){
         const used=i<(nb-M.attempts);
         if (used){ ctx.fillStyle="rgba(0,0,0,0.32)";              // spent ball: dark slot
@@ -956,12 +975,12 @@
         else _ball8(ctx, bx0+i*ballGap, bY, ballR);               // remaining: classic pixel football
       }
     }
-    bevel(adX,428,adW,50,"#0c0e11",true,3,S);
-    ctx.strokeStyle=S; ctx.lineWidth=1.5; ctx.strokeRect(adX+0.75,428.75,adW-1.5,48.5);
+    bevel(adX,430,adW,52,"#0c0e11",true,3,S);                     // panel aligned with the LED bezels (430..482)
+    ctx.strokeStyle=S; ctx.lineWidth=1.5; ctx.strokeRect(adX+0.75,430.75,adW-1.5,50.5);
     ctx.fillStyle="rgba(150,160,170,0.07)";
-    for (let yy=434;yy<476;yy+=5) for (let xx=adX+6;xx<adX+adW-4;xx+=5) ctx.fillRect(xx,yy,2,2);
-    ctx.font=ttFont(16); ctx.fillStyle="#ffc23d"; ctx.fillText("ADVERTISE HERE", cxv, 456);
-    ctx.font=ttFont(10); ctx.fillStyle="#7e8ea4"; ctx.fillText("YOUR MESSAGE IN LIGHTS", cxv, 471);
+    for (let yy=436;yy<478;yy+=5) for (let xx=adX+6;xx<adX+adW-4;xx+=5) ctx.fillRect(xx,yy,2,2);
+    ctx.font=ttFont(16); ctx.fillStyle="#ffc23d"; ctx.fillText("ADVERTISE HERE", cxv, 458);
+    ctx.font=ttFont(10); ctx.fillStyle="#7e8ea4"; ctx.fillText("YOUR MESSAGE IN LIGHTS", cxv, 474);
     ctx.font=ttFont(10); ctx.fillStyle=teamHud.dark?"rgba(255,255,255,0.6)":"rgba(0,0,0,0.55)";
     ctx.fillText(TOUCH ? "SWIPE TO MOVE · LIFT TO SHOOT" : "◄ ► MOVE   SPACE = SHOOT", cxv, 502);
     ctx.textAlign="left";
@@ -1201,18 +1220,6 @@
     else             pxText(text, x+8,   y+h/2+1, size, fg, 'l','m');
   }
 
-  // ---- SCORDAGOL brand logo: LARDILAND-style chunky ITALIC pixel-art ----
-  // Built at low resolution (coarse pixels), snapped to hard 1-bit edges (no anti-alias fringe),
-  // skewed for italic, given a solid 3D extrude, then upscaled nearest-neighbour = crisp square pixels.
-  const logoC=document.createElement("canvas"), logoG=logoC.getContext("2d");   // composed 3D logo
-  const lMask=document.createElement("canvas"), lMaskG=lMask.getContext("2d");  // 1-bit silhouette
-  const lTint=document.createElement("canvas"), lTintG=lTint.getContext("2d");  // tinted stamp scratch
-  function _logoTint(color){           // tint the silhouette (lMask) to `color`, returns lTint
-    lTint.width=lMask.width; lTint.height=lMask.height; lTintG.clearRect(0,0,lTint.width,lTint.height);
-    lTintG.globalCompositeOperation="source-over"; lTintG.drawImage(lMask,0,0);
-    lTintG.globalCompositeOperation="source-in"; lTintG.fillStyle=color; lTintG.fillRect(0,0,lTint.width,lTint.height);
-    lTintG.globalCompositeOperation="source-over"; return lTint;
-  }
   // ---- crisp 8-bit football: a cached pixel bitmap (no anti-alias), blitted square-by-square ----
   // grid values 0=transparent · 1=white · 2=black. Built once per grid size: a circle silhouette,
   // a hard black rim, a central black pentagon and five black edge patches — the classic pixel ball.
@@ -1244,46 +1251,18 @@
       g.fillStyle = v===2 ? "#0b0b0b" : "#f4f4f4"; g.fillRect(px,py,pw,ph);
     }
   }
-  // The composed low-res logo is STATIC, so build it once per (size,depth) and cache it.
-  // Shiny metallic gold lettering (Joe Montana Football style): chrome gradient face with a
-  // white shine band, dark outline, dark-bronze 3D extrude. Plain O's (no footballs).
-  const _logoCache={};
-  function _buildLogo(F, depth){
-    const key=F+"|"+depth;
-    if (_logoCache[key]) return _logoCache[key];
-    const txt="SCORDAGOL", pad=2;
-    const FONT="900 "+F+"px 'Arial Black','Arial',sans-serif";
-    lMaskG.font=FONT;
-    const tw=Math.ceil(lMaskG.measureText(txt).width);
-    const W=tw+pad*2+depth+2, H=F+pad*2+depth+4;
-    lMask.width=W; lMask.height=H;
-    lMaskG.font=FONT; lMaskG.textBaseline="top"; lMaskG.textAlign="left"; lMaskG.fillStyle="#fff";
-    lMaskG.fillText(txt, pad+1, pad);
-    const id=lMaskG.getImageData(0,0,W,H), d=id.data;
-    for (let i=3;i<d.length;i+=4) d[i] = d[i]>100 ? 255 : 0;   // 1-bit silhouette = hard pixel edges
-    lMaskG.putImageData(id,0,0);
-    const c=document.createElement("canvas"); c.width=W; c.height=H; const cg=c.getContext("2d");
-    for (let s=depth;s>=1;s--) cg.drawImage(_logoTint("#3a1606"), s, s);          // dark-bronze extrude
-    for (const [ox,oy] of [[-1,0],[1,0],[0,-1],[0,1],[-1,-1],[1,1],[1,-1],[-1,1]])
-      cg.drawImage(_logoTint("#241303"), ox, oy);                                  // dark outline
-    const grad=cg.createLinearGradient(0,0,0,F+pad*2);                             // gold chrome face
-    grad.addColorStop(0.00,"#fdf6c8"); grad.addColorStop(0.16,"#f7d94c");
-    grad.addColorStop(0.40,"#dba122"); grad.addColorStop(0.47,"#fffbe9");          // horizon shine line
-    grad.addColorStop(0.54,"#d8951c"); grad.addColorStop(0.78,"#a96a10");
-    grad.addColorStop(1.00,"#6f4207");
-    cg.drawImage(_logoTint(grad), 0, 0);
-    return (_logoCache[key]={c:c, W:W, H:H});
-  }
+  // ---- SCORDAGOL logo: pre-rendered Montana-style gold asset (assets/ui/logo_gold.png,
+  // regenerated by artgen/gen_logo.py) — identical on every device, no font dependency.
+  const LOGO_GOLD="#d8a01d";    // the logo's mid-gold, for colour-matched UI accents
   function drawLogo(cx, baseY, maxW, opts){
     opts=opts||{};
-    const L=_buildLogo(opts.F||18, (opts.depth!=null?opts.depth:2));
-    const scale=Math.min(maxW/L.W, (opts.maxH||150)/L.H);
-    const dw=Math.round(L.W*scale), dh=Math.round(L.H*scale);
+    const im=IMG.logo;
+    if (!im || !im.naturalWidth){                                  // not loaded: plain stand-in
+      pxText("SCORDAGOL", cx, (opts.cy!=null?opts.cy:baseY-16), 22, LOGO_GOLD, 'c','m'); return; }
+    const scale=Math.min(maxW/im.naturalWidth, (opts.maxH||150)/im.naturalHeight);
+    const dw=Math.round(im.naturalWidth*scale), dh=Math.round(im.naturalHeight*scale);
     const dx=Math.round(cx-dw/2), dy=(opts.cy!=null)?Math.round(opts.cy-dh/2):Math.round(baseY-dh);
-    if (opts.whiteBg){ const p=opts.pad!=null?opts.pad:6; ctx.fillStyle="#ffffff"; ctx.fillRect(dx-p,dy-p,dw+p*2,dh+p*2); }
-    const prev=ctx.imageSmoothingEnabled; ctx.imageSmoothingEnabled=false;   // nearest-neighbour = hard pixels
-    ctx.drawImage(L.c, dx, dy, dw, dh);
-    ctx.imageSmoothingEnabled=prev;
+    ctx.drawImage(im, dx, dy, dw, dh);
   }
 
   // ---- team colours for the in-game info panel (primary = shirt, secondary contrasts it) ----
@@ -1373,17 +1352,12 @@
   const MENU_Y0=276, MENU_DY=50, MENU_BW=480, MENU_BH=42;   // shared by drawMenu + menuHit (CX = VW/2)
   const MENU_OPTCOL=[TTX.cyan, TTX.yellow, "#5fff9e", "#ff8af0", TTX.white];   // teletext multi-colour options
   function drawMenu(){
-    // Title screen in the 16-bit console mould (Joe Montana Football): black field,
-    // big metallic gold logo upper-left, © line beneath, pixel football as the "portrait".
-    drawLogo(40+560/2, 168, 560, {maxH:120});                            // metallic SCORDAGOL, top-left
-    ctx.textAlign="left";
-    ctx.font=ttFont(15); ctx.fillStyle="#e7d9a8";
-    ctx.fillText("© 2026 WIMP STUDIO, INC.", 44, 196);
-    ttPrint("VOLLEY YOUR WAY TO GREATNESS", 44, 228, "#f7d94c", 0, {size:19});
-    _ball8(ctx, VW-180, 128, 86);                                        // giant classic football, right
-    ctx.strokeStyle="rgba(247,217,76,0.35)"; ctx.lineWidth=2;
-    ctx.beginPath(); ctx.arc(VW-180, 128, 96, 0, 2*Math.PI); ctx.stroke();   // gold ring accent
+    // teletext colour frame (Ceefax/Lardiland style) around the Montana-gold logo
+    ctx.strokeStyle=TTX.blue;    ctx.lineWidth=5; ctx.strokeRect(9,9,VW-18,SH-18);
+    ctx.strokeStyle=TTX.magenta; ctx.lineWidth=2; ctx.strokeRect(16,16,VW-32,SH-32);
+    drawLogo(VW/2, 198, Math.min(VW-120, 720), {maxH:140});              // SCORDAGOL — centred gold
     ctx.textAlign="center";
+    ttPrint("VOLLEY VOLLEY VOLLEY OI OI OI", 0, 232, "#ff5fd0", 0, {size:22, center:true});
     const opts = menuOptions();
     menuSel = clamp(menuSel,0,opts.length-1);
     for (let i=0;i<opts.length;i++){
@@ -1489,8 +1463,9 @@
     const HBY=4, LOGOW=220;
     const HBH=TOUCH?40:32;  // taller on touch for Ceefax-style bold heading
     ctx.fillStyle="#06070b"; ctx.fillRect(0,HBY,VW,HBH);
-    ctx.fillStyle="#ffffff"; ctx.fillRect(0,HBY,LOGOW,HBH);
-    drawLogo(LOGOW/2, 0, LOGOW-26, {cy:HBY+HBH/2, maxH:HBH-6, depth:1});
+    // gold outline box, colour-matched to the logo (no white panel)
+    ctx.strokeStyle=LOGO_GOLD; ctx.lineWidth=2; ctx.strokeRect(1.5,HBY+1.5,LOGOW-3,HBH-3);
+    drawLogo(LOGOW/2, 0, LOGOW-28, {cy:HBY+HBH/2, maxH:HBH-10});
     // header row: [logo][CAREER MODE .................. SEASON N] — one shared vertical centre
     ttBar("CAREER MODE", LOGOW, HBY, VW-LOGOW, HBH, TTX.blue, TTX.yellow, {size:TOUCH?26:20});
     pxText("SEASON "+CAR.season, VW-14, HBY+HBH/2+1, TOUCH?16:14, TTX.white, 'r', 'm');
@@ -1907,16 +1882,23 @@
       net(L,y, bl, bt+(bb-bt)*k, 4); net(R,y, br, bt+(bb-bt)*k, 4); }
     ctx.strokeStyle="rgba(230,232,235,0.5)"; ctx.lineWidth=2;              // rear skeleton frame
     ctx.strokeRect(bl, bt, br-bl, bb-bt);
-    ctx.fillStyle="#f1f3f4";                                                // front frame
-    ctx.fillRect(L-3.5, T-3.5, (R-L)+7, 7);                                 // crossbar
-    ctx.fillRect(L-3.5, T-3.5, 7, (B-T)+3.5);                               // left post
-    ctx.fillRect(R-3.5, T-3.5, 7, (B-T)+3.5);                               // right post
-    ctx.fillStyle="rgba(120,128,134,0.5)";                                  // inner shading = roundness
-    ctx.fillRect(L+1.5, T+3.5, 2, B-T-3.5); ctx.fillRect(R+1.5, T+3.5, 2, B-T-3.5);
-    ctx.fillRect(L+3.5, T+1.5, R-L-7, 2);
-    ctx.fillStyle="rgba(10,20,12,0.30)";                                    // contact shadows ground the posts
-    ctx.beginPath(); ctx.ellipse(L, B+1.5, 9, 2.5, 0, 0, 2*Math.PI); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(R, B+1.5, 9, 2.5, 0, 0, 2*Math.PI); ctx.fill();
+    // cast shadows FIRST (under the frame): thin angled strips on the grass, not blobs
+    ctx.fillStyle="rgba(10,22,12,0.26)";
+    for (const px of [L,R]){
+      ctx.beginPath(); ctx.moveTo(px-3.5, B); ctx.lineTo(px+3.5, B);
+      ctx.lineTo(px+3.5+15, B+4.5); ctx.lineTo(px-3.5+15, B+4.5); ctx.closePath(); ctx.fill();
+    }
+    // front frame — 16-bit shaded tubes: white core, bright left/top edge, grey right/bottom
+    const PW=7;
+    ctx.fillStyle="#f4f6f7"; ctx.fillRect(L-PW/2, T-PW/2, (R-L)+PW, PW);    // crossbar core
+    ctx.fillStyle="#ffffff"; ctx.fillRect(L-PW/2, T-PW/2+0.5, (R-L)+PW, 2); // bar top highlight
+    ctx.fillStyle="#aeb8bf"; ctx.fillRect(L-PW/2, T+PW/2-2, (R-L)+PW, 2);   // bar bottom shade
+    for (const px of [L,R]){
+      ctx.fillStyle="#f4f6f7"; ctx.fillRect(px-PW/2, T-PW/2, PW, (B-T)+PW/2);   // post core
+      ctx.fillStyle="#ffffff"; ctx.fillRect(px-PW/2+0.5, T, 2, B-T);            // left highlight
+      ctx.fillStyle="#aeb8bf"; ctx.fillRect(px+PW/2-2, T, 2, B-T);              // right shade
+      ctx.fillStyle="#8d979e"; ctx.fillRect(px-PW/2, B-1.5, PW, 1.5);           // ground ring
+    }
     ctx.restore();
   }
   function render() {

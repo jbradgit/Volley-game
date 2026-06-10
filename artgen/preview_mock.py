@@ -51,12 +51,18 @@ while y <= B:                                                     # side panels
     d.line([fx(R), fy(y), fx(br), fy(bt + (bb - bt) * k)], fill=MESH, width=1)
     y += 14
 d.rectangle([fx(bl), fy(bt), fx(br), fy(bb)], outline=(230, 232, 235, 128), width=2)
-d.rectangle([fx(L - 3.5), fy(T - 3.5), fx(R + 3.5), fy(T + 3.5)], fill=(241, 243, 244))   # bar
-d.rectangle([fx(L - 3.5), fy(T - 3.5), fx(L + 3.5), fy(B)], fill=(241, 243, 244))         # posts
-d.rectangle([fx(R - 3.5), fy(T - 3.5), fx(R + 3.5), fy(B)], fill=(241, 243, 244))
-d.rectangle([fx(L + 1.5), fy(T + 3.5), fx(L + 3.5), fy(B)], fill=(120, 128, 134, 128))
-d.rectangle([fx(R + 1.5), fy(T + 3.5), fx(R + 3.5), fy(B)], fill=(120, 128, 134, 128))
-d.rectangle([fx(L + 3.5), fy(T + 1.5), fx(R - 3.5), fy(T + 3.5)], fill=(120, 128, 134, 128))
+# angled cast shadows, then 16-bit shaded tubes (mirrors drawGoal v3)
+for px_ in (L, R):
+    d.polygon([(fx(px_-3.5), fy(B)), (fx(px_+3.5), fy(B)),
+               (fx(px_+18.5), fy(B+4.5)), (fx(px_+11.5), fy(B+4.5))], fill=(10, 22, 12, 66))
+d.rectangle([fx(L-3.5), fy(T-3.5), fx(R+3.5), fy(T+3.5)], fill=(244, 246, 247))   # bar core
+d.rectangle([fx(L-3.5), fy(T-3), fx(R+3.5), fy(T-1)], fill=(255, 255, 255))       # bar highlight
+d.rectangle([fx(L-3.5), fy(T+1.5), fx(R+3.5), fy(T+3.5)], fill=(174, 184, 191))   # bar shade
+for px_ in (L, R):
+    d.rectangle([fx(px_-3.5), fy(T-3.5), fx(px_+3.5), fy(B)], fill=(244, 246, 247))
+    d.rectangle([fx(px_-3), fy(T), fx(px_-1), fy(B)], fill=(255, 255, 255))
+    d.rectangle([fx(px_+1.5), fy(T), fx(px_+3.5), fy(B)], fill=(174, 184, 191))
+    d.rectangle([fx(px_-3.5), fy(B-1.5), fx(px_+3.5), fy(B)], fill=(141, 151, 158))
 
 def paste_sprite(path, x, y, w, h):
     sp = Image.open(os.path.join(ROOT, path)).convert("RGBA").resize((int(w * S), int(h * S)))

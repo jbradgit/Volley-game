@@ -102,15 +102,6 @@ for ax in np.linspace(W * 0.08, W * 0.92, 7):
     a0, a1 = int(ax - 3 * S), int(ax + 3 * S)
     img[yl(ROOF_B):yl(TIER2_B), a0:a1] = np.array([46, 48, 54])
     img[yl(DIV_B):yl(TIER1_B), a0:a1] = np.array([52, 54, 60])
-# fan banners hung over the balcony rail (solid colours + stripe, no text)
-for bx, bw_, c1, c2 in [(0.13, 50, (170, 30, 30), (235, 235, 235)),
-                        (0.40, 64, (235, 235, 235), (170, 30, 30)),
-                        (0.62, 44, (200, 170, 40), (30, 30, 30)),
-                        (0.86, 56, (40, 60, 140), (235, 235, 235))]:
-    x0, x1 = int(bx * W), int(bx * W + bw_ * S)
-    y0, y1 = yl(TIER2_B) - 2, yl(DIV_B) + 5 * S
-    img[y0:y1, x0:x1] = np.array(c1)
-    img[(y0 + y1) // 2 - S: (y0 + y1) // 2 + S, x0:x1] = np.array(c2)
 
 # ---------- perimeter wall + dark base under the boards ----------
 img[yl(TIER1_B):yl(WALL_B), :] = np.array([90, 94, 102])
@@ -171,9 +162,17 @@ pline((PX(-PENW, PENY), PY(PENY)), (PX(+PENW, PENY), PY(PENY)), 5)
 # penalty spot + D (arc outside the area)
 SPOTY = 258
 d.ellipse([PX(0, SPOTY) - 3 * S, PY(SPOTY) - 1.6 * S, PX(0, SPOTY) + 3 * S, PY(SPOTY) + 1.6 * S], fill=LINE)
-ARC_HW, ARC_BOT = 118, 290
-d.arc([PX(-ARC_HW, PENY), PY(PENY) - (ARC_BOT - PENY) * S * 0.9,
-       PX(+ARC_HW, PENY), PY(ARC_BOT)], start=25, end=155, fill=LINE, width=5)
+# the D: drawn as segments of a half-ellipse so both ends land exactly ON the area line
+import math
+ARC_HW, ARC_BOT = 118, 288
+prev = None
+for i in range(0, 37):
+    t = math.pi * i / 36
+    lat = ARC_HW * math.cos(t)
+    yy = PENY + (ARC_BOT - PENY) * math.sin(t)
+    pt = (PX(lat, yy), PY(yy))
+    if prev: d.line([prev, pt], fill=LINE, width=5)
+    prev = pt
 
 # ---------- finish ----------
 crowd_zone = out.crop((0, 0, W, yl(WALL_B))).filter(ImageFilter.GaussianBlur(0.5))
