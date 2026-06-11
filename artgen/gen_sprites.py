@@ -1,4 +1,4 @@
-"""Generate the ORIGINAL sprite set — striker, defender, keeper, ball, shadow. v2.
+"""Generate the KEEPER atlas + BALL + SHADOW (striker/defender: see trace_sprites.py).
 
 ISS-era volumetric figures: tapered limbs, shaped torso, 3-tone cel shading,
 strict painter's order (far arm > far leg > near thigh > shorts > shirt over
@@ -195,47 +195,10 @@ def draw_player(f, P, head_r=13, widths=None):
         f.disc((hx-head_r*0.42, hy+head_r*0.12), 1.4, "eye")
 
 # =========================================================================
-# STRIKER — 131x191, origin (101.2,126.5). Kick reads like the original:
-# big windup -> step -> STRIKE through (117,103..122) -> high follow-through.
+# STRIKER + DEFENDER are now produced by artgen/trace_sprites.py (traced from the
+# original frames for silhouette/animation fidelity). This file keeps the
+# procedural KEEPER (approved look + verified save extents) and BALL/SHADOW.
 # =========================================================================
-SP = {
- 0: dict(head=(90,46), chest=(91,72), hips=(93,118),
-        armFar=[(102,72),(112,94),(108,112)], armNear=[(80,72),(70,94),(66,112)],
-        legFar=[(100,124),(105,152),(107,184)], legNear=[(86,124),(80,152),(76,184)]),
- 1: dict(head=(84,50), chest=(87,76), hips=(92,120),                      # WINDUP: leg cocked high behind
-        armFar=[(98,78),(114,86),(126,88)], armNear=[(76,78),(62,86),(52,90)],
-        legFar=[(86,126),(78,152),(74,184)], legNear=[(100,124),(118,138),(130,152)]),
- 2: dict(head=(86,50), chest=(89,75), hips=(93,119),                      # swing down
-        armFar=[(100,78),(114,92),(122,102)], armNear=[(78,78),(64,90),(56,100)],
-        legFar=[(87,125),(80,152),(76,184)], legNear=[(101,123),(112,148),(118,170)]),
- 3: dict(head=(84,54), chest=(88,78), hips=(92,121),                      # STRIKE: boot through the contact zone
-        armFar=[(99,82),(114,90),(124,94)], armNear=[(77,82),(62,88),(52,94)],
-        legFar=[(85,127),(77,154),(72,184)], legNear=[(99,121),(110,112),(118,104)]),
- 4: dict(head=(82,56), chest=(86,80), hips=(91,121),                      # follow-through wraps high
-        armFar=[(97,84),(112,88),(122,90)], armNear=[(75,84),(60,86),(50,90)],
-        legFar=[(84,127),(76,154),(71,184)], legNear=[(97,119),(99,92),(90,76)]),
- 5: dict(head=(87,48), chest=(90,74), hips=(93,119),                      # recover
-        armFar=[(101,76),(112,94),(108,110)], armNear=[(79,76),(68,92),(64,108)],
-        legFar=[(86,125),(80,152),(76,184)], legNear=[(100,123),(106,150),(104,172)]),
-}
-for k, P in SP.items():
-    f = Fig(131, 191)
-    draw_player(f, P)
-    f.image().save(os.path.join(OUT, f"striker_k{k}.png"), optimize=True)
-print("striker k0..k5 written")
-
-# =========================================================================
-# DEFENDER — 67x115, origin (33.4,57.5); front guard stance, same construction
-# =========================================================================
-f = Fig(67, 115)
-draw_player(f, dict(front=True, head=(33,17), chest=(33,33), hips=(33,60),
-    armFar=[(43,34),(51,48),(54,62)], armNear=[(23,34),(15,48),(12,62)],
-    legFar=[(39,64),(41,84),(42,109)], legNear=[(27,64),(25,84),(24,109)]),
-    head_r=8.5,
-    widths=dict(torso=(24,18), thigh=(9.5,7.5), calf=(7.5,5.5),
-                uarm=(7,6), farm=(6,5), shorts_drop=10))
-f.image().save(os.path.join(OUT, "defender.png"), optimize=True)
-print("defender written")
 
 # =========================================================================
 # KEEPER — unified 596x263, feet (300,197). Slightly slimmer body (owner call)
