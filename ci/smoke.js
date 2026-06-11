@@ -154,5 +154,10 @@ if (!dbg) fail("__dbg harness not exposed under ?cap=1");
   if (info2.trophies.indexOf("euro") < 0) fail("euro not won: " + JSON.stringify(info2));
   console.log("season 2 autoplay ok:", played2, "matches, euro stage:", info2.euro);
 
+  // 8. the universal kit renderer builds all per-match sprites without error
+  const kt = dbg.buildKitsTest();
+  if (!kt.ready || kt.striker !== 6 || !kt.def || !kt.gk) fail("kit build failed: " + JSON.stringify(kt));
+  console.log("kit build ok:", JSON.stringify(kt));
+
   console.log("SMOKE PASS");
 })().catch(e => fail(e.stack || e));

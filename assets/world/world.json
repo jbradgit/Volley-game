@@ -6,7 +6,21 @@
    "rating": 10,
    "shirt": "white",
    "shorts": "white",
-   "socks": "white"
+   "socks": "white",
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "white",
+     "socks": "white"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "navy",
+     "shorts": "navy",
+     "socks": "navy"
+    }
+   }
   },
   {
    "slug": "Barcelona",
@@ -16,7 +30,22 @@
    "shorts": "darkblue",
    "socks": "darkblue",
    "pattern": "stripes",
-   "stripe2": "claret"
+   "stripe2": "claret",
+   "kits": {
+    "h": {
+     "p": "stripes",
+     "c1": "blue",
+     "shorts": "darkblue",
+     "socks": "darkblue",
+     "c2": "claret"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "yellow",
+     "shorts": "yellow",
+     "socks": "yellow"
+    }
+   }
   },
   {
    "slug": "Valencia",
@@ -24,7 +53,21 @@
    "rating": 9,
    "shirt": "white",
    "shorts": "black",
-   "socks": "black"
+   "socks": "black",
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "black",
+     "socks": "white"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "orange",
+     "shorts": "orange",
+     "socks": "orange"
+    }
+   }
   },
   {
    "slug": "Deportivo",
@@ -34,7 +77,22 @@
    "shorts": "white",
    "socks": "blue",
    "pattern": "stripes",
-   "stripe2": "white"
+   "stripe2": "white",
+   "kits": {
+    "h": {
+     "p": "stripes",
+     "c1": "blue",
+     "shorts": "navy",
+     "socks": "blue",
+     "c2": "white"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "red",
+     "shorts": "red",
+     "socks": "red"
+    }
+   }
   },
   {
    "slug": "Juventus",
@@ -44,7 +102,22 @@
    "shorts": "white",
    "socks": "black",
    "pattern": "stripes",
-   "stripe2": "black"
+   "stripe2": "black",
+   "kits": {
+    "h": {
+     "p": "stripes",
+     "c1": "white",
+     "shorts": "white",
+     "socks": "black",
+     "c2": "black"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "navy",
+     "shorts": "navy",
+     "socks": "navy"
+    }
+   }
   },
   {
    "slug": "ACMilan",
@@ -54,7 +127,22 @@
    "shorts": "white",
    "socks": "black",
    "pattern": "stripes",
-   "stripe2": "black"
+   "stripe2": "black",
+   "kits": {
+    "h": {
+     "p": "stripes",
+     "c1": "red",
+     "shorts": "white",
+     "socks": "black",
+     "c2": "black"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "white",
+     "socks": "white"
+    }
+   }
   },
   {
    "slug": "InterMilan",
@@ -64,7 +152,22 @@
    "shorts": "black",
    "socks": "black",
    "pattern": "stripes",
-   "stripe2": "black"
+   "stripe2": "black",
+   "kits": {
+    "h": {
+     "p": "stripes",
+     "c1": "blue",
+     "shorts": "black",
+     "socks": "black",
+     "c2": "black"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "white",
+     "socks": "white"
+    }
+   }
   },
   {
    "slug": "Roma",
@@ -73,7 +176,22 @@
    "shirt": "claret",
    "shorts": "white",
    "socks": "claret",
-   "sleeves": "orange"
+   "sleeves": "orange",
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "claret",
+     "shorts": "white",
+     "socks": "claret",
+     "sleeves": "orange"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "white",
+     "socks": "white"
+    }
+   }
   },
   {
    "slug": "BayernMunich",
@@ -81,7 +199,21 @@
    "rating": 10,
    "shirt": "red",
    "shorts": "red",
-   "socks": "red"
+   "socks": "red",
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "red",
+     "shorts": "red",
+     "socks": "red"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "navy",
+     "socks": "white"
+    }
+   }
   },
   {
    "slug": "Dortmund",
@@ -89,7 +221,21 @@
    "rating": 8,
    "shirt": "yellow",
    "shorts": "black",
-   "socks": "yellow"
+   "socks": "yellow",
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "yellow",
+     "shorts": "black",
+     "socks": "yellow"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "black",
+     "shorts": "black",
+     "socks": "black"
+    }
+   }
   },
   {
    "slug": "Leverkusen",
@@ -97,7 +243,21 @@
    "rating": 8,
    "shirt": "red",
    "shorts": "black",
-   "socks": "red"
+   "socks": "red",
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "red",
+     "shorts": "black",
+     "socks": "red"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "white",
+     "socks": "white"
+    }
+   }
   },
   {
    "slug": "Lyon",
@@ -106,7 +266,22 @@
    "shirt": "white",
    "shorts": "white",
    "socks": "white",
-   "sleeves": "blue"
+   "sleeves": "blue",
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "white",
+     "socks": "white",
+     "sleeves": "blue"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "navy",
+     "shorts": "navy",
+     "socks": "navy"
+    }
+   }
   },
   {
    "slug": "Monaco",
@@ -115,7 +290,22 @@
    "shirt": "red",
    "shorts": "white",
    "socks": "white",
-   "sleeves": "white"
+   "sleeves": "white",
+   "kits": {
+    "h": {
+     "p": "halves",
+     "c1": "red",
+     "shorts": "white",
+     "socks": "white",
+     "c2": "white"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "red",
+     "socks": "white"
+    }
+   }
   },
   {
    "slug": "Marseille",
@@ -124,7 +314,22 @@
    "shirt": "white",
    "shorts": "white",
    "socks": "white",
-   "sleeves": "skyblue"
+   "sleeves": "skyblue",
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "white",
+     "socks": "white",
+     "sleeves": "skyblue"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "skyblue",
+     "shorts": "white",
+     "socks": "skyblue"
+    }
+   }
   },
   {
    "slug": "Porto",
@@ -134,7 +339,22 @@
    "shorts": "blue",
    "socks": "white",
    "pattern": "stripes",
-   "stripe2": "white"
+   "stripe2": "white",
+   "kits": {
+    "h": {
+     "p": "stripes",
+     "c1": "blue",
+     "shorts": "blue",
+     "socks": "white",
+     "c2": "white"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "white",
+     "socks": "white"
+    }
+   }
   },
   {
    "slug": "Ajax",
@@ -144,7 +364,22 @@
    "shorts": "white",
    "socks": "white",
    "pattern": "stripes",
-   "stripe2": "red"
+   "stripe2": "red",
+   "kits": {
+    "h": {
+     "p": "stripes",
+     "c1": "white",
+     "shorts": "white",
+     "socks": "white",
+     "c2": "red"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "navy",
+     "shorts": "navy",
+     "socks": "navy"
+    }
+   }
   },
   {
    "slug": "Celtic",
@@ -154,7 +389,22 @@
    "shorts": "white",
    "socks": "white",
    "pattern": "stripes",
-   "stripe2": "white"
+   "stripe2": "white",
+   "kits": {
+    "h": {
+     "p": "hoops",
+     "c1": "green",
+     "shorts": "white",
+     "socks": "white",
+     "c2": "white"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "yellow",
+     "shorts": "green",
+     "socks": "yellow"
+    }
+   }
   },
   {
    "slug": "PSG",
@@ -164,7 +414,22 @@
    "shorts": "darkblue",
    "socks": "darkblue",
    "pattern": "stripes",
-   "stripe2": "red"
+   "stripe2": "red",
+   "kits": {
+    "h": {
+     "p": "stripes",
+     "c1": "darkblue",
+     "shorts": "darkblue",
+     "socks": "darkblue",
+     "c2": "red"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "white",
+     "socks": "white"
+    }
+   }
   }
  ],
  "nations": [
@@ -183,6 +448,20 @@
      "#ffd200",
      "#1b3f9b"
     ]
+   },
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "yellow",
+     "shorts": "blue",
+     "socks": "white"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "blue",
+     "shorts": "white",
+     "socks": "blue"
+    }
    }
   },
   {
@@ -200,6 +479,20 @@
      "#ffffff",
      "#d62718"
     ]
+   },
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "darkblue",
+     "shorts": "white",
+     "socks": "red"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "white",
+     "socks": "white"
+    }
    }
   },
   {
@@ -219,6 +512,21 @@
      "#ffffff",
      "#6cabdd"
     ]
+   },
+   "kits": {
+    "h": {
+     "p": "stripes",
+     "c1": "skyblue",
+     "shorts": "black",
+     "socks": "white",
+     "c2": "white"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "darkblue",
+     "shorts": "black",
+     "socks": "darkblue"
+    }
    }
   },
   {
@@ -236,6 +544,20 @@
      "#ffffff",
      "#d62718"
     ]
+   },
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "blue",
+     "shorts": "white",
+     "socks": "blue"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "white",
+     "socks": "white"
+    }
    }
   },
   {
@@ -253,6 +575,20 @@
      "#d62718",
      "#ffce3d"
     ]
+   },
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "black",
+     "socks": "white"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "green",
+     "shorts": "black",
+     "socks": "green"
+    }
    }
   },
   {
@@ -269,6 +605,20 @@
      "#ffffff",
      "#d62718"
     ]
+   },
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "navy",
+     "socks": "white"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "red",
+     "shorts": "white",
+     "socks": "red"
+    }
    }
   },
   {
@@ -285,6 +635,20 @@
      "#d62718",
      "#ffce3d"
     ]
+   },
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "red",
+     "shorts": "navy",
+     "socks": "red"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "white",
+     "socks": "white"
+    }
    }
   },
   {
@@ -301,6 +665,20 @@
      "#159b4a",
      "#d62718"
     ]
+   },
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "claret",
+     "shorts": "green",
+     "socks": "claret"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "white",
+     "socks": "white"
+    }
    }
   },
   {
@@ -318,6 +696,20 @@
      "#ffffff",
      "#1b3f9b"
     ]
+   },
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "orange",
+     "shorts": "white",
+     "socks": "orange"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "darkblue",
+     "shorts": "darkblue",
+     "socks": "darkblue"
+    }
    }
   },
   {
@@ -335,6 +727,20 @@
      "#d62718",
      "#1b3f9b"
     ]
+   },
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "red",
+     "shorts": "white",
+     "socks": "blue"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "white",
+     "socks": "white"
+    }
    }
   },
   {
@@ -351,6 +757,20 @@
      "#1b5fb4",
      "#ffce3d"
     ]
+   },
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "yellow",
+     "shorts": "blue",
+     "socks": "yellow"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "blue",
+     "shorts": "yellow",
+     "socks": "blue"
+    }
    }
   },
   {
@@ -367,6 +787,20 @@
      "#d62718",
      "#ffffff"
     ]
+   },
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "red",
+     "shorts": "white",
+     "socks": "red"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "red",
+     "socks": "white"
+    }
    }
   },
   {
@@ -384,6 +818,20 @@
      "#ffffff",
      "#ff9900"
     ]
+   },
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "green",
+     "shorts": "white",
+     "socks": "green"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "green",
+     "socks": "white"
+    }
    }
   },
   {
@@ -401,6 +849,20 @@
      "#ffffff",
      "#1b3f9b"
     ]
+   },
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "blue",
+     "socks": "white"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "darkblue",
+     "shorts": "darkblue",
+     "socks": "darkblue"
+    }
    }
   },
   {
@@ -417,6 +879,20 @@
      "#1b3f9b",
      "#ffffff"
     ]
+   },
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "darkblue",
+     "shorts": "white",
+     "socks": "darkblue"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "yellow",
+     "shorts": "darkblue",
+     "socks": "yellow"
+    }
    }
   },
   {
@@ -433,6 +909,20 @@
      "#ffffff",
      "#d62718"
     ]
+   },
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "blue",
+     "shorts": "white",
+     "socks": "blue"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "blue",
+     "socks": "white"
+    }
    }
   }
  ],
@@ -443,7 +933,21 @@
    "rating": 2,
    "shirt": "claret",
    "shorts": "white",
-   "socks": "claret"
+   "socks": "claret",
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "claret",
+     "shorts": "white",
+     "socks": "claret"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "black",
+     "socks": "white"
+    }
+   }
   },
   {
    "slug": "Frogmore",
@@ -451,7 +955,21 @@
    "rating": 1,
    "shirt": "green",
    "shorts": "white",
-   "socks": "green"
+   "socks": "green",
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "green",
+     "shorts": "white",
+     "socks": "green"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "black",
+     "socks": "white"
+    }
+   }
   },
   {
    "slug": "Dunlow",
@@ -459,7 +977,21 @@
    "rating": 2,
    "shirt": "orange",
    "shorts": "black",
-   "socks": "orange"
+   "socks": "orange",
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "orange",
+     "shorts": "black",
+     "socks": "orange"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "black",
+     "socks": "white"
+    }
+   }
   },
   {
    "slug": "Pebblegate",
@@ -469,7 +1001,22 @@
    "shorts": "white",
    "socks": "blue",
    "pattern": "stripes",
-   "stripe2": "white"
+   "stripe2": "white",
+   "kits": {
+    "h": {
+     "p": "stripes",
+     "c1": "blue",
+     "shorts": "white",
+     "socks": "blue",
+     "c2": "white"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "black",
+     "socks": "white"
+    }
+   }
   },
   {
    "slug": "MarshEnd",
@@ -477,7 +1024,21 @@
    "rating": 1,
    "shirt": "yellow",
    "shorts": "green",
-   "socks": "yellow"
+   "socks": "yellow",
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "yellow",
+     "shorts": "green",
+     "socks": "yellow"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "black",
+     "socks": "white"
+    }
+   }
   },
   {
    "slug": "Ketterby",
@@ -487,7 +1048,22 @@
    "shorts": "black",
    "socks": "white",
    "pattern": "stripes",
-   "stripe2": "black"
+   "stripe2": "black",
+   "kits": {
+    "h": {
+     "p": "stripes",
+     "c1": "white",
+     "shorts": "black",
+     "socks": "white",
+     "c2": "black"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "red",
+     "shorts": "black",
+     "socks": "white"
+    }
+   }
   },
   {
    "slug": "Ollerton",
@@ -495,7 +1071,21 @@
    "rating": 3,
    "shirt": "navy",
    "shorts": "white",
-   "socks": "navy"
+   "socks": "navy",
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "navy",
+     "shorts": "white",
+     "socks": "navy"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "black",
+     "socks": "white"
+    }
+   }
   },
   {
    "slug": "Grimsdale",
@@ -503,7 +1093,21 @@
    "rating": 2,
    "shirt": "grey",
    "shorts": "black",
-   "socks": "grey"
+   "socks": "grey",
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "grey",
+     "shorts": "black",
+     "socks": "grey"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "black",
+     "socks": "white"
+    }
+   }
   },
   {
    "slug": "Witchford",
@@ -511,7 +1115,21 @@
    "rating": 1,
    "shirt": "skyblue",
    "shorts": "darkblue",
-   "socks": "skyblue"
+   "socks": "skyblue",
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "skyblue",
+     "shorts": "darkblue",
+     "socks": "skyblue"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "black",
+     "socks": "white"
+    }
+   }
   },
   {
    "slug": "Stickleton",
@@ -521,7 +1139,22 @@
    "shorts": "black",
    "socks": "red",
    "pattern": "stripes",
-   "stripe2": "black"
+   "stripe2": "black",
+   "kits": {
+    "h": {
+     "p": "stripes",
+     "c1": "red",
+     "shorts": "black",
+     "socks": "red",
+     "c2": "black"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "black",
+     "socks": "white"
+    }
+   }
   }
  ]
 }

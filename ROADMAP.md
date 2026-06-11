@@ -74,12 +74,12 @@ one region-tagged base image (index.html:88–136), so a *single* new defender b
 
 | # | Task | Notes | Effort | Status |
 |---|---|---|---|---|
-| B.1 | New ball + shadow | 41×41 logical, origin (19.6,34.1) — easiest first replacement; procedural 8-bit ball already exists in the menus (`_ball8`, index.html:1209) as a style anchor | S | ⬜ |
-| B.2 | New striker sheet (idle + 5 kick frames × 6 kit variants per club) | Keep the existing per-club PNG naming (`striker_<slug>_k0..5`); consider reducing to one base + live recolour like the defender (engine pattern exists) | L–XL | ⬜ |
-| B.3 | New defender region-map base | One image with tag colours per region (shirt/shorts/socks/sleeves/stripe) — the live recolour does the rest | M | ⬜ |
-| B.4 | New keeper atlas (idle, dive L/R, 3 catch heights) | Match `keeper_atlas.json` schema; fewer frames than the original's 371 is fine — the code only uses 6 ranges (index.html:164) | L–XL | ⬜ |
+| B.1 | New ball + shadow | Generated (`artgen/gen_sprites.py`): classic pentagon ball, disc geometry matched to the original | S | ✅ |
+| B.2 | New striker sheet | Generated: ONE region-tagged base (idle + 5 kick frames, contact pose on k3) + universal live recolour — per-club PNGs retired entirely (docs/SPRITE_SPEC.md) | L–XL | ✅ |
+| B.3 | New defender base | Generated, tagged, pattern-aware (stripes/hoops/halves/quarters/sash) | M | ✅ |
+| B.4 | New keeper atlas | Generated: 104 frames (idle, 50-frame dives L/R, 3 catches), silhouette extents matched to the originals so the save hit-test behaves identically; keeper kit recoloured per match | L–XL | ✅ |
 | B.5 | Replace the 6 SFX (kick, post, whistle, goal, boos, ooh) | Licensed packs or recorded; keep the same filenames | S | ⬜ |
-| B.6 | Style decision first: pick ONE art direction (the teletext/8-bit identity suggests chunky pixel-art sprites — also much easier to produce consistently than the current photo-traced look) | Decide before B.2–B.4 | — | ⬜ |
+| B.6 | Art direction | Decided + shipped: parametric 16-bit figures matching the stadium/HUD style; iterate poses/detail in `gen_sprites.py` | — | ✅ |
 
 ### Track C — Names, fonts, history
 

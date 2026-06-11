@@ -75,9 +75,12 @@
                     logo:"assets/ui/logo.png?v=2",
                     trophyL:"assets/ui/trophy_league.png?v=1", trophyC:"assets/ui/trophy_cup.png?v=1",
                     trophyE:"assets/ui/trophy_euro.png?v=1",   trophyI:"assets/ui/trophy_intl.png?v=1",
-                    katlas0:"assets/keeper_atlas_0.png?v=dd", katlas1:"assets/keeper_atlas_1.png?v=dd",
-                    ball:"assets/ball.png?v=hr", shadow:"assets/shadow.png?v=hr",
-                    defmap:"assets/defender_regionmap.png?v=live2" };
+                    katlas:"assets/sprites/keeper_atlas.png?v=s1",
+                    ball:"assets/sprites/ball.png?v=s1", shadow:"assets/sprites/shadow.png?v=s1",
+                    sb0:"assets/sprites/striker_k0.png?v=s1", sb1:"assets/sprites/striker_k1.png?v=s1",
+                    sb2:"assets/sprites/striker_k2.png?v=s1", sb3:"assets/sprites/striker_k3.png?v=s1",
+                    sb4:"assets/sprites/striker_k4.png?v=s1", sb5:"assets/sprites/striker_k5.png?v=s1",
+                    defbase:"assets/sprites/defender.png?v=s1" };
   let loaded = 0, total = Object.keys(sources).length, assetsReady = false;
   for (const k in sources) {
     const im = new Image();
@@ -85,70 +88,83 @@
     im.onerror = () => { if (++loaded === total) assetsReady = true; };
     im.src = sources[k]; IMG[k] = im;
   }
-  // Striker (your club) + defender (opponent) kits loaded on demand.
-  for (const k of ["striker","sk0","sk1","sk2","sk3","sk4","defender"]) IMG[k] = new Image();
   let kitsReady = false;
-  // ---- LIVE defender recolour (the original game's Color.setRGB-per-sub-clip, in canvas) ----
-  // One region-tag base (assets/defender_regionmap.png): shirt/shorts/socks/sleeves/stripe1 are
-  // pure tag colours; skin/hair/boots/outline are kept as-is. We flat-fill each tagged region with
-  // the opponent's kit colour at match start — no per-team PNGs needed.
-  const DEF_TAGS = [
-    { slot:"shirt",  rgb:[255,0,0]   },
-    { slot:"shorts", rgb:[0,255,0]   },
-    { slot:"socks",  rgb:[0,0,255]   },
-    { slot:"sleeves",rgb:[255,255,0] },
-    { slot:"stripe", rgb:[0,255,255] },   // stripe1 sub-clip (= teams.json "stripe")
-  ];
-  let DEFMAP = null;   // cached ImageData of the region-tag base
   const _hexRGB = h => { const n=parseInt(h.slice(1),16); return [(n>>16)&255,(n>>8)&255,n&255]; };
-  function ensureDefMap() {
-    if (DEFMAP) return DEFMAP;
-    const im = IMG.defmap; if (!im || !im.complete || !im.naturalWidth) return null;
-    const c = document.createElement("canvas"); c.width=im.naturalWidth; c.height=im.naturalHeight;
-    const x = c.getContext("2d"); x.drawImage(im,0,0);
-    DEFMAP = { d:x.getImageData(0,0,c.width,c.height).data, w:c.width, h:c.height };
-    return DEFMAP;
+  // ================= UNIVERSAL KIT RENDERER (docs/SPRITE_SPEC.md) =================
+  // The sprite bases are REGION-TAGGED: pure hues mark recolourable areas, pixel
+  // brightness carries the shading. One base set renders ANY kit live:
+  //   red=shirt  green=shorts  blue=socks  yellow=sleeves  magenta=hair
+  // Patterns (stripes/hoops/halves/quarters/sash) are computed inside the shirt bbox.
+  const SPRITES = { striker:[], defender:null, keeper:null };   // per-match recoloured canvases
+  function tagOf(r,g,b){
+    const mx=Math.max(r,g,b); if (mx<70) return 0;
+    const nr=r/mx, ng=g/mx, nb=b/mx;
+    if (nr>0.85&&ng<0.35&&nb<0.35) return 1;            // shirt
+    if (ng>0.85&&nr<0.35&&nb<0.35) return 2;            // shorts
+    if (nb>0.85&&nr<0.35&&ng<0.35) return 3;            // socks
+    if (nr>0.85&&ng>0.85&&nb<0.35) return 4;            // sleeves
+    if (nr>0.85&&nb>0.85&&ng<0.35) return 5;            // hair
+    return 0;
   }
-  function buildDefenderLive(slug) {
-    const m = ensureDefMap(), t = TEAMBY[slug];
-    if (!m || !t || !PAL) return null;
-    // stripe1 sub-clip: invisible on solid kits (= shirt colour), the contrast colour only on striped kits
-    const stripeHex = (t.pattern === "stripes" && t.stripe2 && PAL[t.stripe2]) ? PAL[t.stripe2] : (PAL[t.shirt] || "#cccccc");
-    const col = {
-      shirt:   _hexRGB(PAL[t.shirt]   || "#cccccc"),
-      shorts:  _hexRGB(PAL[t.shorts]  || "#ffffff"),
-      socks:   _hexRGB(PAL[t.socks]   || "#cccccc"),
-      sleeves: _hexRGB(PAL[t.sleeves] || PAL[t.shirt] || "#cccccc"),
-      stripe:  _hexRGB(stripeHex),
-    };
-    const { d, w, h } = m;
-    const out = document.createElement("canvas"); out.width=w; out.height=h;
-    const octx = out.getContext("2d"); const img = octx.createImageData(w,h); const o = img.data;
-    for (let i=0;i<w*h;i++){
-      const j=i*4, a=d[j+3];
-      if (a<8){ o[j+3]=0; continue; }
-      let best=-1, bd=90*90;                              // within ~90 of a pure tag => recolourable
-      for (let k=0;k<DEF_TAGS.length;k++){ const c=DEF_TAGS[k].rgb;
-        const dr=d[j]-c[0], dg=d[j+1]-c[1], db=d[j+2]-c[2], dist=dr*dr+dg*dg+db*db;
-        if (dist<bd){ bd=dist; best=k; } }
-      if (best<0){ o[j]=d[j]; o[j+1]=d[j+1]; o[j+2]=d[j+2]; o[j+3]=a; continue; }  // base: skin/hair/boots/outline
-      const c=col[DEF_TAGS[best].slot]; o[j]=c[0]; o[j+1]=c[1]; o[j+2]=c[2]; o[j+3]=a;
+  function patPick(p, x, y, bb){                        // 1 = second colour
+    if (p==="stripes") return (((x-bb.x0)/14)|0)%2;
+    if (p==="hoops")   return (((y-bb.y0)/16)|0)%2;
+    if (p==="halves")  return x > (bb.x0+bb.x1)/2 ? 1 : 0;
+    if (p==="quarters"){ const l=x<(bb.x0+bb.x1)/2, t=y<(bb.y0+bb.y1)/2; return (l!==t)?1:0; }
+    if (p==="sash")    return Math.abs((x-bb.x0)-(y-bb.y0)*0.55-(bb.x1-bb.x0)*0.30)<13 ? 1 : 0;
+    return 0;
+  }
+  function kitCols(kit){ const g=n=>PAL[n]||n||"#cccccc";
+    return { c1:_hexRGB(g(kit.c1)), c2:_hexRGB(g(kit.c2||kit.c1)), sleeves:_hexRGB(g(kit.sleeves||kit.c1)),
+             shorts:_hexRGB(g(kit.shorts||"white")), socks:_hexRGB(g(kit.socks||kit.c1)) };
+  }
+  function buildKit(im, kit, hairRGB){
+    const c=document.createElement("canvas"); c.width=im.naturalWidth; c.height=im.naturalHeight;
+    const g=c.getContext("2d",{willReadFrequently:true}); g.drawImage(im,0,0);
+    const id=g.getImageData(0,0,c.width,c.height), d=id.data, K=kitCols(kit);
+    let x0=1e9,x1=-1,y0=1e9,y1=-1;                      // shirt bbox drives the pattern geometry
+    for (let i=0;i<d.length;i+=4){ if (d[i+3]<8) continue;
+      if (tagOf(d[i],d[i+1],d[i+2])===1){ const px=(i/4)%c.width, py=(i/4/c.width)|0;
+        if(px<x0)x0=px; if(px>x1)x1=px; if(py<y0)y0=py; if(py>y1)y1=py; } }
+    const bb={x0,x1,y0,y1};
+    for (let i=0;i<d.length;i+=4){
+      if (d[i+3]<8) continue;
+      const r=d[i],gg=d[i+1],b=d[i+2], tg=tagOf(r,gg,b); if(!tg) continue;
+      const sh=0.62+0.40*(Math.max(r,gg,b)/255);        // brightness-coded shading survives recolour
+      let col;
+      if (tg===1){ const px=(i/4)%c.width, py=(i/4/c.width)|0;
+        col = patPick(kit.p, px, py, bb) ? K.c2 : K.c1; }
+      else if (tg===2) col=K.shorts;
+      else if (tg===3) col=K.socks;
+      else if (tg===4) col=K.sleeves;
+      else col=hairRGB||[60,44,34];
+      d[i]=Math.min(255,col[0]*sh); d[i+1]=Math.min(255,col[1]*sh); d[i+2]=Math.min(255,col[2]*sh);
     }
-    octx.putImageData(img,0,0);
-    return out;
+    g.putImageData(id,0,0); return c;
   }
-
-  function loadKits(mySlug, oppSlug, cb) {
-    kitsReady = false;
-    const need = [["striker",mySlug+"_k0"],["sk0",mySlug+"_k1"],["sk1",mySlug+"_k2"],
-                  ["sk2",mySlug+"_k3"],["sk3",mySlug+"_k4"],["sk4",mySlug+"_k5"]];
-    let c = 0, tot = need.length + 1;
-    const done = () => { if (++c === tot) { kitsReady = true; cb && cb(); } };
-    for (const [key,file] of need) { const im = IMG[key]; im.onload = im.onerror = done; im.src = "assets/striker_"+file+".png?v=hr5"; }
-    const dfn = IMG.defender; dfn.onload = dfn.onerror = done;
-    const live = buildDefenderLive(oppSlug);                       // original method: recolour live
-    if (live) dfn.src = live.toDataURL("image/png");
-    else dfn.src = "assets/defender_"+oppSlug+".png?v=hr5";        // fallback to pre-baked PNG
+  // kit selection: home side wears home; the visitor switches to away on a colour clash
+  function kitFor(slug, away){
+    const t=TEAMBY[slug]||{};
+    const ks=t.kits||{ h:{ p:(t.pattern==="stripes"?"stripes":"solid"), c1:t.shirt||"grey", c2:t.stripe2,
+                           sleeves:(t.sleeves&&t.sleeves!==t.shirt)?t.sleeves:null,
+                           shorts:t.shorts||"white", socks:t.socks||t.shirt||"grey" },
+                       a:{ p:"solid", c1:(t.shirt==="white"?"red":"white"), shorts:"black", socks:"white" } };
+    return away ? (ks.a||ks.h) : ks.h;
+  }
+  const kitHex=k=>PAL[k.c1]||k.c1||"#cccccc";
+  const GK_COLS=["#ffe23d","#3df04f","#ff8a00","#b9c2cc"];   // era keeper kits: yellow/green/orange/grey
+  function loadKits(mySlug, oppSlug, cb){
+    kitsReady=false;
+    let myKit=kitFor(mySlug,false), oppKit=kitFor(oppSlug,false);
+    if (OPPONENT.home){ if (colDist(kitHex(myKit), kitHex(oppKit))<95) myKit=kitFor(mySlug,true); }
+    else              { if (colDist(kitHex(oppKit), kitHex(myKit))<95) oppKit=kitFor(oppSlug,true); }
+    const bases=[IMG.sb0,IMG.sb1,IMG.sb2,IMG.sb3,IMG.sb4,IMG.sb5];
+    const hair=HAIR_COLOURS[rnd(HAIR_COLOURS.length)];
+    SPRITES.striker  = bases.map(im => (im&&im.naturalWidth) ? buildKit(im, myKit, hair) : null);
+    SPRITES.defender = (IMG.defbase&&IMG.defbase.naturalWidth) ? buildKit(IMG.defbase, oppKit, HAIR_COLOURS[rnd(HAIR_COLOURS.length)]) : null;
+    const gk = GK_COLS.find(cn => colDist(cn,kitHex(myKit))>110 && colDist(cn,kitHex(oppKit))>110) || GK_COLS[0];
+    SPRITES.keeper   = (IMG.katlas&&IMG.katlas.naturalWidth) ? buildKit(IMG.katlas, {p:"solid",c1:gk,shorts:"#15171d",socks:gk}, [34,28,24]) : null;
+    kitsReady=true; cb&&cb();
   }
   // Team roster (kits + ratings) for career mode.
   let TEAMS = [], TEAMBY = {}, PAL = {};
@@ -161,7 +177,9 @@
     .catch(e=>{ rosterStatus="error"; try{ console.error("teams.json failed to load:", e); }catch(_){} });
   // Keeper sprite-atlas manifest (per-frame rects + offsets, all 371-frame anims packed).
   let KMAN = null;
-  fetch("assets/keeper_atlas.json?v=dd").then(r=>r.json()).then(j=>{ KMAN = j.frames; }).catch(()=>{});
+  fetch("assets/sprites/keeper_atlas.json?v=s1").then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
+    .then(j=>{ KMAN = j.frames; })
+    .catch(e=>{ try{ console.error("keeper_atlas.json failed to load:", e); }catch(_){} });
   // ---- L1 perimeter ad boards: manifest + images (sold sponsor boards just replace files in
   // assets/boards/ + boards.json — no code change). Failure falls back to procedural house boards.
   // NB: paths must never contain "ads"/"advert" — desktop ad-blockers block such URLs.
@@ -589,28 +607,8 @@
   let leftFooted=false;           // ~1 in 5 matches: mirror the play (left-footed)
   let matchEndText="", matchEndColor="#fff", matchEndTimer=0;   // end-of-match VICTORY/DRAW/LOSS burst
   const GCX = (LPOST+RPOST)/2;    // goal centre x: sprites mirror around this so they stay in the goal mouth
-  // ---- per-match random hair ----
+  // per-match random hair (applied by buildKit via the magenta hair tag)
   const HAIR_COLOURS = [[40,40,42],[150,95,45],[225,195,120],[196,96,0],[120,30,30],[185,185,185]]; // black, brown, blonde, ginger, auburn, grey
-  const STRIKER_HAIR = [];        // 6 hair-recoloured frame canvases for the current match
-  function buildHairFrames(){
-    STRIKER_HAIR.length=0;
-    const imgs=[IMG.striker,IMG.sk0,IMG.sk1,IMG.sk2,IMG.sk3,IMG.sk4];
-    const hc=HAIR_COLOURS[rnd(HAIR_COLOURS.length)];
-    for (const im of imgs){
-      if (!im || !im.naturalWidth){ STRIKER_HAIR.push(null); continue; }
-      const c=document.createElement("canvas"); c.width=im.naturalWidth; c.height=im.naturalHeight;
-      const g=c.getContext("2d"); g.drawImage(im,0,0);
-      const d=g.getImageData(0,0,c.width,c.height), p=d.data;
-      for (let i=0;i<p.length;i+=4){
-        const r=p[i],gg=p[i+1],b=p[i+2],a=p[i+3];
-        if (a>40 && r>=120&&r<=232 && gg>=40&&gg<=150 && b<58 && (r-gg)>=48 && (gg-b)>34){  // ginger hair
-          const v=Math.min(1.12, r/192);
-          p[i]=Math.min(255,hc[0]*v); p[i+1]=Math.min(255,hc[1]*v); p[i+2]=Math.min(255,hc[2]*v);
-        }
-      }
-      g.putImageData(d,0,0); STRIKER_HAIR.push(c);
-    }
-  }
 
   function setTargets() {
     const k = matchBalls/10;          // 5-ball matches (cup / Europe / internationals) halve the targets
@@ -632,7 +630,6 @@
       pickBoards(Math.random);
     }
     teamHud = teamColors(MYCLUB.slug);   // info panel themed to your club's kit
-    buildHairFrames();                   // random hair colour this match
     setTargets(); sfx.whistle();
     newServe();                          // sets up the scene + first serve...
     countdownT=3.0; state=ST.COUNTDOWN;  // ...held behind a 3-2-1 so you can get in position
@@ -816,7 +813,7 @@
     else { if(!T.oppF) T.oppF=trnPickKO(T.group.concat([T.oppQ,T.oppS])); oppSlug=T.oppF; ko=true; }
     const ot=TEAMBY[oppSlug];
     OPPONENT={ slug:oppSlug, name:ot.name, rating:ot.rating, home:rnd(2)===0 };
-    return { ko, strikerSlug:(nat.kitProxy||CAR.slug) };   // striker art borrowed from a matching club kit
+    return { ko, strikerSlug:CAR.nation };   // nation kit renders straight onto the striker base
   }
   function startTrnMatch(){
     const o=trnSetup();
@@ -1101,8 +1098,8 @@
     if (!KMAN) return;
     const fr = KMAN[String(keeperPose.frame)] || KMAN["1"];
     if (!fr) return;
-    const sheet = fr.sheet===0 ? IMG.katlas0 : IMG.katlas1;
-    if (!sheet || !sheet.naturalWidth) return;
+    const sheet = SPRITES.keeper || IMG.katlas;
+    if (!sheet || !(sheet.naturalWidth||sheet.width)) return;
     g.save();
     g.translate(keeperPose.x, KEEPER_STAGE_Y);     // central keeper shuffles x; dives keep x=263
     g.drawImage(sheet, fr.x, fr.y, fr.w, fr.h,
@@ -1114,26 +1111,22 @@
   // exact: gameplay player placed at scale 1.0 (root); registration origin (101.2,126.5) -> (man._x, man._y)
   const STRIKER_OX = 101.2, STRIKER_OY = 126.5, STRIKER_W = 131, STRIKER_H = 191;
   function drawStriker() {
-    if (!IMG.striker.complete || !IMG.striker.naturalWidth) return;
-    const hair = STRIKER_HAIR.length===6 && STRIKER_HAIR[0];   // hair-recoloured frame canvases
-    let img;
-    if (manKicking) {
-      const seq = hair ? [STRIKER_HAIR[1],STRIKER_HAIR[2],STRIKER_HAIR[3],STRIKER_HAIR[4],STRIKER_HAIR[5]]
-                       : [IMG.sk0, IMG.sk1, IMG.sk2, IMG.sk3, IMG.sk4];
-      const idx = Math.max(0, Math.min(4, Math.floor((manKickT-1)/2)));
-      img = (seq[idx] && (seq[idx].naturalWidth||seq[idx].width)) ? seq[idx] : (hair ? STRIKER_HAIR[0] : IMG.striker);
-    } else {
-      img = hair ? STRIKER_HAIR[0] : IMG.striker;
+    const sp=SPRITES.striker;
+    if (!sp || !sp[0]) return;
+    let img=sp[0];
+    if (manKicking){
+      const idx = Math.max(0, Math.min(4, Math.floor((manKickT-1)/2)));   // contact lands on frame 3 (k3)
+      img = sp[idx+1] || sp[0];
     }
     ctx.drawImage(img, manX - STRIKER_OX, MAN_Y - STRIKER_OY, STRIKER_W, STRIKER_H);
   }
 
   function drawDefenders() {
-    if (!IMG.defender.complete || !IMG.defender.naturalWidth) return;
+    const dim=SPRITES.defender; if (!dim) return;
     // far (smaller) first for correct overlap; draw man origin (DEF_OX,DEF_OY) at the opponent placement
     const order = defenders.slice().sort((a,b)=>a.sy-b.sy);
     for (const d of order) {
-      ctx.drawImage(IMG.defender, d.ox - DEF_OX*d.sx, d.oy - DEF_OY*d.sy, DEF_W*d.sx, DEF_H*d.sy);
+      ctx.drawImage(dim, d.ox - DEF_OX*d.sx, d.oy - DEF_OY*d.sy, DEF_W*d.sx, DEF_H*d.sy);
     }
   }
 
@@ -2952,6 +2945,11 @@
         return {ev:ev.t, state};
       },
       newCareerSim: function(nation){ GMODE="career"; newCareer("TEST","Liverpool",nation||"Brazil"); return {cal:CAR.cal.length, state}; },
+      buildKitsTest: function(){
+        OPPONENT={slug:"Everton",name:"Everton",rating:8,home:true};
+        loadKits("Liverpool","Everton",null);
+        return { striker:SPRITES.striker.filter(Boolean).length, def:!!SPRITES.defender, gk:!!SPRITES.keeper, ready:kitsReady };
+      },
       careerInfo: function(){ return { season:CAR.season, trophies:(CAR.trophies||[]).map(t=>t.t), caps:CAR.caps||0,
         nextEuro:CAR.nextEuro, cup:CAR.cup&&{round:CAR.cup.round,out:CAR.cup.out,won:CAR.cup.won},
         euro:CAR.euro&&CAR.euro.stage, pos:myPosition(), pts:CAR.table[CAR.slug].pts }; },

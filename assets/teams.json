@@ -26,7 +26,22 @@
    "socks_top": "white",
    "stripe": "red",
    "sleeves": "white",
-   "position": 1
+   "position": 1,
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "red",
+     "shorts": "white",
+     "socks": "red",
+     "sleeves": "white"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "yellow",
+     "shorts": "darkblue",
+     "socks": "yellow"
+    }
+   }
   },
   {
    "slug": "ManCity",
@@ -39,7 +54,21 @@
    "socks_top": "skyblue",
    "stripe": "skyblue",
    "sleeves": "skyblue",
-   "position": 2
+   "position": 2,
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "skyblue",
+     "shorts": "white",
+     "socks": "navy"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "black",
+     "shorts": "black",
+     "socks": "black"
+    }
+   }
   },
   {
    "slug": "ManUtd",
@@ -52,7 +81,21 @@
    "socks_top": "black",
    "stripe": "red",
    "sleeves": "red",
-   "position": 3
+   "position": 3,
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "red",
+     "shorts": "white",
+     "socks": "black"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "black",
+     "socks": "white"
+    }
+   }
   },
   {
    "slug": "AstonVilla",
@@ -66,7 +109,22 @@
    "stripe": "claret",
    "sleeves": "claret",
    "swatch_accent": "skyblue",
-   "position": 4
+   "position": 4,
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "claret",
+     "shorts": "white",
+     "socks": "skyblue",
+     "sleeves": "skyblue"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "claret",
+     "socks": "white"
+    }
+   }
   },
   {
    "slug": "Liverpool",
@@ -79,7 +137,21 @@
    "socks_top": "red",
    "stripe": "red",
    "sleeves": "red",
-   "position": 5
+   "position": 5,
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "red",
+     "shorts": "red",
+     "socks": "red"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "gold",
+     "shorts": "black",
+     "socks": "gold"
+    }
+   }
   },
   {
    "slug": "Bournemouth",
@@ -94,7 +166,22 @@
    "sleeves": "red",
    "pattern": "stripes",
    "stripe2": "black",
-   "position": 6
+   "position": 6,
+   "kits": {
+    "h": {
+     "p": "stripes",
+     "c1": "red",
+     "shorts": "black",
+     "socks": "black",
+     "c2": "black"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "white",
+     "socks": "white"
+    }
+   }
   },
   {
    "slug": "Brighton",
@@ -109,7 +196,22 @@
    "sleeves": "blue",
    "pattern": "stripes",
    "stripe2": "white",
-   "position": 7
+   "position": 7,
+   "kits": {
+    "h": {
+     "p": "stripes",
+     "c1": "blue",
+     "shorts": "white",
+     "socks": "white",
+     "c2": "white"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "yellow",
+     "shorts": "blue",
+     "socks": "yellow"
+    }
+   }
   },
   {
    "slug": "Chelsea",
@@ -122,7 +224,21 @@
    "socks_top": "white",
    "stripe": "blue",
    "sleeves": "blue",
-   "position": 8
+   "position": 8,
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "blue",
+     "shorts": "blue",
+     "socks": "white"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "yellow",
+     "shorts": "yellow",
+     "socks": "yellow"
+    }
+   }
   },
   {
    "slug": "Brentford",
@@ -137,7 +253,22 @@
    "sleeves": "red",
    "pattern": "stripes",
    "stripe2": "white",
-   "position": 9
+   "position": 9,
+   "kits": {
+    "h": {
+     "p": "stripes",
+     "c1": "red",
+     "shorts": "black",
+     "socks": "red",
+     "c2": "white"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "yellow",
+     "shorts": "black",
+     "socks": "yellow"
+    }
+   }
   },
   {
    "slug": "Sunderland",
@@ -152,7 +283,22 @@
    "sleeves": "red",
    "pattern": "stripes",
    "stripe2": "white",
-   "position": 10
+   "position": 10,
+   "kits": {
+    "h": {
+     "p": "stripes",
+     "c1": "red",
+     "shorts": "black",
+     "socks": "red",
+     "c2": "white"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "navy",
+     "shorts": "navy",
+     "socks": "navy"
+    }
+   }
   },
   {
    "slug": "Newcastle",
@@ -167,7 +313,22 @@
    "sleeves": "black",
    "pattern": "stripes",
    "stripe2": "white",
-   "position": 11
+   "position": 11,
+   "kits": {
+    "h": {
+     "p": "stripes",
+     "c1": "black",
+     "shorts": "black",
+     "socks": "black",
+     "c2": "white"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "gold",
+     "shorts": "navy",
+     "socks": "gold"
+    }
+   }
   },
   {
    "slug": "Everton",
@@ -180,7 +341,21 @@
    "socks_top": "blue",
    "stripe": "blue",
    "sleeves": "blue",
-   "position": 12
+   "position": 12,
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "blue",
+     "shorts": "white",
+     "socks": "white"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "yellow",
+     "shorts": "grey",
+     "socks": "yellow"
+    }
+   }
   },
   {
    "slug": "Fulham",
@@ -193,7 +368,21 @@
    "socks_top": "white",
    "stripe": "white",
    "sleeves": "black",
-   "position": 13
+   "position": 13,
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "black",
+     "socks": "white"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "red",
+     "shorts": "black",
+     "socks": "red"
+    }
+   }
   },
   {
    "slug": "Leeds",
@@ -206,7 +395,21 @@
    "socks_top": "white",
    "stripe": "white",
    "sleeves": "white",
-   "position": 14
+   "position": 14,
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "white",
+     "socks": "white"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "yellow",
+     "shorts": "blue",
+     "socks": "yellow"
+    }
+   }
   },
   {
    "slug": "CrystalPalace",
@@ -221,7 +424,22 @@
    "sleeves": "red",
    "pattern": "stripes",
    "stripe2": "blue",
-   "position": 15
+   "position": 15,
+   "kits": {
+    "h": {
+     "p": "stripes",
+     "c1": "red",
+     "shorts": "blue",
+     "socks": "blue",
+     "c2": "blue"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "white",
+     "socks": "white"
+    }
+   }
   },
   {
    "slug": "NottmForest",
@@ -234,7 +452,21 @@
    "socks_top": "red",
    "stripe": "red",
    "sleeves": "red",
-   "position": 16
+   "position": 16,
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "red",
+     "shorts": "white",
+     "socks": "red"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "white",
+     "socks": "white"
+    }
+   }
   },
   {
    "slug": "Spurs",
@@ -247,7 +479,21 @@
    "socks_top": "white",
    "stripe": "white",
    "sleeves": "navy",
-   "position": 17
+   "position": 17,
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "white",
+     "shorts": "navy",
+     "socks": "white"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "navy",
+     "shorts": "navy",
+     "socks": "navy"
+    }
+   }
   },
   {
    "slug": "WestHam",
@@ -261,7 +507,22 @@
    "stripe": "claret",
    "sleeves": "claret",
    "swatch_accent": "skyblue",
-   "position": 18
+   "position": 18,
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "claret",
+     "shorts": "white",
+     "socks": "claret",
+     "sleeves": "skyblue"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "skyblue",
+     "shorts": "skyblue",
+     "socks": "skyblue"
+    }
+   }
   },
   {
    "slug": "Burnley",
@@ -275,7 +536,22 @@
    "stripe": "claret",
    "sleeves": "claret",
    "swatch_accent": "skyblue",
-   "position": 19
+   "position": 19,
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "claret",
+     "shorts": "white",
+     "socks": "claret",
+     "sleeves": "skyblue"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "yellow",
+     "shorts": "claret",
+     "socks": "yellow"
+    }
+   }
   },
   {
    "slug": "Wolves",
@@ -288,7 +564,21 @@
    "socks_top": "gold",
    "stripe": "gold",
    "sleeves": "gold",
-   "position": 20
+   "position": 20,
+   "kits": {
+    "h": {
+     "p": "solid",
+     "c1": "gold",
+     "shorts": "black",
+     "socks": "gold"
+    },
+    "a": {
+     "p": "solid",
+     "c1": "black",
+     "shorts": "black",
+     "socks": "black"
+    }
+   }
   }
  ]
 }
