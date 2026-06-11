@@ -97,21 +97,21 @@
   // Patterns (stripes/hoops/halves/quarters/sash) are computed inside the shirt bbox.
   const SPRITES = { striker:[], defender:null, keeper:null };   // per-match recoloured canvases
   function tagOf(r,g,b){
-    const mx=Math.max(r,g,b); if (mx<70) return 0;
-    const nr=r/mx, ng=g/mx, nb=b/mx;
-    if (nr>0.85&&ng<0.35&&nb<0.35) return 1;            // shirt
-    if (ng>0.85&&nr<0.35&&nb<0.35) return 2;            // shorts
-    if (nb>0.85&&nr<0.35&&ng<0.35) return 3;            // socks
-    if (nr>0.85&&ng>0.85&&nb<0.35) return 4;            // sleeves
-    if (nr>0.85&&nb>0.85&&ng<0.35) return 5;            // hair
+    if (r>140 && g<100 && b<100) return 1;                          // shirt:  R=shade, G=u, B=v
+    if (g>140 && r<100 && b<100) return 2;                          // shorts: G=shade, R=u, B=v
+    if (b>140 && r<100 && g<100) return 3;                          // socks:  B=shade, R=u, G=v
+    if (r>140 && g>140 && b<100 && Math.abs(r-g)<30) return 4;      // sleeves:RG=shade, B=u
+    if (r>140 && b>140 && g<100 && Math.abs(r-b)<30) return 5;      // hair:   RB=shade
     return 0;
   }
-  function patPick(p, x, y, bb){                        // 1 = second colour
-    if (p==="stripes") return (((x-bb.x0)/14)|0)%2;
-    if (p==="hoops")   return (((y-bb.y0)/16)|0)%2;
-    if (p==="halves")  return x > (bb.x0+bb.x1)/2 ? 1 : 0;
-    if (p==="quarters"){ const l=x<(bb.x0+bb.x1)/2, t=y<(bb.y0+bb.y1)/2; return (l!==t)?1:0; }
-    if (p==="sash")    return Math.abs((x-bb.x0)-(y-bb.y0)*0.55-(bb.x1-bb.x0)*0.30)<13 ? 1 : 0;
+  // patterns evaluated in PER-PART UV space (baked into the base sprite channels):
+  // stripes run parallel to the part and mirror symmetrically from its centre line.
+  function patVal(p,u,v){
+    if (p==="stripes") return Math.floor(Math.min(0.999,u)*7)%2;
+    if (p==="hoops")   return Math.floor(Math.min(0.999,v)*9)%2;
+    if (p==="halves")  return u>0.5?1:0;
+    if (p==="quarters")return ((u>0.5)?1:0)^((v>0.5)?1:0);
+    if (p==="sash")    return Math.abs(u+v-1)<0.18?1:0;
     return 0;
   }
   function kitCols(kit){ const g=n=>PAL[n]||n||"#cccccc";
@@ -122,23 +122,17 @@
     const c=document.createElement("canvas"); c.width=im.naturalWidth; c.height=im.naturalHeight;
     const g=c.getContext("2d",{willReadFrequently:true}); g.drawImage(im,0,0);
     const id=g.getImageData(0,0,c.width,c.height), d=id.data, K=kitCols(kit);
-    let x0=1e9,x1=-1,y0=1e9,y1=-1;                      // shirt bbox drives the pattern geometry
-    for (let i=0;i<d.length;i+=4){ if (d[i+3]<8) continue;
-      if (tagOf(d[i],d[i+1],d[i+2])===1){ const px=(i/4)%c.width, py=(i/4/c.width)|0;
-        if(px<x0)x0=px; if(px>x1)x1=px; if(py<y0)y0=py; if(py>y1)y1=py; } }
-    const bb={x0,x1,y0,y1};
     for (let i=0;i<d.length;i+=4){
       if (d[i+3]<8) continue;
       const r=d[i],gg=d[i+1],b=d[i+2], tg=tagOf(r,gg,b); if(!tg) continue;
-      const sh=0.62+0.40*(Math.max(r,gg,b)/255);        // brightness-coded shading survives recolour
-      let col;
-      if (tg===1){ const px=(i/4)%c.width, py=(i/4/c.width)|0;
-        col = patPick(kit.p, px, py, bb) ? K.c2 : K.c1; }
-      else if (tg===2) col=K.shorts;
-      else if (tg===3) col=K.socks;
-      else if (tg===4) col=K.sleeves;
-      else col=hairRGB||[60,44,34];
-      d[i]=Math.min(255,col[0]*sh); d[i+1]=Math.min(255,col[1]*sh); d[i+2]=Math.min(255,col[2]*sh);
+      let shade, col;
+      if (tg===1){ shade=r; col = patVal(kit.p, gg/88, b/88) ? K.c2 : K.c1; }
+      else if (tg===2){ shade=gg; col=K.shorts; }
+      else if (tg===3){ shade=b;  col=K.socks; }
+      else if (tg===4){ shade=(r+gg)/2; col=K.sleeves; }
+      else { shade=(r+b)/2; col=hairRGB||[60,44,34]; }
+      const f=shade/255*1.04;                       // cel bands survive any kit colour
+      d[i]=Math.min(255,col[0]*f); d[i+1]=Math.min(255,col[1]*f); d[i+2]=Math.min(255,col[2]*f);
     }
     g.putImageData(id,0,0); return c;
   }

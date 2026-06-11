@@ -1,20 +1,18 @@
-"""Generate the ORIGINAL sprite set — striker, defender, keeper, ball, shadow.
+"""Generate the ORIGINAL sprite set — striker, defender, keeper, ball, shadow. v2.
 
-Completely clean-room art (no pixels from the source game) drawn from parametric
-skeleton poses in the project's 16-bit style, but geometry-faithful to the engine:
-registration origins, sprite boxes, kick-contact pose (foot through origin+15,
-z 0..40) and keeper silhouette extents (the pixel hit-test!) all match the
-documented values in docs/SPRITE_SPEC.md.
+ISS-era volumetric figures: tapered limbs, shaped torso, 3-tone cel shading,
+strict painter's order (far arm > far leg > near thigh > shorts > shirt over
+shorts > near calf > near arm over torso > head). 100% clean-room.
 
-REGION TAGS (pure hues, brightness = shading) make every body recolourable live:
-  shirt=red  sleeves=yellow  shorts=green  socks=blue  hair=magenta
-  skin / boots / gloves / outline are final colours and pass through.
-
-Outputs:
-  assets/sprites/striker_k0..k5.png   131x191 logical @2x, origin (101.2,126.5)
-  assets/sprites/defender.png          67x115 logical @2x, origin (33.4,57.5)
-  assets/sprites/keeper_atlas.png + keeper_atlas.json  (frames 1, 50-99, 100-149, 323/328/354)
-  assets/sprites/ball.png @3x (disc centre 20,20 of 41 box) + shadow.png
+REGION TAGS now carry PER-PART UV COORDINATES in the spare channels so kit
+patterns run parallel to each part, evenly spaced and centre-symmetric:
+  shirt   R=shade  G=u*88  B=v*88     (u across the part 0..1, v along it)
+  shorts  G=shade  R=u*88  B=v*88
+  socks   B=shade  R=u*88  G=v*88
+  sleeves R=G=shade        B=u*88
+  hair    R=B=shade        G=0
+Shade levels (cel bands): lit 255 / mid 204 / dark 158. Skin/boots/gloves are
+final colours with the same banding. Engine contract: docs/SPRITE_SPEC.md.
 
 Run:  python3 artgen/gen_sprites.py
 """
@@ -24,184 +22,266 @@ from PIL import Image, ImageDraw, ImageFilter
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "sprites")
 os.makedirs(OUT, exist_ok=True)
-S = 2                                # render scale (2x logical)
+S = 2
+LIT, MID, DRK = 255, 204, 158
+SKIN  = (238, 190, 148)
+BOOT  = (50, 48, 56)
+GLOVE = (240, 240, 246)
+OUTLN = (16, 13, 20)
+SHADEF = {0: 1.0, 1: 0.80, 2: 0.62}          # cel band factors for final-colour parts
 
-# ---- palette: tags (recolourable) + finals ----
-SHIRT  = ((255, 0, 0),   (172, 0, 0))
-SLEEVE = ((255, 255, 0), (172, 172, 0))
-SHORT  = ((0, 255, 0),   (0, 172, 0))
-SOCK   = ((0, 0, 255),   (0, 0, 172))
-HAIR   = ((255, 0, 255), (172, 0, 172))
-SKIN   = ((236, 192, 152), (202, 158, 118))
-BOOT   = ((48, 46, 54),  (32, 30, 38))
-GLOVE  = ((242, 242, 246), (200, 200, 210))
-OUTLN  = (16, 13, 20)
+class Fig:
+    def __init__(self, w_log, h_log):
+        self.W, self.H = w_log * S, h_log * S
+        self.px = np.zeros((self.H, self.W, 4), np.uint8)
 
-def canvas(w_log, h_log):
-    im = Image.new("RGBA", (w_log * S, h_log * S), (0, 0, 0, 0))
-    return im, ImageDraw.Draw(im)
+    def _mask(self, pts):
+        m = Image.new("L", (self.W, self.H), 0)
+        ImageDraw.Draw(m).polygon([(x * S, y * S) for x, y in pts], fill=255)
+        return np.asarray(m) > 0
 
-def limb(d, p0, p1, w, col):
-    """Capsule limb between logical points, w = logical thickness."""
-    x0, y0 = p0[0] * S, p0[1] * S; x1, y1 = p1[0] * S, p1[1] * S; r = w * S / 2
-    d.line([x0, y0, x1, y1], fill=col, width=int(w * S))
-    for x, y in ((x0, y0), (x1, y1)):
-        d.ellipse([x - r, y - r, x + r, y + r], fill=col)
+    def _capsule_pts(self, p0, w0, p1, w1):
+        ax, ay = p1[0] - p0[0], p1[1] - p0[1]
+        L = math.hypot(ax, ay) or 1
+        nx, ny = -ay / L, ax / L
+        pts = []
+        for t in range(7):                                    # end cap at p1
+            a = math.atan2(ny, nx) - math.pi * t / 6
+            pts.append((p1[0] + math.cos(a) * w1 / 2, p1[1] + math.sin(a) * w1 / 2))
+        for t in range(7):                                    # cap at p0
+            a = math.atan2(-ny, -nx) - math.pi * t / 6
+            pts.append((p0[0] + math.cos(a) * w0 / 2, p0[1] + math.sin(a) * w0 / 2))
+        return pts
 
-def poly(d, pts, col):
-    d.polygon([(x * S, y * S) for x, y in pts], fill=col)
+    def _write(self, mask, region, u, v, far=0):
+        """Write a part: tag channels (with uv) or final colour, cel-banded by u."""
+        band = np.full(u.shape, 1, np.uint8)                  # mid
+        band[u < 0.32] = 0                                    # lit (light from left)
+        band[u > 0.74] = 2                                    # dark
+        band = np.minimum(2, band + far)
+        shade = np.choose(band, [LIT, MID, DRK]).astype(np.uint8)
+        uu = np.clip(u * 88, 0, 88).astype(np.uint8)
+        vv = np.clip(v * 88, 0, 88).astype(np.uint8)
+        out = np.zeros((*u.shape, 4), np.uint8); out[..., 3] = 255
+        if   region == "shirt":  out[..., 0], out[..., 1], out[..., 2] = shade, uu, vv
+        elif region == "shorts": out[..., 1], out[..., 0], out[..., 2] = shade, uu, vv
+        elif region == "socks":  out[..., 2], out[..., 0], out[..., 1] = shade, uu, vv
+        elif region == "sleeve": out[..., 0] = out[..., 1] = shade; out[..., 2] = uu
+        elif region == "hair":   out[..., 0] = out[..., 2] = shade
+        else:                                                  # final colour
+            col = {"skin": SKIN, "boot": BOOT, "glove": GLOVE, "eye": (30,26,30)}[region]
+            for c in range(3):
+                out[..., c] = np.choose(band, [min(255,int(col[c]*1.0)),
+                                               int(col[c]*0.82), int(col[c]*0.64)])
+        self.px[mask] = out[mask]
 
-def circle(d, c, r, col):
-    x, y = c[0] * S, c[1] * S; r *= S
-    d.ellipse([x - r, y - r, x + r, y + r], fill=col)
+    def limb(self, p0, w0, p1, w1, region, far=0):
+        """Tapered capsule. u = across (0 left edge), v = along p0->p1."""
+        mask = self._mask(self._capsule_pts(p0, w0, p1, w1))
+        ys, xs = np.nonzero(mask)
+        if not len(xs): return
+        ax, ay = p1[0] - p0[0], p1[1] - p0[1]
+        L2 = ax * ax + ay * ay or 1
+        pxl, pyl = xs / S - p0[0], ys / S - p0[1]
+        v = np.clip((pxl * ax + pyl * ay) / L2, 0, 1)
+        w = w0 + (w1 - w0) * v
+        perp = (pxl * (-ay) + pyl * ax) / math.sqrt(L2)
+        u = np.clip(perp / np.maximum(w, 0.1) + 0.5, 0, 1)
+        U = np.zeros(mask.shape); V = np.zeros(mask.shape)
+        U[ys, xs] = u; V[ys, xs] = v
+        self._write(mask, region, U, V, far)
 
-def head(d, c, r, hair_style="cap", eye_dx=-0.35):
-    circle(d, c, r, SKIN[0])
-    # hair: tagged cap so it recolours per match
-    x, y = c
-    if hair_style == "cap":
-        d.pieslice([(x - r) * S, (y - r) * S, (x + r) * S, (y + r) * S], 180, 360, fill=HAIR[0])
-        d.rectangle([(x - r) * S, (y - r * 0.45) * S, (x + r) * S, (y - r * 0.15) * S], fill=HAIR[1])
-    # face: simple dark eye on the facing side
-    ex = x + eye_dx * r
-    d.rectangle([ex * S - S, (y - r * 0.1) * S, ex * S + S, (y + 0.15 * r) * S], fill=(40, 30, 30))
+    def quad(self, pts, region, far=0, vspan=None):
+        """Convex quad (TL,TR,BR,BL-ish): u across each row, v top->bottom."""
+        mask = self._mask(pts)
+        ys, xs = np.nonzero(mask)
+        if not len(xs): return
+        y0, y1 = ys.min(), ys.max()
+        v = (ys - y0) / max(1, y1 - y0)
+        # per-row horizontal span -> u centred per row
+        U = np.zeros(mask.shape); V = np.zeros(mask.shape)
+        for ry in np.unique(ys):
+            sel = ys == ry
+            rx = xs[sel]
+            lo, hi = rx.min(), rx.max()
+            U[ry, rx] = (rx - lo) / max(1, hi - lo)
+        V[ys, xs] = v
+        if vspan: V[ys, xs] = vspan[0] + v * (vspan[1] - vspan[0])
+        self._write(mask, region, U, V, far)
 
-def finish(im):
-    """Dark outline under the figure (16-bit cel look)."""
-    a = im.split()[3]
-    dil = a.filter(ImageFilter.MaxFilter(5))
-    base = Image.new("RGBA", im.size, (0, 0, 0, 0))
-    base.paste(Image.new("RGBA", im.size, OUTLN + (255,)), (0, 0), dil)
-    base.paste(im, (0, 0), im)
-    return base
+    def disc(self, c, r, region, far=0):
+        pts = [(c[0] + math.cos(a) * r, c[1] + math.sin(a) * r)
+               for a in np.linspace(0, 2 * math.pi, 24)]
+        mask = self._mask(pts)
+        ys, xs = np.nonzero(mask)
+        if not len(xs): return
+        U = np.zeros(mask.shape); V = np.zeros(mask.shape)
+        U[ys, xs] = np.clip((xs / S - (c[0] - r)) / (2 * r), 0, 1)
+        V[ys, xs] = np.clip((ys / S - (c[1] - r)) / (2 * r), 0, 1)
+        self._write(mask, region, U, V, far)
+
+    def image(self):
+        im = Image.fromarray(self.px)
+        a = im.split()[3].filter(ImageFilter.MaxFilter(5))
+        base = Image.new("RGBA", im.size, (0, 0, 0, 0))
+        base.paste(Image.new("RGBA", im.size, OUTLN + (255,)), (0, 0), a)
+        base.paste(im, (0, 0), im)
+        return base
+
+# ---------- shared body builder (painter's order enforced here) ----------
+def hair_cap(f, c, r):
+    """Rounded cap of hair over the top ~60%% of the head (tagged, recolours)."""
+    hx, hy = c
+    pts = [(hx + math.cos(a)*r*1.04, hy + math.sin(a)*r*1.04)
+           for a in np.linspace(math.pi, 2*math.pi, 14)]      # top arc
+    pts = [(hx - r*1.0, hy + r*0.10)] + pts + [(hx + r*1.0, hy + r*0.10)]
+    mask = f._mask(pts)
+    ys, xs = np.nonzero(mask)
+    if not len(xs): return
+    U = np.zeros(mask.shape); V = np.zeros(mask.shape)
+    U[ys, xs] = np.clip((xs/2 - (hx - r))/(2*r), 0, 1)
+    f._write(mask, "hair", U, V)
+
+def draw_player(f, P, head_r=13, widths=None):
+    """P: head,chest,hips + armFar/armNear [sh,el,hand] + legFar/legNear [hip,knee,foot]."""
+    W = widths or dict(torso=(30, 22), thigh=(13, 9.5), calf=(9.5, 6.5),
+                       uarm=(9, 7.5), farm=(7.5, 6), shorts_drop=14)
+    def arm(A, far):
+        f.limb(A[0], W["uarm"][0], A[1], W["uarm"][1], "sleeve", far)
+        f.limb(A[1], W["farm"][0], A[2], W["farm"][1], "skin", far)
+        f.disc(A[2], 3.4, "skin", far)
+    def leg_lower(Lg, far):
+        knee, foot = Lg[1], Lg[2]
+        sockTop = (knee[0] + (foot[0]-knee[0])*0.30, knee[1] + (foot[1]-knee[1])*0.30)
+        bootTop = (knee[0] + (foot[0]-knee[0])*0.82, knee[1] + (foot[1]-knee[1])*0.82)
+        f.limb(knee, W["calf"][0], sockTop, W["calf"][0]*0.95, "skin", far)
+        f.limb(sockTop, W["calf"][0], bootTop, W["calf"][1], "socks", far)
+        f.limb(bootTop, W["calf"][1]+1.5, foot, W["calf"][1]+1.5, "boot", far)
+    def thigh(Lg, far):
+        f.limb(Lg[0], W["thigh"][0], Lg[1], W["thigh"][1], "skin", far)
+    # 1 far arm  2 far leg  3 near thigh
+    arm(P["armFar"], 1)
+    thigh(P["legFar"], 1); leg_lower(P["legFar"], 1)
+    thigh(P["legNear"], 0)
+    # 4 shorts (one piece over both thigh tops)
+    hips = P["hips"]
+    hw = W["torso"][1]
+    f.quad([(hips[0]-hw*0.62, hips[1]-4), (hips[0]+hw*0.62, hips[1]-4),
+            (hips[0]+hw*0.70, hips[1]+W["shorts_drop"]), (hips[0]-hw*0.70, hips[1]+W["shorts_drop"])],
+           "shorts")
+    # shorts cuff: forced-dark strip so same-colour kits still read as two garments
+    f.quad([(hips[0]-hw*0.70, hips[1]+W["shorts_drop"]-2.5), (hips[0]+hw*0.70, hips[1]+W["shorts_drop"]-2.5),
+            (hips[0]+hw*0.70, hips[1]+W["shorts_drop"]), (hips[0]-hw*0.70, hips[1]+W["shorts_drop"])], "shorts", far=2)
+    # 5 shirt OVER the shorts waist; shoulders wider than waist + dark hem line
+    chest, sw, ww = P["chest"], W["torso"][0], W["torso"][1]
+    f.quad([(chest[0]-sw/2, chest[1]-6), (chest[0]+sw/2, chest[1]-6),
+            (hips[0]+ww/2, hips[1]+3), (hips[0]-ww/2, hips[1]+3)], "shirt")
+    f.quad([(hips[0]-ww/2, hips[1]+0.5), (hips[0]+ww/2, hips[1]+0.5),
+            (hips[0]+ww/2, hips[1]+3), (hips[0]-ww/2, hips[1]+3)], "shirt", far=2)
+    # 6 near calf/sock/boot over the shorts hem
+    leg_lower(P["legNear"], 0)
+    # 7 near arm over the torso
+    arm(P["armNear"], 0)
+    # 8 neck + head + hair cap + eye
+    f.limb((P["head"][0], P["head"][1]+head_r*0.6), 7,
+           (chest[0], chest[1]-4), 8, "skin")
+    f.disc(P["head"], head_r, "skin")
+    hair_cap(f, P["head"], head_r)
+    hx, hy = P["head"]
+    if P.get("front"):
+        f.disc((hx-head_r*0.38, hy+head_r*0.10), 1.3, "eye")
+        f.disc((hx+head_r*0.38, hy+head_r*0.10), 1.3, "eye")
+    else:
+        f.disc((hx-head_r*0.42, hy+head_r*0.12), 1.4, "eye")
 
 # =========================================================================
-# STRIKER — 131x191, origin (101.2,126.5); faces LEFT; kick foot swings
-# through canvas x≈116, y≈95..122 (= field origin+15, z 0..40: the contact zone)
+# STRIKER — 131x191, origin (101.2,126.5). Kick reads like the original:
+# big windup -> step -> STRIKE through (117,103..122) -> high follow-through.
 # =========================================================================
-def leg(d, L, shade):
-    """hip->knee->foot with shorts-coloured thigh, SKIN knee gap, sock, boot."""
-    hip, knee, foot = L
-    mid = lerp_pt2(hip, knee, 0.55)
-    sockTop = lerp_pt2(knee, foot, 0.32)
-    limb(d, hip, mid, 11, SHORT[shade])
-    limb(d, mid, sockTop, 8, SKIN[shade])
-    limb(d, sockTop, lerp_pt2(knee, foot, 0.88), 8, SOCK[shade])
-    limb(d, lerp_pt2(knee, foot, 0.86), foot, 8, BOOT[shade])
-def lerp_pt2(p, q, t): return (p[0]+(q[0]-p[0])*t, p[1]+(q[1]-p[1])*t)
-
-def striker_pose(d, P):
-    farL, nearL = P["legFar"], P["legNear"]     # [(hip),(knee),(foot)]
-    farA, nearA = P["armFar"], P["armNear"]     # [(shoulder),(elbow),(hand)]
-    hips, chest = P["hips"], P["chest"]
-    # far limbs (shaded)
-    limb(d, farA[0], farA[1], 8, SLEEVE[1]); limb(d, farA[1], farA[2], 7, SKIN[1])
-    leg(d, farL, 1)
-    # torso (shirt) + shade band
-    w = P.get("torsoW", 22)
-    poly(d, [(chest[0]-w*0.55, chest[1]), (chest[0]+w*0.55, chest[1]),
-             (hips[0]+w*0.45, hips[1]), (hips[0]-w*0.45, hips[1])], SHIRT[0])
-    poly(d, [(chest[0]+w*0.15, chest[1]), (chest[0]+w*0.55, chest[1]),
-             (hips[0]+w*0.45, hips[1]), (hips[0]+w*0.10, hips[1])], SHIRT[1])
-    # shorts block
-    poly(d, [(hips[0]-w*0.5, hips[1]-2), (hips[0]+w*0.5, hips[1]-2),
-             (hips[0]+w*0.55, hips[1]+12), (hips[0]-w*0.55, hips[1]+12)], SHORT[0])
-    # near leg (lit)
-    leg(d, nearL, 0)
-    # near arm (lit)
-    limb(d, nearA[0], nearA[1], 8, SLEEVE[0]); limb(d, nearA[1], nearA[2], 7, SKIN[0])
-    head(d, P["head"], 14, eye_dx=-0.4)
-
-STRIKER_POSES = {
- 0: dict(head=(92,50), chest=(92,68), hips=(94,120),                       # idle, ready stance
-        armFar=[(100,74),(108,96),(104,114)], armNear=[(84,74),(74,95),(70,112)],
-        legFar=[(100,122),(104,150),(106,186)], legNear=[(88,122),(82,151),(78,186)]),
- 1: dict(head=(88,52), chest=(90,70), hips=(94,121),                       # windup: kick leg back
-        armFar=[(98,76),(112,90),(120,100)], armNear=[(82,76),(70,90),(62,100)],
-        legFar=[(88,123),(80,150),(76,186)], legNear=[(100,123),(116,146),(126,166)]),
- 2: dict(head=(90,52), chest=(92,70), hips=(94,120),                       # swing down
-        armFar=[(100,76),(112,94),(118,108)], armNear=[(84,76),(70,92),(62,106)],
-        legFar=[(88,122),(82,150),(78,186)], legNear=[(100,122),(110,156),(114,184)]),
- 3: dict(head=(86,56), chest=(89,74), hips=(92,122),                       # STRIKE: foot at (117,108)
-        armFar=[(97,80),(112,92),(122,98)], armNear=[(81,80),(66,90),(56,98)],
-        legFar=[(86,124),(78,152),(72,186)], legNear=[(98,122),(110,110),(119,103)]),
- 4: dict(head=(84,58), chest=(88,76), hips=(92,122),                       # follow-through high
-        armFar=[(96,82),(112,90),(122,94)], armNear=[(80,82),(66,88),(56,94)],
-        legFar=[(86,124),(78,152),(72,186)], legNear=[(98,120),(100,94),(90,78)]),
- 5: dict(head=(88,52), chest=(91,70), hips=(93,120),                       # recover
-        armFar=[(99,76),(108,96),(104,112)], armNear=[(83,76),(72,94),(68,110)],
-        legFar=[(87,122),(81,150),(77,186)], legNear=[(99,122),(104,148),(102,170)]),
+SP = {
+ 0: dict(head=(90,46), chest=(91,72), hips=(93,118),
+        armFar=[(102,72),(112,94),(108,112)], armNear=[(80,72),(70,94),(66,112)],
+        legFar=[(100,124),(105,152),(107,184)], legNear=[(86,124),(80,152),(76,184)]),
+ 1: dict(head=(84,50), chest=(87,76), hips=(92,120),                      # WINDUP: leg cocked high behind
+        armFar=[(98,78),(114,86),(126,88)], armNear=[(76,78),(62,86),(52,90)],
+        legFar=[(86,126),(78,152),(74,184)], legNear=[(100,124),(118,138),(130,152)]),
+ 2: dict(head=(86,50), chest=(89,75), hips=(93,119),                      # swing down
+        armFar=[(100,78),(114,92),(122,102)], armNear=[(78,78),(64,90),(56,100)],
+        legFar=[(87,125),(80,152),(76,184)], legNear=[(101,123),(112,148),(118,170)]),
+ 3: dict(head=(84,54), chest=(88,78), hips=(92,121),                      # STRIKE: boot through the contact zone
+        armFar=[(99,82),(114,90),(124,94)], armNear=[(77,82),(62,88),(52,94)],
+        legFar=[(85,127),(77,154),(72,184)], legNear=[(99,121),(110,112),(118,104)]),
+ 4: dict(head=(82,56), chest=(86,80), hips=(91,121),                      # follow-through wraps high
+        armFar=[(97,84),(112,88),(122,90)], armNear=[(75,84),(60,86),(50,90)],
+        legFar=[(84,127),(76,154),(71,184)], legNear=[(97,119),(99,92),(90,76)]),
+ 5: dict(head=(87,48), chest=(90,74), hips=(93,119),                      # recover
+        armFar=[(101,76),(112,94),(108,110)], armNear=[(79,76),(68,92),(64,108)],
+        legFar=[(86,125),(80,152),(76,184)], legNear=[(100,123),(106,150),(104,172)]),
 }
-for k, P in STRIKER_POSES.items():
-    im, d = canvas(131, 191)
-    striker_pose(d, P)
-    finish(im).save(os.path.join(OUT, f"striker_k{k}.png"), optimize=True)
+for k, P in SP.items():
+    f = Fig(131, 191)
+    draw_player(f, P)
+    f.image().save(os.path.join(OUT, f"striker_k{k}.png"), optimize=True)
 print("striker k0..k5 written")
 
 # =========================================================================
-# DEFENDER — 67x115, origin (33.4,57.5); front-facing guard stance
+# DEFENDER — 67x115, origin (33.4,57.5); front guard stance, same construction
 # =========================================================================
-im, d = canvas(67, 115)
-limb(d, (22, 38), (12, 56), 6, SLEEVE[1]); limb(d, (12, 56), (10, 68), 5, SKIN[1])   # arms
-limb(d, (45, 38), (55, 56), 6, SLEEVE[0]); limb(d, (55, 56), (57, 68), 5, SKIN[0])
-poly(d, [(22, 33), (45, 33), (43, 66), (24, 66)], SHIRT[0])                          # torso
-poly(d, [(37, 33), (45, 33), (43, 66), (37, 66)], SHIRT[1])
-poly(d, [(23, 64), (44, 64), (45, 80), (22, 80)], SHORT[0])                          # shorts
-poly(d, [(36, 64), (44, 64), (45, 80), (36, 80)], SHORT[1])
-limb(d, (27, 80), (26, 96), 7, SKIN[0]); limb(d, (40, 80), (41, 96), 7, SKIN[1])     # knees
-limb(d, (26, 96), (25, 108), 7, SOCK[0]); limb(d, (41, 96), (42, 108), 7, SOCK[1])   # socks
-limb(d, (25, 110), (21, 112), 6, BOOT[0]); limb(d, (42, 110), (46, 112), 6, BOOT[1]) # boots
-head(d, (33, 19), 10, eye_dx=0)
-finish(im).save(os.path.join(OUT, "defender.png"), optimize=True)
+f = Fig(67, 115)
+draw_player(f, dict(front=True, head=(33,17), chest=(33,33), hips=(33,60),
+    armFar=[(43,34),(51,48),(54,62)], armNear=[(23,34),(15,48),(12,62)],
+    legFar=[(39,64),(41,84),(42,109)], legNear=[(27,64),(25,84),(24,109)]),
+    head_r=8.5,
+    widths=dict(torso=(24,18), thigh=(9.5,7.5), calf=(7.5,5.5),
+                uarm=(7,6), farm=(6,5), shorts_drop=10))
+f.image().save(os.path.join(OUT, "defender.png"), optimize=True)
 print("defender written")
 
 # =========================================================================
-# KEEPER — unified space 596x263 (logical), feet anchor (300,197).
-# Frames: 1 idle · 50-99 dive_left · 100-149 dive_right · 323/328/354 catches.
-# Extents matched to the original's used frames (the save hit-test depends on them):
-#   idle x267-334 y69-198 · full dive x≈5-178 y153-211 (mirrored right) · high catch top y≈54
+# KEEPER — unified 596x263, feet (300,197). Slightly slimmer body (owner call)
+# but dive/idle/catch EXTENTS preserved so the save pixel-test is unchanged.
 # =========================================================================
-def lerp(a, b, t): return a + (b - a) * t
-def lerp_pt(p, q, t): return (lerp(p[0], q[0], t), lerp(p[1], q[1], t))
+def lerp_pt(p, q, t): return (p[0]+(q[0]-p[0])*t, p[1]+(q[1]-p[1])*t)
 def kf_interp(kfs, t):
-    """kfs = [(t, pose_dict)] sorted; lerp every joint."""
-    for i in range(len(kfs) - 1):
-        t0, p0 = kfs[i]; t1, p1 = kfs[i + 1]
+    for i in range(len(kfs)-1):
+        t0, p0 = kfs[i]; t1, p1 = kfs[i+1]
         if t0 <= t <= t1:
-            f = 0 if t1 == t0 else (t - t0) / (t1 - t0)
-            return {k: [lerp_pt(a, b, f) for a, b in zip(p0[k], p1[k])] if isinstance(p0[k], list)
-                    else lerp_pt(p0[k], p1[k], f) for k in p0}
+            ff = 0 if t1 == t0 else (t-t0)/(t1-t0)
+            return {k: [lerp_pt(a,b,ff) for a,b in zip(p0[k],p1[k])] if isinstance(p0[k],list)
+                    else lerp_pt(p0[k],p1[k],ff) for k in p0}
     return kfs[-1][1]
 
-def keeper_draw(d, P):
-    armF, armN = P["armFar"], P["armNear"]
-    legF, legN = P["legFar"], P["legNear"]
+def draw_keeper(f, P):
+    KW = dict(torso=(21,16), thigh=(9,7), calf=(7,5), uarm=(7,6), farm=(6,5), shorts_drop=10)
+    def arm(A, far):
+        f.limb(A[0], KW["uarm"][0], A[1], KW["uarm"][1], "sleeve", far)
+        f.limb(A[1], KW["farm"][0], A[2], KW["farm"][1], "sleeve", far)   # long sleeves
+        f.disc(A[2], 4.6, "glove", far)
+    def leg(Lg, far):
+        f.limb(Lg[0], KW["thigh"][0], Lg[1], KW["thigh"][1], "shorts", far)   # keeper: long shorts look
+        f.limb(Lg[1], KW["calf"][0], lerp_pt(Lg[1], Lg[2], 0.85), KW["calf"][1], "socks", far)
+        f.limb(lerp_pt(Lg[1], Lg[2], 0.8), KW["calf"][1]+1.2, Lg[2], KW["calf"][1]+1.2, "boot", far)
+    arm(P["armFar"], 1); leg(P["legFar"], 1)
     hips, chest = P["hips"], P["chest"]
-    limb(d, armF[0], armF[1], 7, SLEEVE[1]); limb(d, armF[1], armF[2], 6, SLEEVE[1])
-    circle(d, armF[2], 4.5, GLOVE[1])
-    limb(d, legF[0], legF[1], 8, SHORT[1]); limb(d, legF[1], legF[2], 6, SOCK[1])
-    circle(d, legF[2], 3.5, BOOT[1])
-    poly(d, [(chest[0]-10, chest[1]-8), (chest[0]+10, chest[1]-8),
-             (hips[0]+9, hips[1]+4), (hips[0]-9, hips[1]+4)], SHIRT[0])
-    poly(d, [(chest[0]+2, chest[1]-8), (chest[0]+10, chest[1]-8),
-             (hips[0]+9, hips[1]+4), (hips[0]+2, hips[1]+4)], SHIRT[1])
-    limb(d, legN[0], legN[1], 8, SHORT[0]); limb(d, legN[1], legN[2], 6, SOCK[0])
-    circle(d, legN[2], 3.5, BOOT[0])
-    limb(d, armN[0], armN[1], 7, SLEEVE[0]); limb(d, armN[1], armN[2], 6, SLEEVE[0])
-    circle(d, armN[2], 4.5, GLOVE[0])
-    head(d, P["head"], 9, eye_dx=0)
+    f.quad([(chest[0]-KW["torso"][0]/2, chest[1]-5), (chest[0]+KW["torso"][0]/2, chest[1]-5),
+            (hips[0]+KW["torso"][1]/2, hips[1]+5), (hips[0]-KW["torso"][1]/2, hips[1]+5)], "shirt")
+    leg(P["legNear"], 0); arm(P["armNear"], 0)
+    f.limb((P["head"][0], P["head"][1]+5), 6, (chest[0], chest[1]-3), 7, "skin")
+    f.disc(P["head"], 8.5, "skin")
+    hair_cap(f, P["head"], 8.5)
+    hx, hy = P["head"]
+    f.disc((hx-3, hy+1.2), 1.1, "eye"); f.disc((hx+3, hy+1.2), 1.1, "eye")
 
 K_IDLE = dict(head=(300,80), chest=(300,104), hips=(300,134),
-  armFar=[(310,98),(326,116),(330,134)], armNear=[(290,98),(274,116),(270,134)],
-  legFar=[(306,136),(310,166),(312,194)], legNear=[(294,136),(290,166),(288,194)])
-# dive-left keyframes (t 0..1 over frames 50..99)
+  armFar=[(309,98),(325,116),(330,134)], armNear=[(291,98),(275,116),(270,134)],
+  legFar=[(306,138),(310,166),(312,193)], legNear=[(294,138),(290,166),(288,193)])
 K_DIVE = [
  (0.00, dict(head=(296,84), chest=(297,106), hips=(299,138),
-   armFar=[(307,100),(320,118),(326,132)], armNear=[(287,100),(272,114),(264,126)],
-   legFar=[(305,140),(308,168),(310,194)], legNear=[(293,140),(288,168),(286,194)])),
+   armFar=[(306,100),(320,118),(326,132)], armNear=[(288,100),(272,114),(264,126)],
+   legFar=[(305,140),(308,168),(310,193)], legNear=[(293,140),(288,168),(286,193)])),
  (0.22, dict(head=(272,108), chest=(278,124), hips=(290,150),
    armFar=[(288,118),(272,120),(256,118)], armNear=[(268,118),(248,114),(232,108)],
-   legFar=[(296,152),(306,172),(312,194)], legNear=[(284,152),(282,176),(284,196)])),
+   legFar=[(296,152),(306,172),(312,193)], legNear=[(284,152),(282,176),(284,195)])),
  (0.55, dict(head=(170,138), chest=(190,146), hips=(222,156),
    armFar=[(180,140),(158,138),(140,134)], armNear=[(174,148),(150,148),(130,146)],
    legFar=[(228,158),(254,162),(280,168)], legNear=[(224,164),(252,172),(278,182)])),
@@ -213,28 +293,26 @@ K_DIVE = [
    legFar=[(124,190),(152,190),(176,188)], legNear=[(120,198),(150,200),(176,202)])),
 ]
 K_CATCH = {
- 323: dict(head=(300,116), chest=(300,138), hips=(300,160),                 # low: crouched, hands down
-   armFar=[(310,132),(314,156),(308,174)], armNear=[(290,132),(286,156),(292,174)],
-   legFar=[(306,162),(312,180),(310,194)], legNear=[(294,162),(288,180),(290,194)]),
- 328: dict(head=(300,96), chest=(300,118), hips=(300,144),                  # mid: chest catch
-   armFar=[(310,112),(320,122),(308,124)], armNear=[(290,112),(280,122),(292,124)],
-   legFar=[(306,146),(310,170),(312,196)], legNear=[(294,146),(290,170),(288,196)]),
- 354: dict(head=(300,84), chest=(300,108), hips=(300,136),                  # high: arms above the bar
-   armFar=[(310,100),(318,78),(314,62)], armNear=[(290,100),(282,78),(286,62)],
+ 323: dict(head=(300,116), chest=(300,138), hips=(300,160),
+   armFar=[(309,132),(314,156),(308,174)], armNear=[(291,132),(286,156),(292,174)],
+   legFar=[(306,162),(312,180),(310,193)], legNear=[(294,162),(288,180),(290,193)]),
+ 328: dict(head=(300,96), chest=(300,118), hips=(300,144),
+   armFar=[(309,112),(320,122),(308,124)], armNear=[(291,112),(280,122),(292,124)],
+   legFar=[(306,146),(310,170),(312,194)], legNear=[(294,146),(290,170),(288,194)]),
+ 354: dict(head=(300,84), chest=(300,108), hips=(300,136),
+   armFar=[(309,100),(317,78),(314,62)], armNear=[(291,100),(283,78),(286,62)],
    legFar=[(306,138),(310,166),(312,192)], legNear=[(294,138),(290,166),(288,192)]),
 }
-
 def render_keeper(pose, mirror=False):
-    im, d = canvas(596, 263)
-    keeper_draw(d, pose)
-    im = finish(im)
+    f = Fig(596, 263)
+    draw_keeper(f, pose)
+    im = f.image()
     if mirror:
-        im = im.transpose(Image.FLIP_LEFT_RIGHT)   # 596-wide: mirrors around x=298... fix to 300:
-        im = im.transform(im.size, Image.AFFINE, (1, 0, -4, 0, 1, 0))   # shift +4px(2x) so feet stay at 300
+        im = im.transpose(Image.FLIP_LEFT_RIGHT)
+        im = im.transform(im.size, Image.AFFINE, (1, 0, -4, 0, 1, 0))
     return im
 
-frames = {}
-frames[1] = render_keeper(K_IDLE)
+frames = {1: render_keeper(K_IDLE)}
 for i in range(50):
     pose = kf_interp(K_DIVE, i / 49)
     frames[50 + i] = render_keeper(pose)
@@ -242,8 +320,7 @@ for i in range(50):
 for fn, pose in K_CATCH.items():
     frames[fn] = render_keeper(pose)
 
-# trim + pack into one sheet
-packed, rects = [], {}
+packed = []
 for fn, im in frames.items():
     bb = im.getbbox()
     packed.append((fn, im.crop(bb), bb))
@@ -254,37 +331,38 @@ for fn, im, bb in packed:
     places.append((fn, im, bb, x, y)); x += im.width + 2; rowh = max(rowh, im.height)
 sheet = Image.new("RGBA", (SHEET_W, y + rowh + 2), (0, 0, 0, 0))
 man = {}
-for fn, im, bb, px, py in places:
-    sheet.paste(im, (px, py))
-    man[str(fn)] = dict(sheet=0, x=px, y=py, w=im.width, h=im.height,
-                        ox=bb[0] / S, oy=bb[1] / S)      # ox/oy in unified LOGICAL units
+for fn, im, bb, px_, py_ in places:
+    sheet.paste(im, (px_, py_))
+    man[str(fn)] = dict(sheet=0, x=px_, y=py_, w=im.width, h=im.height, ox=bb[0]/S, oy=bb[1]/S)
 sheet.save(os.path.join(OUT, "keeper_atlas.png"), optimize=True)
 json.dump(dict(frames=man), open(os.path.join(OUT, "keeper_atlas.json"), "w"))
+def ext(fr):
+    fr2 = man[str(fr)]; return (round(fr2["ox"]), round(fr2["ox"]+fr2["w"]/2), round(fr2["oy"]), round(fr2["oy"]+fr2["h"]/2))
 print("keeper atlas:", sheet.size, len(man), "frames")
+print("  idle", ext(1), "target(267,334,69,198) · dv99", ext(99), "target(5,178,153,211) · high", ext(354), "target(263,330,53,196)")
 
 # =========================================================================
-# BALL (disc centre 20,20 of the 41 box, @3x) + SHADOW (28x11 ellipse)
+# BALL + SHADOW (unchanged geometry)
 # =========================================================================
 B = 3
-im = Image.new("RGBA", (41 * B, 41 * B), (0, 0, 0, 0)); d = ImageDraw.Draw(im)
-cx, cy, r = 20 * B + B/2, 20 * B + B/2, 19.5 * B
-d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(244, 244, 248))
-TURN = 2 * math.pi / 5; A0 = -math.pi / 2
-def pent(px, py, pr, rot):
-    return [(px + math.cos(rot + i * TURN) * pr, py + math.sin(rot + i * TURN) * pr) for i in range(5)]
-d.polygon(pent(cx, cy, r * 0.36, A0), fill=(24, 24, 28))
+im = Image.new("RGBA", (41*B, 41*B), (0,0,0,0)); d = ImageDraw.Draw(im)
+cx, cy, r = 20*B + B/2, 20*B + B/2, 19.5*B
+d.ellipse([cx-r, cy-r, cx+r, cy+r], fill=(244,244,248))
+TURN = 2*math.pi/5; A0 = -math.pi/2
+def pent(px_, py_, pr, rot):
+    return [(px_+math.cos(rot+i*TURN)*pr, py_+math.sin(rot+i*TURN)*pr) for i in range(5)]
+d.polygon(pent(cx, cy, r*0.36, A0), fill=(24,24,28))
 for i in range(5):
-    a = A0 + i * TURN
-    d.polygon(pent(cx + math.cos(a) * r * 0.78, cy + math.sin(a) * r * 0.78, r * 0.30, a + math.pi), fill=(24, 24, 28))
-sh = Image.new("L", im.size, 0)                                        # bottom-right shade
-ImageDraw.Draw(sh).ellipse([cx - r, cy - r, cx + r, cy + r], fill=70)
-ImageDraw.Draw(sh).ellipse([cx - r - 6*B, cy - r - 6*B, cx + r - 2*B, cy + r - 2*B], fill=0)
-im.paste(Image.new("RGBA", im.size, (10, 10, 16, 255)), (0, 0),
+    a = A0 + i*TURN
+    d.polygon(pent(cx+math.cos(a)*r*0.78, cy+math.sin(a)*r*0.78, r*0.30, a+math.pi), fill=(24,24,28))
+sh = Image.new("L", im.size, 0)
+ImageDraw.Draw(sh).ellipse([cx-r, cy-r, cx+r, cy+r], fill=70)
+ImageDraw.Draw(sh).ellipse([cx-r-6*B, cy-r-6*B, cx+r-2*B, cy+r-2*B], fill=0)
+im.paste(Image.new("RGBA", im.size, (10,10,16,255)), (0,0),
          Image.composite(sh, Image.new("L", im.size, 0), im.split()[3]))
-dd = ImageDraw.Draw(im)
-dd.ellipse([cx - r, cy - r, cx + r, cy + r], outline=(18, 18, 22), width=B)
+ImageDraw.Draw(im).ellipse([cx-r, cy-r, cx+r, cy+r], outline=(18,18,22), width=B)
 im.save(os.path.join(OUT, "ball.png"), optimize=True)
-sh = Image.new("RGBA", (28 * B, 11 * B), (0, 0, 0, 0))
-ImageDraw.Draw(sh).ellipse([0, 0, 28 * B - 1, 11 * B - 1], fill=(8, 12, 8, 255))
+sh = Image.new("RGBA", (28*B, 11*B), (0,0,0,0))
+ImageDraw.Draw(sh).ellipse([0,0,28*B-1,11*B-1], fill=(8,12,8,255))
 sh.save(os.path.join(OUT, "shadow.png"), optimize=True)
 print("ball + shadow written")

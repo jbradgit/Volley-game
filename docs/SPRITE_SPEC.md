@@ -7,21 +7,28 @@ kit data: `python3 artgen/gen_kits.py` · visual check: `python3 artgen/preview_
 
 ## 1. Region tags (how recolouring works)
 
-Base sprites are painted in PURE HUES that the engine classifies per pixel
-(`tagOf()` in index.html); **pixel brightness encodes shading** and survives
-recolouring (`out = kitColour × (0.62 + 0.40·brightness/255)`).
+Base sprites carry tags in the colour channels; the dominant channel(s) name the
+region, the dominant value is the **cel-shade band** (lit 255 / mid 204 / dark 158),
+and the spare channels carry **per-part UV coordinates** (×88): u = across the part
+from its centre line, v = along it. `tagOf()`/`buildKit()` in index.html decode this;
+`out = kitColour × (shade/255 × 1.04)` so the 3-tone shading survives any kit.
 
-| Tag | Base hue | Becomes |
+| Tag | Channels | Becomes |
 |---|---|---|
-| shirt | red | kit `c1`, with `c2` applied by pattern |
-| shorts | green | kit `shorts` |
-| socks | blue | kit `socks` |
-| sleeves | yellow | kit `sleeves` (defaults to `c1`) |
-| hair | magenta | random per-match hair colour |
-| skin / boots / gloves / outline | final colours | pass through untouched |
+| shirt | R=shade, G=u·88, B=v·88 | kit `c1`, `c2` by pattern |
+| shorts | G=shade, R=u·88, B=v·88 | kit `shorts` |
+| socks | B=shade, R=u·88, G=v·88 | kit `socks` |
+| sleeves | R=G=shade, B=u·88 | kit `sleeves` (defaults `c1`) |
+| hair | R=B=shade | random per-match hair colour |
+| skin / boots / gloves / eyes / outline | final colours | pass through |
 
-**Patterns** (computed inside the shirt's bounding box, in base-image @2x pixels):
-`solid · stripes` (14px bands) `· hoops` (16px) `· halves · quarters · sash`.
+**Patterns** are evaluated in PART-LOCAL UV space, so stripes run parallel to the
+part and mirror symmetrically from its centre: `stripes` = 7 even bands of u ·
+`hoops` = 9 bands of v · `halves` (u) · `quarters` (u⊕v) · `sash` (|u+v−1|<0.18).
+Painter's order is fixed in the generator: far arm → far leg → near thigh →
+shorts → shirt (over shorts waist, dark hem line) → near calf/sock/boot →
+near arm (over torso) → neck/head/hair. Same-colour kits stay separated by the
+forced-dark hem and cuff strips.
 
 **Kit spec** (in `teams.json` / `world.json`, palette colour names):
 `kits: { h:{p,c1,c2?,sleeves?,shorts,socks}, a:{...} }` — legacy top-level fields

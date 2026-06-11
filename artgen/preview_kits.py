@@ -20,32 +20,32 @@ def hexrgb(h): n = int(h[1:], 16); return np.array([(n >> 16) & 255, (n >> 8) & 
 def col(name): return hexrgb(PAL.get(name, name if str(name).startswith("#") else "#cccccc"))
 
 def build_kit(im, kit, hair=(60, 44, 34)):
+    """Mirror of index.html buildKit(): UV-channel tags, per-part patterns."""
     a = np.asarray(im.convert("RGBA")).astype(np.float32)
     r, g, b, al = a[..., 0], a[..., 1], a[..., 2], a[..., 3]
-    mx = np.maximum(np.maximum(r, g), b) + 1e-6
-    nr, ng, nb = r / mx, g / mx, b / mx
-    vis = (al >= 8) & (mx >= 70)
-    tags = { 1: vis & (nr > .85) & (ng < .35) & (nb < .35), 2: vis & (ng > .85) & (nr < .35) & (nb < .35),
-             3: vis & (nb > .85) & (nr < .35) & (ng < .35), 4: vis & (nr > .85) & (ng > .85) & (nb < .35),
-             5: vis & (nr > .85) & (nb > .85) & (ng < .35) }
+    vis = al >= 8
+    tags = { 1: vis & (r>140) & (g<100) & (b<100),
+             2: vis & (g>140) & (r<100) & (b<100),
+             3: vis & (b>140) & (r<100) & (g<100),
+             4: vis & (r>140) & (g>140) & (b<100) & (np.abs(r-g)<30),
+             5: vis & (r>140) & (b>140) & (g<100) & (np.abs(r-b)<30) }
     K = { "c1": col(kit["c1"]), "c2": col(kit.get("c2", kit["c1"])), "sleeves": col(kit.get("sleeves", kit["c1"])),
           "shorts": col(kit.get("shorts", "white")), "socks": col(kit.get("socks", kit["c1"])) }
-    ys, xs = np.nonzero(tags[1])
-    bb = (xs.min(), xs.max(), ys.min(), ys.max()) if len(xs) else (0, 1, 0, 1)
-    yy, xx = np.mgrid[0:a.shape[0], 0:a.shape[1]]
     p = kit.get("p", "solid")
-    if   p == "stripes":  pat = (((xx - bb[0]) // 14) % 2) == 1
-    elif p == "hoops":    pat = (((yy - bb[2]) // 16) % 2) == 1
-    elif p == "halves":   pat = xx > (bb[0] + bb[1]) / 2
-    elif p == "quarters": pat = (xx < (bb[0] + bb[1]) / 2) != (yy < (bb[2] + bb[3]) / 2)
-    elif p == "sash":     pat = np.abs((xx - bb[0]) - (yy - bb[2]) * 0.55 - (bb[1] - bb[0]) * 0.30) < 13
-    else:                 pat = np.zeros(xx.shape, bool)
-    sh = (0.62 + 0.40 * mx / 255)[..., None]
+    u = np.clip(g/88, 0, 0.999); v = np.clip(b/88, 0, 0.999)
+    if   p == "stripes":  pat = (np.floor(u*7) % 2) == 1
+    elif p == "hoops":    pat = (np.floor(v*9) % 2) == 1
+    elif p == "halves":   pat = u > 0.5
+    elif p == "quarters": pat = (u > 0.5) != (v > 0.5)
+    elif p == "sash":     pat = np.abs(u + v - 1) < 0.18
+    else:                 pat = np.zeros(u.shape, bool)
     out = a.copy()
-    for tg, c in ((2, K["shorts"]), (3, K["socks"]), (4, K["sleeves"]), (5, np.array(hair, np.float32))):
-        m = tags[tg]; out[m, :3] = np.minimum(255, c * sh[m])
-    m1 = tags[1] & ~pat; out[m1, :3] = np.minimum(255, K["c1"] * sh[m1])
-    m2 = tags[1] & pat;  out[m2, :3] = np.minimum(255, K["c2"] * sh[m2])
+    def put(m, c, shade):
+        f = (shade/255*1.04)[..., None]
+        out[m, :3] = np.minimum(255, (c * f)[m])
+    put(tags[2], K["shorts"], g); put(tags[3], K["socks"], b)
+    put(tags[4], K["sleeves"], (r+g)/2); put(tags[5], np.array(hair, np.float32), (r+b)/2)
+    put(tags[1] & ~pat, K["c1"], r); put(tags[1] & pat, K["c2"], r)
     return Image.fromarray(out.astype(np.uint8))
 
 def kit_of(slug, away=False):
