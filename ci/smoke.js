@@ -122,5 +122,37 @@ if (!dbg) fail("__dbg harness not exposed under ?cap=1");
   dbg.tick(); dbg.tick();
   console.log("season end ok, offers:", se.offers.join(", "));
 
+  // 6. full career autoplay: 38 league + 5 cup + 6 World Tournament matches, all won
+  dbg.newCareerSim("Brazil");
+  let played = 0, guard = 120, r6;
+  while (guard-- > 0){
+    r6 = dbg.playNext(true);
+    if (r6.ev || (r6.trn && !r6.exited)) played++;          // count matches, incl. the season's last
+    dbg.tick();                                              // render whichever home view comes next (league/cup/euro/hub)
+    if (r6.done || r6.exited || r6.state === "seasonend") break;
+  }
+  const info = dbg.careerInfo();
+  if (played !== 49) fail("expected 49 events in a winning season 1 (38L+5C+6I), played " + played);
+  if (info.trophies.indexOf("cup") < 0)  fail("cup not won: " + JSON.stringify(info));
+  if (info.trophies.indexOf("intl") < 0) fail("world tournament not won: " + JSON.stringify(info));
+  if (info.caps !== 6) fail("expected 6 caps, got " + info.caps);
+  if (info.nextEuro !== "CT") fail("champions should qualify for CT, got " + info.nextEuro);
+  console.log("season 1 autoplay ok:", played, "matches, trophies:", info.trophies.join("+"), "pts:", info.pts);
+
+  // 7. season 2 carries a European campaign; win everything -> 51 events (38L+5C+8E)
+  const s2 = dbg.nextSeasonSim();
+  if (!s2.euro) fail("no European campaign in season 2 despite qualification");
+  let played2 = 0; guard = 130;
+  while (guard-- > 0){
+    const r = dbg.playNext(true);
+    if (r.ev || (r.trn && !r.exited)) played2++;
+    dbg.tick();
+    if (r.done || r.exited || r.state === "seasonend") break;
+  }
+  const info2 = dbg.careerInfo();
+  if (played2 !== 51) fail("expected 51 events in winning season 2 (38L+5C+8E), played " + played2);
+  if (info2.trophies.indexOf("euro") < 0) fail("euro not won: " + JSON.stringify(info2));
+  console.log("season 2 autoplay ok:", played2, "matches, euro stage:", info2.euro);
+
   console.log("SMOKE PASS");
 })().catch(e => fail(e.stack || e));

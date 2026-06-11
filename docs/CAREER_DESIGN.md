@@ -5,7 +5,7 @@ foreign leagues, cups, European nights, international tournaments, and a light
 management layer — without ever diluting the core: **every fixture is still the
 10-ball volley game.***
 
-**Status:** approved direction, not yet scheduled. Builds on the engine as-is
+**Status:** E0 (calendar) + E1 (domestic cup) + E4 (Europe) + E5 (internationals) **shipped**. Owner decisions applied: cup/Europe/international matches are **5 balls with halved targets**; knockout ties are win-or-go-home (no draw band); the **World Tournament runs every 2 years, starting season 1**; the career home shows a **tailored view per competition** (league table / cup ladder / group table / flag-themed tournament hub). Remaining phases: E2 is partially in (nationality select shipped with E5), E3 (foreign leagues) and E6 (management economy) open. Builds on the engine as-is
 (`index.html`): `CAR` save object, `TEAMS`/`teams.json`, `simRound`/`teamStrength`
 league sim, transfer-offer inbox, seeded matches, the HORSE turn engine.
 

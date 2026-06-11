@@ -1,0 +1,527 @@
+{
+ "euro": [
+  {
+   "slug": "RealMadrid",
+   "name": "Real Madrid",
+   "rating": 10,
+   "shirt": "white",
+   "shorts": "white",
+   "socks": "white"
+  },
+  {
+   "slug": "Barcelona",
+   "name": "Barcelona",
+   "rating": 9,
+   "shirt": "blue",
+   "shorts": "darkblue",
+   "socks": "darkblue",
+   "pattern": "stripes",
+   "stripe2": "claret"
+  },
+  {
+   "slug": "Valencia",
+   "name": "Valencia",
+   "rating": 9,
+   "shirt": "white",
+   "shorts": "black",
+   "socks": "black"
+  },
+  {
+   "slug": "Deportivo",
+   "name": "Deportivo",
+   "rating": 8,
+   "shirt": "blue",
+   "shorts": "white",
+   "socks": "blue",
+   "pattern": "stripes",
+   "stripe2": "white"
+  },
+  {
+   "slug": "Juventus",
+   "name": "Juventus",
+   "rating": 9,
+   "shirt": "white",
+   "shorts": "white",
+   "socks": "black",
+   "pattern": "stripes",
+   "stripe2": "black"
+  },
+  {
+   "slug": "ACMilan",
+   "name": "AC Milan",
+   "rating": 10,
+   "shirt": "red",
+   "shorts": "white",
+   "socks": "black",
+   "pattern": "stripes",
+   "stripe2": "black"
+  },
+  {
+   "slug": "InterMilan",
+   "name": "Inter Milan",
+   "rating": 8,
+   "shirt": "blue",
+   "shorts": "black",
+   "socks": "black",
+   "pattern": "stripes",
+   "stripe2": "black"
+  },
+  {
+   "slug": "Roma",
+   "name": "Roma",
+   "rating": 8,
+   "shirt": "claret",
+   "shorts": "white",
+   "socks": "claret",
+   "sleeves": "orange"
+  },
+  {
+   "slug": "BayernMunich",
+   "name": "Bayern Munich",
+   "rating": 10,
+   "shirt": "red",
+   "shorts": "red",
+   "socks": "red"
+  },
+  {
+   "slug": "Dortmund",
+   "name": "Dortmund",
+   "rating": 8,
+   "shirt": "yellow",
+   "shorts": "black",
+   "socks": "yellow"
+  },
+  {
+   "slug": "Leverkusen",
+   "name": "Leverkusen",
+   "rating": 8,
+   "shirt": "red",
+   "shorts": "black",
+   "socks": "red"
+  },
+  {
+   "slug": "Lyon",
+   "name": "Lyon",
+   "rating": 9,
+   "shirt": "white",
+   "shorts": "white",
+   "socks": "white",
+   "sleeves": "blue"
+  },
+  {
+   "slug": "Monaco",
+   "name": "Monaco",
+   "rating": 8,
+   "shirt": "red",
+   "shorts": "white",
+   "socks": "white",
+   "sleeves": "white"
+  },
+  {
+   "slug": "Marseille",
+   "name": "Marseille",
+   "rating": 7,
+   "shirt": "white",
+   "shorts": "white",
+   "socks": "white",
+   "sleeves": "skyblue"
+  },
+  {
+   "slug": "Porto",
+   "name": "Porto",
+   "rating": 8,
+   "shirt": "blue",
+   "shorts": "blue",
+   "socks": "white",
+   "pattern": "stripes",
+   "stripe2": "white"
+  },
+  {
+   "slug": "Ajax",
+   "name": "Ajax",
+   "rating": 8,
+   "shirt": "white",
+   "shorts": "white",
+   "socks": "white",
+   "pattern": "stripes",
+   "stripe2": "red"
+  },
+  {
+   "slug": "Celtic",
+   "name": "Celtic",
+   "rating": 7,
+   "shirt": "green",
+   "shorts": "white",
+   "socks": "white",
+   "pattern": "stripes",
+   "stripe2": "white"
+  },
+  {
+   "slug": "PSG",
+   "name": "Paris SG",
+   "rating": 7,
+   "shirt": "darkblue",
+   "shorts": "darkblue",
+   "socks": "darkblue",
+   "pattern": "stripes",
+   "stripe2": "red"
+  }
+ ],
+ "nations": [
+  {
+   "slug": "Brazil",
+   "name": "Brazil",
+   "rating": 10,
+   "kitProxy": "Wolves",
+   "shirt": "yellow",
+   "shorts": "blue",
+   "socks": "white",
+   "flag": {
+    "t": "diamond",
+    "c": [
+     "#159b4a",
+     "#ffd200",
+     "#1b3f9b"
+    ]
+   }
+  },
+  {
+   "slug": "France",
+   "name": "France",
+   "rating": 10,
+   "kitProxy": "Everton",
+   "shirt": "darkblue",
+   "shorts": "white",
+   "socks": "red",
+   "flag": {
+    "t": "v",
+    "c": [
+     "#1b3f9b",
+     "#ffffff",
+     "#d62718"
+    ]
+   }
+  },
+  {
+   "slug": "Argentina",
+   "name": "Argentina",
+   "rating": 9,
+   "kitProxy": "ManCity",
+   "shirt": "skyblue",
+   "shorts": "black",
+   "socks": "white",
+   "pattern": "stripes",
+   "stripe2": "white",
+   "flag": {
+    "t": "h",
+    "c": [
+     "#6cabdd",
+     "#ffffff",
+     "#6cabdd"
+    ]
+   }
+  },
+  {
+   "slug": "Italy",
+   "name": "Italy",
+   "rating": 9,
+   "kitProxy": "Everton",
+   "shirt": "blue",
+   "shorts": "white",
+   "socks": "blue",
+   "flag": {
+    "t": "v",
+    "c": [
+     "#159b4a",
+     "#ffffff",
+     "#d62718"
+    ]
+   }
+  },
+  {
+   "slug": "Germany",
+   "name": "Germany",
+   "rating": 9,
+   "kitProxy": "Leeds",
+   "shirt": "white",
+   "shorts": "black",
+   "socks": "white",
+   "flag": {
+    "t": "h",
+    "c": [
+     "#111111",
+     "#d62718",
+     "#ffce3d"
+    ]
+   }
+  },
+  {
+   "slug": "England",
+   "name": "England",
+   "rating": 8,
+   "kitProxy": "Leeds",
+   "shirt": "white",
+   "shorts": "darkblue",
+   "socks": "white",
+   "flag": {
+    "t": "cross",
+    "c": [
+     "#ffffff",
+     "#d62718"
+    ]
+   }
+  },
+  {
+   "slug": "Spain",
+   "name": "Spain",
+   "rating": 8,
+   "kitProxy": "Liverpool",
+   "shirt": "red",
+   "shorts": "darkblue",
+   "socks": "black",
+   "flag": {
+    "t": "spain",
+    "c": [
+     "#d62718",
+     "#ffce3d"
+    ]
+   }
+  },
+  {
+   "slug": "Portugal",
+   "name": "Portugal",
+   "rating": 8,
+   "kitProxy": "Liverpool",
+   "shirt": "claret",
+   "shorts": "green",
+   "socks": "claret",
+   "flag": {
+    "t": "v2",
+    "c": [
+     "#159b4a",
+     "#d62718"
+    ]
+   }
+  },
+  {
+   "slug": "Netherlands",
+   "name": "Netherlands",
+   "rating": 8,
+   "kitProxy": "Wolves",
+   "shirt": "orange",
+   "shorts": "white",
+   "socks": "orange",
+   "flag": {
+    "t": "h",
+    "c": [
+     "#d62718",
+     "#ffffff",
+     "#1b3f9b"
+    ]
+   }
+  },
+  {
+   "slug": "CzechRep",
+   "name": "Czech Republic",
+   "rating": 7,
+   "kitProxy": "Liverpool",
+   "shirt": "red",
+   "shorts": "white",
+   "socks": "blue",
+   "flag": {
+    "t": "tri",
+    "c": [
+     "#ffffff",
+     "#d62718",
+     "#1b3f9b"
+    ]
+   }
+  },
+  {
+   "slug": "Sweden",
+   "name": "Sweden",
+   "rating": 6,
+   "kitProxy": "Wolves",
+   "shirt": "yellow",
+   "shorts": "blue",
+   "socks": "yellow",
+   "flag": {
+    "t": "cross",
+    "c": [
+     "#1b5fb4",
+     "#ffce3d"
+    ]
+   }
+  },
+  {
+   "slug": "Denmark",
+   "name": "Denmark",
+   "rating": 6,
+   "kitProxy": "Liverpool",
+   "shirt": "red",
+   "shorts": "white",
+   "socks": "red",
+   "flag": {
+    "t": "cross",
+    "c": [
+     "#d62718",
+     "#ffffff"
+    ]
+   }
+  },
+  {
+   "slug": "Ireland",
+   "name": "Ireland",
+   "rating": 5,
+   "kitProxy": "Everton",
+   "shirt": "green",
+   "shorts": "white",
+   "socks": "green",
+   "flag": {
+    "t": "v",
+    "c": [
+     "#159b4a",
+     "#ffffff",
+     "#ff9900"
+    ]
+   }
+  },
+  {
+   "slug": "USA",
+   "name": "USA",
+   "rating": 5,
+   "kitProxy": "Leeds",
+   "shirt": "white",
+   "shorts": "blue",
+   "socks": "red",
+   "flag": {
+    "t": "usa",
+    "c": [
+     "#d62718",
+     "#ffffff",
+     "#1b3f9b"
+    ]
+   }
+  },
+  {
+   "slug": "Scotland",
+   "name": "Scotland",
+   "rating": 4,
+   "kitProxy": "Everton",
+   "shirt": "darkblue",
+   "shorts": "white",
+   "socks": "darkblue",
+   "flag": {
+    "t": "saltire",
+    "c": [
+     "#1b3f9b",
+     "#ffffff"
+    ]
+   }
+  },
+  {
+   "slug": "Japan",
+   "name": "Japan",
+   "rating": 4,
+   "kitProxy": "Everton",
+   "shirt": "blue",
+   "shorts": "white",
+   "socks": "blue",
+   "flag": {
+    "t": "disc",
+    "c": [
+     "#ffffff",
+     "#d62718"
+    ]
+   }
+  }
+ ],
+ "minnows": [
+  {
+   "slug": "Bridgewater",
+   "name": "Bridgewater Rovers",
+   "rating": 2,
+   "shirt": "claret",
+   "shorts": "white",
+   "socks": "claret"
+  },
+  {
+   "slug": "Frogmore",
+   "name": "Frogmore Town",
+   "rating": 1,
+   "shirt": "green",
+   "shorts": "white",
+   "socks": "green"
+  },
+  {
+   "slug": "Dunlow",
+   "name": "Dunlow Athletic",
+   "rating": 2,
+   "shirt": "orange",
+   "shorts": "black",
+   "socks": "orange"
+  },
+  {
+   "slug": "Pebblegate",
+   "name": "Pebblegate United",
+   "rating": 3,
+   "shirt": "blue",
+   "shorts": "white",
+   "socks": "blue",
+   "pattern": "stripes",
+   "stripe2": "white"
+  },
+  {
+   "slug": "MarshEnd",
+   "name": "Marsh End FC",
+   "rating": 1,
+   "shirt": "yellow",
+   "shorts": "green",
+   "socks": "yellow"
+  },
+  {
+   "slug": "Ketterby",
+   "name": "Ketterby Wanderers",
+   "rating": 2,
+   "shirt": "white",
+   "shorts": "black",
+   "socks": "white",
+   "pattern": "stripes",
+   "stripe2": "black"
+  },
+  {
+   "slug": "Ollerton",
+   "name": "Ollerton Albion",
+   "rating": 3,
+   "shirt": "navy",
+   "shorts": "white",
+   "socks": "navy"
+  },
+  {
+   "slug": "Grimsdale",
+   "name": "Grimsdale County",
+   "rating": 2,
+   "shirt": "grey",
+   "shorts": "black",
+   "socks": "grey"
+  },
+  {
+   "slug": "Witchford",
+   "name": "Witchford Borough",
+   "rating": 1,
+   "shirt": "skyblue",
+   "shorts": "darkblue",
+   "socks": "skyblue"
+  },
+  {
+   "slug": "Stickleton",
+   "name": "Stickleton FC",
+   "rating": 2,
+   "shirt": "red",
+   "shorts": "black",
+   "socks": "red",
+   "pattern": "stripes",
+   "stripe2": "black"
+  }
+ ]
+}

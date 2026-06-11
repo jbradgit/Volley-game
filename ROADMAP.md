@@ -115,7 +115,7 @@ watermarks; public repo history is clean; CI screenshots approved.
 | 3.3 | Daily challenge, real version: UTC seed (Phase 0) + shared leaderboard | Needs a tiny backend (a single serverless KV endpoint is enough: POST score, GET top-N). Until then, keep the honest "THIS DEVICE" label | M–L | ⬜ |
 | 3.4 | "Sponsored Daily" — daily challenge presented-by branding | Free once 3.1 + 3.3 exist | S | ⬜ |
 | 3.5 | Remaining 1:1 polish from HANDOVER: idle/commentary animations (§3.6) — or formally drop and close | Decide; SCORDAGOL is its own game now | M | ⬜ |
-| 3.6 | **Career universe expansion** — foreign leagues, domestic cups, European competitions, national team + nationality select, reputation/budget management layer. Full design: `docs/CAREER_DESIGN.md` (phases E0–E6; E0 calendar refactor first, pairs with task 2.1) | Owner-approved direction | L–XL per phase | ⬜ |
+| 3.6 | **Career universe expansion** — foreign leagues, domestic cups, European competitions, national team + nationality select, reputation/budget management layer. Full design: `docs/CAREER_DESIGN.md` (phases E0–E6; E0 calendar refactor first, pairs with task 2.1) | Owner-approved direction | L–XL per phase | 🟨 cups/Europe/intl shipped |
 
 ---
 

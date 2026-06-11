@@ -72,7 +72,9 @@
   // ---- Static assets (kits are loaded dynamically per club, see loadKits) ----
   const IMG = {};
   const sources = { backdrop:"assets/stadium/backdrop.png?v=1",
-                    logo:"assets/ui/logo.png?v=2", trophyL:"assets/ui/trophy_league.png?v=1",
+                    logo:"assets/ui/logo.png?v=2",
+                    trophyL:"assets/ui/trophy_league.png?v=1", trophyC:"assets/ui/trophy_cup.png?v=1",
+                    trophyE:"assets/ui/trophy_euro.png?v=1",   trophyI:"assets/ui/trophy_intl.png?v=1",
                     katlas0:"assets/keeper_atlas_0.png?v=dd", katlas1:"assets/keeper_atlas_1.png?v=dd",
                     ball:"assets/ball.png?v=hr", shadow:"assets/shadow.png?v=hr",
                     defmap:"assets/defender_regionmap.png?v=live2" };
@@ -182,6 +184,16 @@
       matchBoards.push(id);
     }
   }
+  // ---- world data: European clubs, nations (flags + real-life-based ratings), cup minnows ----
+  let WORLD=null, worldStatus="loading";
+  fetch("assets/world/world.json?v=1")
+    .then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
+    .then(j=>{ WORLD=j; worldStatus="ok";
+      for (const t of [].concat(j.euro||[], j.nations||[], j.minnows||[]))
+        if (!TEAMBY[t.slug]) TEAMBY[t.slug]=t; })        // kits/ratings join the live-recolour lookup
+    .catch(e=>{ worldStatus="error"; try{ console.error("world.json failed to load:", e); }catch(_){} });
+  function nationOf(slug){ return ((WORLD&&WORLD.nations)||[]).find(n=>n.slug===slug)||null; }
+
   // Keeper labelled animation ranges actually used by the original (frame_10 / frame_9):
   //   dive_left/right = gotoandplay; central catch = gotoandstop a single frame by height.
   const KEEPER_ANIMS = { idle:[1,1], dive_left:[50,99], dive_right:[100,149],
@@ -240,7 +252,7 @@
 
   // ---- Game state ----
   const ST = { MENU:"menu", NAME:"name", CLUBSEL:"clubsel", TABLE:"table", SEASONEND:"seasonend",
-               INBOX:"inbox", EMAIL:"email", TROPHY:"trophy",
+               INBOX:"inbox", EMAIL:"email", TROPHY:"trophy", NATSEL:"natsel", TRNHUB:"trnhub",
                TITLE:"title", COUNTDOWN:"countdown", SERVE:"serve", FLIGHT:"flight", RESULT:"result",
                MATCHEND:"matchend", OVER:"over",
                DAILYBOARD:"dailyboard", HORSESETUP:"horsesetup", HORSEPASS:"horsepass", HORSEEND:"horseend" };
@@ -265,6 +277,14 @@
       const c = JSON.parse(localStorage.getItem("vc_career"));
       if (c && c.titles>0 && !c.trophies)                                   // migrate pre-trophy-room saves
         c.trophies = Array.from({length:c.titles}, ()=>({t:"league", s:null, club:c.slug}));
+      if (c && !c.cal){                                                     // migrate pre-calendar saves:
+        c.cal = Array.from({length:Math.max(0, c.fixtures.length-c.idx)}, ()=>({t:'L'}));
+        c.calIdx = 0;                                                       // league-only for the rest of this season
+        c.cup = {round:0, out:true, won:false, opp:null, results:[]};       // cup/Europe join from next season
+        c.euro = null; c.nextEuro = null;
+        c.nation = c.nation || "England"; c.caps = c.caps||0; c.intlGoals = c.intlGoals||0;
+        c.trn = null; c.trnDone = false;
+      }
       return c;
     } catch(e){ return null; }
   }
@@ -281,9 +301,51 @@
     const second = shuffle(others.map(o=>({opp:o, home: !firstHome[o]})));
     return first.concat(second);
   }
-  function newCareer(name, slug){
+  // ---- season calendar: league matchdays with cup / European fixtures slotted between ----
+  const CUP_AFTER=[6,12,19,26,33], EURO_G_AFTER=[4,9,14,18,23,27], EURO_SF_AFTER=30, EURO_F_AFTER=35;
+  const CUP_ROUNDS=["ROUND OF 32","ROUND OF 16","QUARTER-FINAL","SEMI-FINAL","FINAL"];
+  function buildCalendar(hasEuro){
+    const cal=[];
+    for (let md=0; md<38; md++){
+      cal.push({t:'L'});
+      const after=md+1, ci=CUP_AFTER.indexOf(after);
+      if (ci>=0) cal.push({t:'C', r:ci});
+      if (hasEuro){ const ei=EURO_G_AFTER.indexOf(after);
+        if (ei>=0) cal.push({t:'E', k:ei});
+        if (after===EURO_SF_AFTER) cal.push({t:'E', k:6});
+        if (after===EURO_F_AFTER)  cal.push({t:'E', k:7}); }
+    }
+    return cal;
+  }
+  function initCup(){ return { round:0, out:false, won:false, opp:null, home:true, results:[] }; }
+  function initEuro(comp, mySlug){
+    if (!comp || !WORLD) return null;
+    const pool=WORLD.euro.filter(t=> comp==='CT' ? t.rating>=8 : t.rating<=8);
+    const g=shuffle(pool.slice()).slice(0,3).map(t=>t.slug);
+    const gt={}; gt[mySlug]={p:0,w:0,d:0,l:0,pts:0};
+    for (const sg of g) gt[sg]={p:0,w:0,d:0,l:0,pts:0};
+    return { comp, group:g, gt, gIdx:0, stage:'G', sfOpp:null, fOpp:null };
+  }
+  function evDead(ev){          // calendar slots that no longer apply (knocked out etc.)
+    if (ev.t==='C') return !CAR.cup || CAR.cup.out || CAR.cup.won;
+    if (ev.t==='E'){ const e=CAR.euro;
+      if (!e || e.stage==='out' || e.stage==='won') return true;
+      if (ev.k<6)   return e.stage!=='G';
+      if (ev.k===6) return e.stage!=='SF';
+      return e.stage!=='F'; }
+    return false;
+  }
+  function peekEvent(){         // next live event (idempotent skip of dead slots)
+    if (!CAR || !CAR.cal) return null;
+    while (CAR.calIdx < CAR.cal.length && evDead(CAR.cal[CAR.calIdx])) CAR.calIdx++;
+    return CAR.calIdx < CAR.cal.length ? CAR.cal[CAR.calIdx] : null;
+  }
+  function newCareer(name, slug, nation){
     CAR = { name:name||"You", slug, season:1, idx:0, fixtures:makeFixtures(slug),
-            table:freshTable(), news:[], titles:0, form:[], titleOdds:null };
+            table:freshTable(), news:[], titles:0, form:[], titleOdds:null,
+            nation:nation||"England", caps:0, intlGoals:0, trophies:[],
+            cup:initCup(), euro:null, nextEuro:null, cal:buildCalendar(false), calIdx:0,
+            trn:null, trnDone:false };
     CAR.news.unshift(name+" signs for "+TEAMBY[slug].name+"!");
     saveCareer();
   }
@@ -362,20 +424,29 @@
       const r=CAR.table[t.slug]; if (r.pts + (total-r.p)*3 >= myPts) return false; }   // a rival can still reach you
     return true;
   }
-  function endSeasonEarly(){    // simulate the dead-rubber run-in and jump to the summer
-    while (CAR.idx < CAR.fixtures.length){
-      const fx=CAR.fixtures[CAR.idx], me=CAR.table[CAR.slug], op=CAR.table[fx.opp];
-      const pW=winProb(teamStrength(CAR.slug)), x=Math.random();
-      const res = x<pW ? "W" : (x<pW+ODDS_DRAW ? "D" : "L");
-      me.p++; op.p++;
-      if (res==="W"){ me.w++; me.pts+=3; me.gd+=2; op.l++; op.gd-=2; }
-      else if (res==="D"){ me.d++; me.pts++; op.d++; op.pts++; }
-      else { me.l++; me.gd-=2; op.w++; op.pts+=3; op.gd+=2; }
-      CAR.form=(CAR.form||[]); CAR.form.unshift(res); CAR.form=CAR.form.slice(0,5);
-      simRound([CAR.slug, fx.opp]); CAR.idx++;
-      CAR.lastResults = genGameweekResults(res, fx);
+  function endSeasonEarly(){    // simulate the dead-rubber run-in (league + cup + Europe) and jump to the summer
+    let ev, guard=120;
+    while ((ev=peekEvent()) && guard-->0){
+      if (ev.t==='L'){
+        const fx=CAR.fixtures[CAR.idx], me=CAR.table[CAR.slug], op=CAR.table[fx.opp];
+        const pW=winProb(teamStrength(CAR.slug)), x=Math.random();
+        const res = x<pW ? "W" : (x<pW+ODDS_DRAW ? "D" : "L");
+        me.p++; op.p++;
+        if (res==="W"){ me.w++; me.pts+=3; me.gd+=2; op.l++; op.gd-=2; }
+        else if (res==="D"){ me.d++; me.pts++; op.d++; op.pts++; }
+        else { me.l++; me.gd-=2; op.w++; op.pts+=3; op.gd+=2; }
+        CAR.form=(CAR.form||[]); CAR.form.unshift(res); CAR.form=CAR.form.slice(0,5);
+        simRound([CAR.slug, fx.opp]); CAR.idx++;
+        CAR.lastResults = genGameweekResults(res, fx);
+      } else {
+        eventSetup(ev);                                       // sets OPPONENT for the quick resolve
+        const pw=clamp(0.55+(TEAMBY[CAR.slug].rating-OPPONENT.rating)*0.05, 0.15, 0.90);
+        const res = Math.random()<pw ? 'W' : 'L';
+        if (ev.t==='C') commitCup(res); else commitEuro(res, ev);
+      }
+      CAR.calIdx++;
     }
-    CAR.titleOdds=100; saveCareer(); enterSeasonEnd();
+    CAR.titleOdds=100; saveCareer(); seasonOver();
   }
 
   // ---- last-gameweek results (cosmetic ticker on the career home screen) ----
@@ -481,7 +552,12 @@
                sign:sign[0]+" · "+sign[1],
                from:sign[0].toLowerCase().split(" ").join(".")+"@"+t.slug.toLowerCase()+".smail.co.uk" }; });
   }
-  function enterSeasonEnd(){ if (!CAR.offers) CAR.offers=genOffers(); inboxSel=0; openedOffer=0; state=ST.SEASONEND; }
+  function enterSeasonEnd(){
+    const pos=myPosition();
+    CAR.nextEuro = pos<=4 ? 'CT' : (pos<=7 ? 'CC' : null);   // European qualification for NEXT season
+    if (!CAR.offers) CAR.offers=genOffers();
+    inboxSel=0; openedOffer=0; state=ST.SEASONEND;
+  }
 
   // physics vars (mirror original names)
   let velocity, angle, cangle, sangle, t, bounce, bounced, booted, innet;
@@ -503,6 +579,7 @@
   let tableScrollY=0, tableSwipeAnchorY=null, tableSwipeAnchorScroll=0;
   const TBL_ROWH=20, TBL_CLIPH=284;   // touch career-table: row height + visible scroll height (shared by drawTable + scroll/swipe handlers so they never drift)
   let matchBalls=10;        // total balls for current match (used by ball counter)
+  let matchKO=false;        // knockout tie: no draw band (cup / euro KO / intl KO)
   let firstShotShown=false; // true after first kick, hides drag-prompt on subsequent shots
   let dragSpeedMod = clamp(parseInt(localStorage.getItem("vc_speed")||"0"), -10, 10);
   let dragGlideMod = clamp(parseInt(localStorage.getItem("vc_glide")||"0"), -8, 10);   // release glide: -80%..+100% momentum
@@ -536,14 +613,16 @@
   }
 
   function setTargets() {
-    M.winTarget = 2000 + OPPONENT.rating*1500 + rnd(10)*200;
-    if (!OPPONENT.home) M.winTarget += 2000;
+    const k = matchBalls/10;          // 5-ball matches (cup / Europe / internationals) halve the targets
+    M.winTarget = Math.round((2000 + OPPONENT.rating*1500 + rnd(10)*200)*k);
+    if (!OPPONENT.home) M.winTarget += Math.round(2000*k);
     M.drawTarget = Math.floor(M.winTarget*5/10);
+    if (matchKO) M.drawTarget = M.winTarget;   // knockout: win or go home — no draw band
   }
 
   function startMatch(opts) {
     opts = opts || {};
-    matchBalls=opts.balls||10; M.score=0; M.attempts=matchBalls; M.goals=0; manX=MAN_START_X; mouseTargetX=null; firstShotShown=false;
+    matchBalls=opts.balls||10; matchKO=!!opts.ko; M.score=0; M.attempts=matchBalls; M.goals=0; manX=MAN_START_X; mouseTargetX=null; firstShotShown=false;
     if (opts.seed!=null){                 // seeded: a reproducible serve sequence (daily / HORSE round)
       const pr=mulberry32(opts.seed>>>0);
       serveQueue=[]; for (let i=0;i<M.attempts+4;i++) serveQueue.push({v:Math.floor(pr()*5)+18, a:Math.floor(pr()*5)+35});
@@ -559,12 +638,43 @@
     countdownT=3.0; state=ST.COUNTDOWN;  // ...held behind a 3-2-1 so you can get in position
   }
 
-  // Career: play the current fixture.
+  // ---- calendar-driven fixture setup (league / cup / Europe) ----
+  let pendingEv=null;       // the calendar event the in-progress match belongs to
+  function cupDraw(){       // draw the next cup opponent: minnows early, league clubs late
+    const c=CAR.cup, r=c.round;
+    let pool;
+    if (r<2)      pool=((WORLD&&WORLD.minnows)||[]).map(t=>t.slug);
+    else if (r<4) pool=TEAMS.filter(t=>t.slug!==CAR.slug).map(t=>t.slug);
+    else          pool=TEAMS.filter(t=>t.slug!==CAR.slug && t.rating>=8).map(t=>t.slug);
+    if (!pool.length) pool=TEAMS.filter(t=>t.slug!==CAR.slug).map(t=>t.slug);
+    c.opp = pool[rnd(pool.length)];
+    c.home = r===4 ? true : rnd(2)===0;     // final on neutral ground (home targets)
+  }
+  function euroNextOpp(ev){ // current European opponent (lazily draws KO opponents)
+    const e=CAR.euro;
+    if (ev.k<6) return { slug:e.group[ev.k%3], home: ev.k<3 ? (ev.k%2===0) : (ev.k%2===1), ko:false };
+    if (ev.k===6){ if (!e.sfOpp){ const pool=WORLD.euro.filter(t=>e.group.indexOf(t.slug)<0);
+        e.sfOpp=pool[rnd(pool.length)].slug; } return { slug:e.sfOpp, home:rnd(2)===0, ko:true }; }
+    if (!e.fOpp){ const pool=WORLD.euro.filter(t=>e.group.indexOf(t.slug)<0 && t.slug!==e.sfOpp);
+      e.fOpp=pool[rnd(pool.length)].slug; }
+    return { slug:e.fOpp, home:true, ko:true };
+  }
+  function eventSetup(ev){  // sets MYCLUB/OPPONENT for the event; returns match options
+    pendingEv=ev;
+    const meT=TEAMBY[CAR.slug];
+    MYCLUB={ slug:CAR.slug, name:meT.name, rating:meT.rating };
+    let oppSlug, home, balls=10, ko=false;
+    if (ev.t==='L'){ const fx=CAR.fixtures[CAR.idx]; oppSlug=fx.opp; home=fx.home; }
+    else if (ev.t==='C'){ if (!CAR.cup.opp) cupDraw(); oppSlug=CAR.cup.opp; home=CAR.cup.home; balls=5; ko=true; }
+    else { const o=euroNextOpp(ev); oppSlug=o.slug; home=o.home; balls=5; ko=o.ko; }
+    const ot=TEAMBY[oppSlug]||{name:oppSlug, rating:5};
+    OPPONENT={ slug:oppSlug, name:ot.name, rating:ot.rating, home:home };
+    return { balls, ko, strikerSlug:CAR.slug, oppSlug };
+  }
   function startFixture() {
-    const fx = CAR.fixtures[CAR.idx], ot = TEAMBY[fx.opp];
-    OPPONENT = { slug:ot.slug, name:ot.name, rating:ot.rating, home:fx.home };
-    MYCLUB   = { slug:CAR.slug, name:TEAMBY[CAR.slug].name, rating:TEAMBY[CAR.slug].rating };
-    loadKits(MYCLUB.slug, OPPONENT.slug, startMatch);
+    const ev=peekEvent(); if (!ev){ seasonOver(); return; }
+    const o=eventSetup(ev);
+    loadKits(o.strikerSlug, o.oppSlug, ()=>startMatch({balls:o.balls, ko:o.ko}));
   }
   function matchResult(){ return M.score>=M.winTarget ? "W" : (M.score>=M.drawTarget ? "D" : "L"); }
   // Match finished (10 balls used): show the VICTORY/DRAW/LOSS burst, then commit.
@@ -599,25 +709,142 @@
     else if (res==="L" && pos>=18 && rnd(2)===0) h="Pressure mounts on {n} as {c} lose to {o}";
     return h.replace(/{n}/g,n).replace(/{c}/g,c).replace(/{o}/g,o).replace(/{s}/g,s);
   }
-  // After the burst: record the result + advance the career (or Quick-Play OVER).
+  // After the burst: record the result + advance the career calendar (or Quick-Play OVER).
   function commitMatch() {
     if (!CAR){ state=ST.OVER; return; }
-    const res = matchResult();
+    const res=matchResult(), ev=pendingEv||{t:'L'};
+    if (ev.t==='I'){ commitIntl(res); return; }            // tournament drives its own flow
+    if (ev.t==='L') commitLeague(res);
+    else if (ev.t==='C') commitCup(res);
+    else commitEuro(res, ev);
+    CAR.calIdx++;
+    saveCareer();
+    if (!peekEvent()) seasonOver(); else state=ST.TABLE;
+  }
+  function commitLeague(res){
     const me = CAR.table[CAR.slug], opp = CAR.table[OPPONENT.slug];
     me.p++; opp.p++;
     if (res==="W"){ me.w++; me.pts+=3; me.gd+=2; opp.l++; opp.gd-=2; }
     else if (res==="D"){ me.d++; me.pts+=1; opp.d++; opp.pts+=1; }
     else { me.l++; me.gd-=2; opp.w++; opp.pts+=3; opp.gd+=2; }
-    const mypos0 = myPosition();   // standing after this result (for headline flavour)
-    CAR.news.unshift(headline(res, mypos0));
+    CAR.news.unshift(headline(res, myPosition()));
     CAR.news = CAR.news.slice(0,8);
     CAR.form = (CAR.form||[]); CAR.form.unshift(res); CAR.form = CAR.form.slice(0,5);   // last-5 form
     simRound([CAR.slug, OPPONENT.slug]);
     CAR.idx++;
     CAR.lastResults = genGameweekResults(res, CAR.fixtures[CAR.idx-1]);   // ticker for the career home screen
-    CAR.titleOdds = computeTitleOdds();      // refresh title odds after this game
+    CAR.titleOdds = computeTitleOdds();
+  }
+  function commitCup(res){
+    const c=CAR.cup, oname=OPPONENT.name;
+    c.results.push({r:c.round, opp:c.opp, res});
+    if (res==='W'){
+      CAR.news.unshift(c.round===4 ? CAR.name+" lifts the Cup! Glory for "+MYCLUB.name+"!"
+                                   : MYCLUB.name+" past "+oname+" in the Cup");
+      if (c.round===4){ c.won=true; (CAR.trophies=CAR.trophies||[]).push({t:"cup", s:CAR.season, club:CAR.slug}); }
+      c.round++; c.opp=null;
+    } else { c.out=true; CAR.news.unshift("Cupset! "+oname+" dump "+MYCLUB.name+" out"); }
+    CAR.news=CAR.news.slice(0,8);
+  }
+  function euroSimPair(a,b,gt){     // the other group game on a European matchday
+    const ra=(TEAMBY[a]||{}).rating||5, rb=(TEAMBY[b]||{}).rating||5;
+    const pa=clamp(0.38+(ra-rb)*0.06, 0.10, 0.80), x=Math.random();
+    gt[a].p++; gt[b].p++;
+    if (x<pa){ gt[a].w++; gt[a].pts+=3; gt[b].l++; }
+    else if (x<pa+0.25){ gt[a].d++; gt[b].d++; gt[a].pts++; gt[b].pts++; }
+    else { gt[b].w++; gt[b].pts+=3; gt[a].l++; }
+  }
+  function groupOrder(meSlug, group, gt){
+    return [meSlug].concat(group).sort((a,b)=> gt[b].pts-gt[a].pts ||
+      (((TEAMBY[b]||{}).rating||5)-((TEAMBY[a]||{}).rating||5)));
+  }
+  function commitEuro(res, ev){
+    const e=CAR.euro, comp=e.comp==='CT'?"Champions Trophy":"Continental Cup";
+    if (ev.k<6){
+      const me=e.gt[CAR.slug], op=e.gt[OPPONENT.slug];
+      me.p++; op.p++;
+      if (res==='W'){ me.w++; me.pts+=3; op.l++; }
+      else if (res==='D'){ me.d++; op.d++; me.pts++; op.pts++; }
+      else { me.l++; op.w++; op.pts+=3; }
+      const others=e.group.filter(x=>x!==OPPONENT.slug);
+      if (others.length===2) euroSimPair(others[0], others[1], e.gt);
+      e.gIdx++;
+      if (e.gIdx>=6){
+        const qual = groupOrder(CAR.slug, e.group, e.gt).indexOf(CAR.slug)<2;
+        e.stage = qual ? 'SF' : 'out';
+        CAR.news.unshift(qual ? MYCLUB.name+" into the "+comp+" semi-finals!"
+                              : MYCLUB.name+" out of the "+comp+" at the group stage");
+      }
+    } else if (ev.k===6){
+      if (res==='W'){ e.stage='F'; CAR.news.unshift(MYCLUB.name+" reach the "+comp+" FINAL!"); }
+      else { e.stage='out'; CAR.news.unshift("Semi-final heartbreak for "+MYCLUB.name); }
+    } else {
+      if (res==='W'){ e.stage='won';
+        (CAR.trophies=CAR.trophies||[]).push({t:"euro", s:CAR.season, club:CAR.slug});
+        CAR.news.unshift("KINGS OF EUROPE! "+MYCLUB.name+" win the "+comp+"!"); }
+      else { e.stage='out'; CAR.news.unshift("Final defeat for "+MYCLUB.name+" in the "+comp); }
+    }
+    CAR.news=CAR.news.slice(0,8);
+  }
+  // ---- season finished -> world tournament every other year (incl. season 1), then the summer ----
+  function seasonOver(){
+    if (CAR.season % 2 === 1 && CAR.nation && WORLD && !CAR.trnDone){ startTournament(); return; }
+    enterSeasonEnd();
+  }
+  function startTournament(){
+    if (!CAR.trn){
+      const others=shuffle(WORLD.nations.filter(n=>n.slug!==CAR.nation)).slice(0,3).map(n=>n.slug);
+      const gt={}; gt[CAR.nation]={p:0,w:0,d:0,l:0,pts:0};
+      for (const sg of others) gt[sg]={p:0,w:0,d:0,l:0,pts:0};
+      CAR.trn={ group:others, gt, gIdx:0, stage:'G', oppQ:null, oppS:null, oppF:null };
+      saveCareer();
+    }
+    state=ST.TRNHUB;
+  }
+  function trnPickKO(exclude){
+    const pool=WORLD.nations.filter(n=>n.slug!==CAR.nation && exclude.indexOf(n.slug)<0);
+    return pool[rnd(pool.length)].slug;
+  }
+  function trnSetup(){      // sets MYCLUB/OPPONENT for the next tournament tie
+    const T=CAR.trn, nat=nationOf(CAR.nation);
+    pendingEv={t:'I'};
+    MYCLUB={ slug:CAR.nation, name:nat.name, rating:nat.rating };
+    let oppSlug, ko=false;
+    if (T.stage==='G') oppSlug=T.group[T.gIdx];
+    else if (T.stage==='QF'){ if(!T.oppQ) T.oppQ=trnPickKO(T.group); oppSlug=T.oppQ; ko=true; }
+    else if (T.stage==='SF'){ if(!T.oppS) T.oppS=trnPickKO(T.group.concat([T.oppQ])); oppSlug=T.oppS; ko=true; }
+    else { if(!T.oppF) T.oppF=trnPickKO(T.group.concat([T.oppQ,T.oppS])); oppSlug=T.oppF; ko=true; }
+    const ot=TEAMBY[oppSlug];
+    OPPONENT={ slug:oppSlug, name:ot.name, rating:ot.rating, home:rnd(2)===0 };
+    return { ko, strikerSlug:(nat.kitProxy||CAR.slug) };   // striker art borrowed from a matching club kit
+  }
+  function startTrnMatch(){
+    const o=trnSetup();
+    loadKits(o.strikerSlug, OPPONENT.slug, ()=>startMatch({balls:5, ko:o.ko}));
+  }
+  function commitIntl(res){
+    const T=CAR.trn;
+    CAR.caps=(CAR.caps||0)+1; CAR.intlGoals=(CAR.intlGoals||0)+M.goals;
+    if (T.stage==='G'){
+      const me=T.gt[CAR.nation], op=T.gt[OPPONENT.slug];
+      me.p++; op.p++;
+      if (res==='W'){ me.w++; me.pts+=3; op.l++; }
+      else if (res==='D'){ me.d++; op.d++; me.pts++; op.pts++; }
+      else { me.l++; op.w++; op.pts+=3; }
+      const others=T.group.filter(x=>x!==OPPONENT.slug);
+      if (others.length===2) euroSimPair(others[0], others[1], T.gt);
+      T.gIdx++;
+      if (T.gIdx>=3) T.stage = groupOrder(CAR.nation, T.group, T.gt).indexOf(CAR.nation)<2 ? 'QF' : 'out';
+    }
+    else if (T.stage==='QF') T.stage = res==='W' ? 'SF' : 'out';
+    else if (T.stage==='SF') T.stage = res==='W' ? 'F'  : 'out';
+    else if (T.stage==='F'){
+      if (res==='W'){ T.stage='won';
+        (CAR.trophies=CAR.trophies||[]).push({t:"intl", s:CAR.season, club:CAR.nation}); }
+      else T.stage='out';
+    }
     saveCareer();
-    if (CAR.idx >= CAR.fixtures.length) enterSeasonEnd(); else state = ST.TABLE;
+    state=ST.TRNHUB;
   }
 
   function newServe() {
@@ -984,10 +1211,12 @@
       ctx.fillStyle = (i/cells)<perc ? pcol : (f<=drawFrac ? "#3a1018" : "#3a2e0e");
       ctx.fillRect(bx+i*(cellW+gap), by, cellW, bh);
     }
-    ctx.fillStyle=TTX.white; ctx.fillRect(Math.round(bx+usedW*drawFrac)-1, by-3, 2, bh+6);
     ctx.font=ttFont(9);
+    if (M.drawTarget < M.winTarget){                  // knockout ties have no draw band
+      ctx.fillStyle=TTX.white; ctx.fillRect(Math.round(bx+usedW*drawFrac)-1, by-3, 2, bh+6);
+      ctx.textAlign="center"; ctx.fillStyle=TTX.yellow; ctx.fillText("DRAW", bx+usedW*drawFrac, sy+45);
+    }
     ctx.textAlign="left";   ctx.fillStyle=TTX.red;    ctx.fillText("LOSE", bx, sy+45);
-    ctx.textAlign="center"; ctx.fillStyle=TTX.yellow; ctx.fillText("DRAW", bx+usedW*drawFrac, sy+45);
     ctx.textAlign="right";  ctx.fillStyle=TTX.green;  ctx.fillText("WIN", bx+usedW, sy+45);
 
     // ===== ARCADE SCOREBOARD — team-coloured chassis =====
@@ -1746,12 +1975,15 @@
       ctx.font=ttFont(20); ctx.fillStyle=TTX.grey; ctx.fillText("NOTHING IN THE CABINET YET.", VW/2, 150);
       ctx.font=ttFont(14); ctx.fillStyle=TTX.dim;  ctx.fillText("EARLY DOORS. TAKE EACH GAME AS IT COMES.", VW/2, 178);
     } else {
-      const im=IMG.trophyL, perShelf=8, tw=66, th=88, slot=96;
+      const TIMG={league:IMG.trophyL, cup:IMG.trophyC, euro:IMG.trophyE, intl:IMG.trophyI};
+      const TLBL={league:"LGE", cup:"CUP", euro:"EUR", intl:"WLD"};
+      const perShelf=8, tw=66, th=88, slot=96;
       tr.slice(0,perShelf*2).forEach((tp,i)=>{
         const sh=Math.floor(i/perShelf), onShelf=Math.min(tr.length-sh*perShelf, perShelf);
         const x0=VW/2-(onShelf*slot)/2, x=x0+(i%perShelf)*slot+(slot-tw)/2, yb=shelfY[sh];
+        const im=TIMG[tp.t]||IMG.trophyL;
         if (im && im.naturalWidth) ctx.drawImage(im, x, yb-th, tw, th);
-        pxText(tp.s ? "S"+tp.s : "★", x+tw/2, yb+24, 12, "#ffd700", 'c', 'm');
+        pxText((TLBL[tp.t]||"")+(tp.s?" S"+tp.s:""), x+tw/2, yb+24, 11, "#ffd700", 'c', 'm');
       });
       if (tr.length>perShelf*2){ ctx.textAlign="center"; ctx.font=ttFont(13); ctx.fillStyle=TTX.grey;
         ctx.fillText("+"+(tr.length-perShelf*2)+" MORE IN STORAGE", VW/2, SH-60); }
@@ -1760,6 +1992,207 @@
     if (!TOUCH) ctx.fillText("ESC / SPACE  BACK", VW/2, SH-22);
     ctx.textAlign="left";
   }
+  // ---- flag renderer: tiny geometric flags from world.json specs ----
+  function drawFlag(x,y,w,h,f){
+    const c=(f&&f.c)||["#888","#aaa","#888"], t=(f&&f.t)||"h";
+    ctx.save(); ctx.beginPath(); ctx.rect(x,y,w,h); ctx.clip();
+    if (t==="v"){ for(let i=0;i<3;i++){ ctx.fillStyle=c[i]||c[0]; ctx.fillRect(x+i*w/3,y,w/3+1,h); } }
+    else if (t==="v2"){ ctx.fillStyle=c[0]; ctx.fillRect(x,y,w*0.4,h); ctx.fillStyle=c[1]; ctx.fillRect(x+w*0.4,y,w*0.6,h); }
+    else if (t==="h"){ for(let i=0;i<3;i++){ ctx.fillStyle=c[i]||c[0]; ctx.fillRect(x,y+i*h/3,w,h/3+1); } }
+    else if (t==="spain"){ ctx.fillStyle=c[0]; ctx.fillRect(x,y,w,h); ctx.fillStyle=c[1]; ctx.fillRect(x,y+h/4,w,h/2); }
+    else if (t==="cross"){ ctx.fillStyle=c[0]; ctx.fillRect(x,y,w,h); ctx.fillStyle=c[1];
+      ctx.fillRect(x+w*0.38,y,w*0.20,h); ctx.fillRect(x,y+h*0.38,w,h*0.24); }
+    else if (t==="saltire"){ ctx.fillStyle=c[0]; ctx.fillRect(x,y,w,h);
+      ctx.strokeStyle=c[1]; ctx.lineWidth=Math.max(3,h*0.2);
+      ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+w,y+h); ctx.moveTo(x+w,y); ctx.lineTo(x,y+h); ctx.stroke(); }
+    else if (t==="diamond"){ ctx.fillStyle=c[0]; ctx.fillRect(x,y,w,h); ctx.fillStyle=c[1];
+      ctx.beginPath(); ctx.moveTo(x+w/2,y+h*0.12); ctx.lineTo(x+w*0.88,y+h/2); ctx.lineTo(x+w/2,y+h*0.88); ctx.lineTo(x+w*0.12,y+h/2); ctx.closePath(); ctx.fill();
+      ctx.fillStyle=c[2]||"#1b3f9b"; ctx.beginPath(); ctx.arc(x+w/2,y+h/2,h*0.18,0,2*Math.PI); ctx.fill(); }
+    else if (t==="disc"){ ctx.fillStyle=c[0]; ctx.fillRect(x,y,w,h); ctx.fillStyle=c[1];
+      ctx.beginPath(); ctx.arc(x+w/2,y+h/2,h*0.28,0,2*Math.PI); ctx.fill(); }
+    else if (t==="tri"){ ctx.fillStyle=c[0]; ctx.fillRect(x,y,w,h/2); ctx.fillStyle=c[1]; ctx.fillRect(x,y+h/2,w,h/2);
+      ctx.fillStyle=c[2]; ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+w*0.45,y+h/2); ctx.lineTo(x,y+h); ctx.closePath(); ctx.fill(); }
+    else if (t==="usa"){ for(let i=0;i<7;i++){ ctx.fillStyle=i%2?c[1]:c[0]; ctx.fillRect(x,y+i*h/7,w,h/7+1); }
+      ctx.fillStyle=c[2]; ctx.fillRect(x,y,w*0.42,h*0.5);
+      ctx.fillStyle="#fff"; for(let r=0;r<3;r++) for(let q=0;q<4;q++) ctx.fillRect(x+3+q*w*0.095, y+2+r*h*0.14, 2, 2); }
+    ctx.restore();
+    ctx.strokeStyle="rgba(255,255,255,0.5)"; ctx.lineWidth=1; ctx.strokeRect(x+0.5,y+0.5,w-1,h-1);
+  }
+  // shared career-screen chrome for the competition views
+  function compHeader(barText, rightText){
+    const HBY=4, LOGOW=220, HBH=TOUCH?40:32;
+    ctx.fillStyle="#06070b"; ctx.fillRect(0,HBY,VW,HBH);
+    ctx.strokeStyle=LOGO_ACCENT; ctx.lineWidth=2; ctx.strokeRect(1.5,HBY+1.5,LOGOW-3,HBH-3);
+    drawLogo(LOGOW/2, 0, LOGOW-28, {cy:HBY+HBH/2, maxH:HBH-10});
+    ttBar(barText, LOGOW, HBY, VW-LOGOW, HBH, TTX.blue, TTX.yellow, {size:TOUCH?26:20});
+    pxText(rightText, VW-14, HBY+HBH/2+1, TOUCH?16:14, TTX.white, 'r', 'm');
+    return HBY+HBH;
+  }
+  function compFooter(fixtureStr, tagLine, accent){
+    const nbW=600, nbX=VW/2-nbW/2, nbY=402, nbH=48;
+    ctx.fillStyle="#0a1224"; ctx.fillRect(nbX,nbY,nbW,nbH);
+    ctx.strokeStyle=accent||TTX.blue; ctx.lineWidth=2; ctx.strokeRect(nbX+1,nbY+1,nbW-2,nbH-2);
+    ttBar(tagLine, nbX, nbY, nbW, 18, accent||TTX.blue, "#06070b", {center:true, size:13});
+    let fsz=22; ctx.textAlign="center"; ctx.font=ttFont(fsz);
+    while (ctx.measureText(fixtureStr).width > nbW-28 && fsz>12){ fsz--; ctx.font=ttFont(fsz); }
+    ctx.fillStyle=TTX.white; ctx.fillText(fixtureStr, VW/2, nbY+40);
+    if (ttCursorOn()){ ctx.fillStyle=TTX.neon; ctx.font=ttFont(20);
+      ctx.fillText(TOUCH?"TAP  TO  PLAY":"SPACE  /  CLICK  TO  PLAY", VW/2, nbY+nbH+30); }
+    clinchBtn=null;
+    { const tbW=116,tbH=26,tbX=VW-tbW-10,tbY=nbY+nbH+14;          // same TROPHIES button as the league home
+      ctx.fillStyle="rgba(0,0,10,0.55)"; ctx.fillRect(tbX,tbY,tbW,tbH);
+      ctx.strokeStyle="#ffd700"; ctx.lineWidth=1; ctx.strokeRect(tbX+0.5,tbY+0.5,tbW-1,tbH-1);
+      ctx.font=ttFont(13); ctx.fillStyle="#ffd700"; ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.fillText("★ TROPHIES", tbX+tbW/2, tbY+tbH/2+1); ctx.textBaseline="alphabetic";
+      trophyRoomBtn={x:tbX,y:tbY,w:tbW,h:tbH}; }
+    if (TOUCH){ const bbW=92,bbH=26,bbX=10,bbY=nbY+nbH+14;
+      ctx.fillStyle="rgba(0,0,10,0.55)"; ctx.fillRect(bbX,bbY,bbW,bbH);
+      ctx.strokeStyle=TTX.yellow; ctx.lineWidth=1; ctx.strokeRect(bbX+0.5,bbY+0.5,bbW-1,bbH-1);
+      ctx.font=ttFont(13); ctx.fillStyle=TTX.yellow; ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.fillText("← MENU",bbX+bbW/2,bbY+bbH/2+1); ctx.textBaseline="alphabetic";
+      touchBackBtn={x:bbX,y:bbY,w:bbW,h:bbH}; }
+    ctx.textAlign="left";
+  }
+  function drawGroupRows(meSlug, group, gt, x0, y0, w){
+    const order=groupOrder(meSlug, group, gt), rowH=34, xr=x0+w;
+    ctx.font=ttFont(13); ctx.textAlign="left"; ctx.fillStyle="#9aaabb";
+    ctx.fillText("TEAM", x0+34, y0);
+    ctx.textAlign="center";
+    ctx.fillText("PL", xr-150, y0); ctx.fillText("W", xr-112, y0); ctx.fillText("D", xr-80, y0); ctx.fillText("L", xr-48, y0);
+    ctx.fillStyle=TTX.yellow; ctx.fillText("PTS", xr-14, y0);
+    for (let i=0;i<order.length;i++){
+      const sg=order[i], r=gt[sg], mine=sg===meSlug, y=y0+18+i*rowH;
+      if (mine){ ctx.fillStyle="rgba(255,255,255,0.10)"; ctx.fillRect(x0-8,y-2,w+16,rowH-4);
+        ctx.strokeStyle="rgba(255,255,255,0.55)"; ctx.lineWidth=1.5; ctx.strokeRect(x0-7.25,y-1.25,w+14.5,rowH-5.5); }
+      ctx.font=ttFont(16); ctx.textAlign="left";
+      ctx.fillStyle = i<2 ? TTX.cyan : TTX.grey;
+      ctx.fillText((i+1)+"", x0, y+18);
+      ctx.fillStyle = mine ? TTX.white : (i<2 ? TTX.cyan : TTX.grey);
+      ctx.fillText((TEAMBY[sg]||{name:sg}).name, x0+34, y+18);
+      ctx.font=ttFont(15); ctx.textAlign="center";
+      ctx.fillStyle=TTX.dim;   ctx.fillText(""+r.p, xr-150, y+18);
+      ctx.fillStyle=TTX.green; ctx.fillText(""+r.w, xr-112, y+18);
+      ctx.fillStyle=TTX.grey;  ctx.fillText(""+r.d, xr-80,  y+18);
+      ctx.fillStyle="#e08a8a"; ctx.fillText(""+r.l, xr-48,  y+18);
+      ctx.fillStyle=TTX.yellow;ctx.fillText(""+r.pts, xr-14, y+18);
+      if (i===1){ ctx.fillStyle="rgba(80,210,80,0.5)"; ctx.fillRect(x0-8, y+rowH-6, w+16, 2); }   // qualification line
+    }
+    ctx.textAlign="left";
+    return y0+18+order.length*rowH;
+  }
+  function drawCupView(){
+    const ht=compHeader("THE CUP", "SEASON "+CAR.season);
+    const c=CAR.cup; if (!c.opp) cupDraw();
+    pxText("ROAD TO THE FINAL", VW/2, ht+24, 15, "#cfd6dd", 'c','m');
+    const y0=ht+44, rowH=44;
+    for (let r=0;r<5;r++){
+      const y=y0+r*rowH, cur=r===c.round;
+      ctx.fillStyle = cur ? "rgba(255,210,0,0.10)" : "rgba(255,255,255,0.03)";
+      ctx.fillRect(VW/2-300, y, 600, rowH-8);
+      if (cur){ ctx.strokeStyle="#ffd700"; ctx.lineWidth=1.5; ctx.strokeRect(VW/2-299.25,y+0.75,598.5,rowH-9.5); }
+      ctx.font=ttFont(15); ctx.textAlign="left"; ctx.fillStyle = cur?"#ffd700":TTX.grey;
+      ctx.fillText(CUP_ROUNDS[r], VW/2-286, y+23);
+      ctx.textAlign="right"; ctx.font=ttFont(14);
+      const past=c.results.find(xx=>xx.r===r);
+      if (past){ ctx.fillStyle = past.res==='W'?TTX.green:TTX.red;
+        ctx.fillText((past.res==='W'?"WON  v ":"LOST  v ")+((TEAMBY[past.opp]||{name:past.opp}).name), VW/2+286, y+23); }
+      else if (cur){ ctx.fillStyle=TTX.white;
+        ctx.fillText("v "+((TEAMBY[c.opp]||{name:c.opp}).name)+(c.home?"  (H)":"  (A)"), VW/2+286, y+23); }
+      else { ctx.fillStyle=TTX.dim; ctx.fillText("—", VW/2+286, y+23); }
+    }
+    ctx.textAlign="center"; ctx.font=ttFont(12); ctx.fillStyle=TTX.grey;
+    ctx.fillText("5 BALLS · WIN OR GO HOME", VW/2, y0+5*rowH+8);
+    const me=TEAMBY[CAR.slug].name, op=(TEAMBY[c.opp]||{name:c.opp}).name;
+    compFooter(c.home? me+"  v  "+op : op+"  v  "+me, "CUP · "+CUP_ROUNDS[c.round], "#b8860b");
+  }
+  function drawEuroView(){
+    const e=CAR.euro, comp=e.comp==='CT'?"CHAMPIONS TROPHY":"CONTINENTAL CUP";
+    const ht=compHeader(comp, "SEASON "+CAR.season);
+    const ev=peekEvent(), o=euroNextOpp(ev);
+    const me=TEAMBY[CAR.slug].name, op=(TEAMBY[o.slug]||{name:o.slug}).name;
+    if (e.stage==='G'){
+      pxText("GROUP STAGE  ·  MATCH "+(e.gIdx+1)+" OF 6", VW/2, ht+24, 14, "#cfd6dd", 'c','m');
+      drawGroupRows(CAR.slug, e.group, e.gt, VW/2-280, ht+58, 560);
+      ctx.textAlign="center"; ctx.font=ttFont(12); ctx.fillStyle=TTX.grey;
+      ctx.fillText("TOP TWO QUALIFY · 5 BALLS PER MATCH", VW/2, ht+232);
+    } else {
+      pxText(e.stage==='SF' ? "SEMI - FINAL" : "THE FINAL", VW/2, ht+90, 26, "#ffd700", 'c','m');
+      ctx.textAlign="center"; ctx.font=ttFont(16); ctx.fillStyle=TTX.white;
+      ctx.fillText("ONE NIGHT. FIVE BALLS. NO SECOND CHANCES.", VW/2, ht+130);
+      const im=IMG.trophyE; if (im && im.naturalWidth){ ctx.drawImage(im, VW/2-33, ht+150, 66, 88); }
+    }
+    compFooter(o.home? me+"  v  "+op : op+"  v  "+me,
+      comp+" · "+(ev.k<6 ? "GROUP MATCH "+(e.gIdx+1) : (ev.k===6?"SEMI-FINAL":"FINAL")), "#27408b");
+  }
+  function drawTrnHub(){
+    const nat=nationOf(CAR.nation)||{name:CAR.nation, flag:{t:'h',c:['#666','#999','#666']}};
+    const T=CAR.trn, HBY=4, HBH=TOUCH?40:32;
+    const fc=nat.flag.c, dark=hexLum(fc[0])<110;
+    ctx.fillStyle="#06070b"; ctx.fillRect(0,HBY,VW,HBH);
+    ctx.fillStyle=fc[0]; ctx.fillRect(0,HBY,VW,HBH);                       // flag-themed bar
+    ctx.fillStyle=fc[2]||fc[1]||"#fff"; ctx.fillRect(0,HBY+HBH-4,VW,4);
+    drawFlag(10, HBY+4, 54, HBH-8, nat.flag);
+    pxText(nat.name.toUpperCase()+"  ·  WORLD TOURNAMENT", 78, HBY+HBH/2+1, TOUCH?20:17, dark?"#ffffff":"#06070b", 'l','m');
+    pxText("CAPS "+(CAR.caps||0), VW-14, HBY+HBH/2+1, 14, dark?"#ffffff":"#06070b", 'r','m');
+    const ht=HBY+HBH;
+    if (T.stage==='G'){
+      pxText("GROUP STAGE  ·  MATCH "+(T.gIdx+1)+" OF 3", VW/2, ht+24, 14, "#cfd6dd", 'c','m');
+      drawGroupRows(CAR.nation, T.group, T.gt, VW/2-280, ht+58, 560);
+      const op=(TEAMBY[T.group[T.gIdx]]||{}).name||"";
+      compFooter(nat.name+"  v  "+op, "WORLD TOURNAMENT · GROUP", fc[0]);
+    } else if (T.stage==='QF'||T.stage==='SF'||T.stage==='F'){
+      const lbl = T.stage==='QF'?"QUARTER - FINAL":(T.stage==='SF'?"SEMI - FINAL":"THE FINAL");
+      pxText(lbl, VW/2, ht+92, 26, "#ffd700", 'c','m');
+      ctx.textAlign="center"; ctx.font=ttFont(15); ctx.fillStyle=TTX.white;
+      ctx.fillText("THE WHOLE NATION IS WATCHING.", VW/2, ht+132);
+      const im=IMG.trophyI; if (im && im.naturalWidth) ctx.drawImage(im, VW/2-33, ht+152, 66, 88);
+      const oppPick = T.stage==='QF'?T.oppQ:(T.stage==='SF'?T.oppS:T.oppF);
+      const opn = oppPick ? (TEAMBY[oppPick]||{}).name : "TO BE DRAWN";
+      compFooter(nat.name+"  v  "+(opn||"?"), "WORLD TOURNAMENT · "+lbl, fc[0]);
+    } else {
+      const won=T.stage==='won';
+      pxText(won?"WORLD CHAMPIONS!":"OUT OF THE TOURNAMENT", VW/2, ht+100, won?24:20, won?"#ffd700":TTX.red, 'c','m');
+      ctx.textAlign="center"; ctx.font=ttFont(15); ctx.fillStyle=TTX.grey;
+      ctx.fillText(won ? "IMMORTALITY. SCENES." : "THE NATION MOURNS. STRAIGHT ONTO THE PLANE HOME.", VW/2, ht+136);
+      if (won){ const im=IMG.trophyI; if (im && im.naturalWidth) ctx.drawImage(im, VW/2-44, ht+158, 88, 117); }
+      if (ttCursorOn()){ ctx.fillStyle=TTX.neon; ctx.font=ttFont(18); ctx.textAlign="center";
+        ctx.fillText(TOUCH?"TAP  TO  CONTINUE  TO  THE  SUMMER":"SPACE  TO  CONTINUE  TO  THE  SUMMER", VW/2, ht+330); }
+      ctx.textAlign="left";
+    }
+  }
+  // ---- nationality select (career start) ----
+  let pendingNation="England";
+  function drawNatSelect(){
+    if (!WORLD || !WORLD.nations){ ctx.textAlign="center";
+      ttPrint(worldStatus==="error"?"⚠ COULD NOT LOAD assets/world/world.json":"LOADING NATIONS…",0,200,worldStatus==="error"?TTX.red:TTX.cyan,0,{size:16,center:true});
+      ctx.textAlign="left"; return; }
+    ttBar("SCORDAGOL   CHOOSE YOUR NATIONALITY", 0, 12, VW, 30, TTX.blue, TTX.white, {size:17});
+    ctx.textAlign="right"; ctx.font=ttFont(12); ctx.fillStyle=TTX.yellow;
+    ctx.fillText("CAREER · "+(nameBuf||"YOU"), VW-10, 33); ctx.textAlign="left";
+    const N=WORLD.nations, rows=8, cw=CLUB_CW, ch=38, x0=CLUB_X0, y0=66;
+    menuSel = clamp(menuSel, 0, N.length-1);
+    N.forEach((n,i)=>{
+      if (ttSub(n.name, i)===null) return;
+      const col=Math.floor(i/rows), row=i%rows, cx=x0+col*cw, cy=y0+row*ch, sel=i===menuSel, mid=cy+ch/2;
+      if (sel){ ctx.strokeStyle="rgba(255,255,255,0.75)"; ctx.lineWidth=1.5; ctx.strokeRect(cx+0.75,cy+0.75,cw-7.5,ch-4.5); }
+      drawFlag(cx+7, mid-11, 34, 22, n.flag);
+      ctx.font=ttFont(15); ctx.textAlign="left"; ctx.textBaseline="middle"; ctx.fillStyle=TTX.cyan;
+      ctx.fillText(n.name, cx+50, mid+1); ctx.textBaseline="alphabetic";
+    });
+    ctx.textAlign="center"; ctx.font=ttFont(13); ctx.fillStyle=TTX.grey;
+    ctx.fillText(TOUCH?"TAP YOUR NATION":"← ↑ ↓ →  CHOOSE    SPACE  CONFIRM    ESC  BACK", VW/2, SH-14);
+    ctx.textAlign="left";
+  }
+  function natHit(mx,my){
+    if (!WORLD || !WORLD.nations) return -1;
+    const rows=8, cw=CLUB_CW, ch=38, x0=CLUB_X0, y0=66;
+    for (let i=0;i<WORLD.nations.length;i++){
+      const col=Math.floor(i/rows), row=i%rows, cx=x0+col*cw, cy=y0+row*ch;
+      if (mx>=cx && mx<=cx+cw-6 && my>=cy && my<=cy+ch-3) return i;
+    }
+    return -1;
+  }
+
   // ---- transfer inbox (teletext email client) ----
   let inboxRects=[], emailBtns=[];
   function wrapText(text, maxW, font){
@@ -1861,6 +2294,10 @@
     if (newSlug && newSlug!==CAR.slug){ CAR.slug=newSlug; CAR.news.unshift(CAR.name+" joins "+TEAMBY[newSlug].name+"!"); }
     CAR.fixtures = makeFixtures(CAR.slug); CAR.table = freshTable(); CAR.titleOdds=null;
     CAR.offers=null; CAR.lastResults=null;
+    CAR.cup = initCup();
+    CAR.euro = initEuro(CAR.nextEuro, CAR.slug); CAR.nextEuro=null;
+    CAR.cal = buildCalendar(!!CAR.euro); CAR.calIdx=0;
+    CAR.trn=null; CAR.trnDone=false;
     saveCareer(); state=ST.TABLE;
   }
 
@@ -2173,7 +2610,14 @@
     else if (state===ST.MENU) { ttClear(); drawMenu(); touchBackBtn=null; }
     else if (state===ST.NAME) { ttClear(); drawName(); drawTouchBack("← BACK"); }
     else if (state===ST.CLUBSEL) { ttClear(); drawClubSelect(); drawTouchBack("← BACK"); }
-    else if (state===ST.TABLE) { ttClear(); drawTable(); if(!TOUCH) drawTouchBack("← MENU"); }
+    else if (state===ST.TABLE) { ttClear();
+      const ev=CAR?peekEvent():null;                 // the week's competition dictates the home screen
+      if (ev && ev.t==='C') drawCupView();
+      else if (ev && ev.t==='E') drawEuroView();
+      else drawTable();
+      if(!TOUCH) drawTouchBack("← MENU"); }
+    else if (state===ST.TRNHUB) { ttClear(); drawTrnHub(); touchBackBtn=null; }
+    else if (state===ST.NATSEL) { ttClear(); drawNatSelect(); drawTouchBack("← BACK"); }
     else if (state===ST.SEASONEND) { ttClear(); drawSeasonEnd(); drawTouchBack("← MENU"); }
     else if (state===ST.INBOX) { ttClear(); drawInbox(); drawTouchBack("← BACK"); }
     else if (state===ST.TROPHY) { ttClear(); drawTrophyRoom(); drawTouchBack("← BACK"); }
@@ -2196,7 +2640,8 @@
   function confirmName(){
     if(!nameBuf.trim()) return; menuSel=0; kbdClose();
     if (pendingMode==="daily"){ localStorage.setItem("vc_name", nameBuf.trim().toUpperCase()); startDaily(); }
-    else { state=ST.CLUBSEL; stateEnterAt=performance.now(); menuSel=0; }
+    else if (WORLD && WORLD.nations){ state=ST.NATSEL; stateEnterAt=performance.now(); menuSel=0; }
+    else { pendingNation="England"; state=ST.CLUBSEL; stateEnterAt=performance.now(); menuSel=0; }
   }
   function togglePause(){ if(state===ST.SERVE||state===ST.FLIGHT||state===ST.RESULT) paused=!paused; }
   function forfeit(){            // give up the current match -> career home (counts as a loss) / menu
@@ -2210,7 +2655,9 @@
   }
   function goBack(){             // ESC = back / forfeit
     if (state===ST.NAME){ kbdClose(); state=ST.MENU; menuSel=0; }
-    else if (state===ST.CLUBSEL){ if(pendingMode==="career"){ state=ST.NAME; kbdOpen(nameBuf); } else state=ST.MENU; menuSel=0; }
+    else if (state===ST.NATSEL){ state=ST.NAME; kbdOpen(nameBuf); menuSel=0; }
+    else if (state===ST.CLUBSEL){ if(pendingMode==="career"){ state=WORLD&&WORLD.nations?ST.NATSEL:ST.NAME; if(state===ST.NAME) kbdOpen(nameBuf); } else state=ST.MENU; menuSel=0; }
+    else if (state===ST.TRNHUB){ GMODE="career"; state=ST.MENU; menuSel=0; }
     else if (state===ST.EMAIL){ state=ST.INBOX; }
     else if (state===ST.INBOX){ state=ST.SEASONEND; }
     else if (state===ST.TROPHY){ state=ST.TABLE; }
@@ -2233,13 +2680,21 @@
       if (!TEAMS.length) return;                          // wait for roster
       if (o==="DAILY CHALLENGE"){ if(localStorage.getItem("vc_name")){ startDaily(); } else { pendingMode="daily"; nameBuf=""; state=ST.NAME; kbdOpen(""); } }
       else if (o==="2 PLAYER"){ hSetup=["","","HORSE"]; hField=0; state=ST.HORSESETUP; kbdOpen(""); }
-      else if (o==="CONTINUE CAREER"){ CAR=loadCareer(); if(CAR){ GMODE="career"; CAR.titleOdds=null; menuSel=0; if(CAR.idx>=CAR.fixtures.length) enterSeasonEnd(); else state=ST.TABLE; } }
+      else if (o==="CONTINUE CAREER"){ CAR=loadCareer(); if(CAR){ GMODE="career"; CAR.titleOdds=null; menuSel=0;
+        if (!peekEvent()) seasonOver(); else state=ST.TABLE; } }
       else { GMODE="career"; pendingMode="career"; nameBuf=""; state=ST.NAME; kbdOpen(""); }   // NEW CAREER
     }
     else if (state===ST.NAME){ confirmName(); }
+    else if (state===ST.NATSEL){ if(WORLD && WORLD.nations){
+      pendingNation=WORLD.nations[menuSel].slug; state=ST.CLUBSEL; stateEnterAt=performance.now(); menuSel=0; } }
     else if (state===ST.CLUBSEL){ if(TEAMS.length){
-      const slug=TEAMS[menuSel].slug; GMODE="career"; newCareer(nameBuf.trim()||"You", slug); state=ST.TABLE;
+      const slug=TEAMS[menuSel].slug; GMODE="career"; newCareer(nameBuf.trim()||"You", slug, pendingNation); state=ST.TABLE;
     } }
+    else if (state===ST.TRNHUB){
+      const T=CAR&&CAR.trn; if(!T) { state=ST.MENU; }
+      else if (T.stage==='out'||T.stage==='won'){ CAR.trnDone=true; saveCareer(); enterSeasonEnd(); }
+      else startTrnMatch();
+    }
     else if (state===ST.TABLE){ startFixture(); }
     else if (state===ST.TROPHY){ state=ST.TABLE; }
     else if (state===ST.SEASONEND){ if((CAR.offers||[]).length>0){ inboxSel=0; state=ST.INBOX; } else nextSeason(null); }
@@ -2253,7 +2708,7 @@
   }
   function pressEnter(){
     if (state===ST.NAME){ confirmName(); }
-    else if (state===ST.MENU||state===ST.TABLE||state===ST.SEASONEND||state===ST.INBOX||state===ST.CLUBSEL||state===ST.OVER||
+    else if (state===ST.MENU||state===ST.TABLE||state===ST.SEASONEND||state===ST.INBOX||state===ST.CLUBSEL||state===ST.NATSEL||state===ST.TRNHUB||state===ST.OVER||
              state===ST.MATCHEND||state===ST.DAILYBOARD||state===ST.HORSEPASS||state===ST.HORSEEND) pressSelect();
     else togglePause();                                   // in-match: ENTER = pause
   }
@@ -2261,6 +2716,8 @@
     if (state===ST.MENU){ menuSel += dy; const n=menuOptions().length; menuSel=(menuSel+n)%n; }
     else if (state===ST.INBOX){ const n=(CAR.offers||[]).length+1; inboxSel=((inboxSel+dy)%n+n)%n; }
     else if (state===ST.CLUBSEL){ const rows=10, n=TEAMS.length||20;   // 2 cols x 10, column-major
+      let i=menuSel + dy + dx*rows; menuSel=((i%n)+n)%n; }
+    else if (state===ST.NATSEL){ const rows=8, n=(WORLD&&WORLD.nations)?WORLD.nations.length:16;
       let i=menuSel + dy + dx*rows; menuSel=((i%n)+n)%n; }
     else { if(dx<0) input.left=true; if(dx>0) input.right=true; mouseTargetX=null; }   // in-match: arrows move man (override mouse)
   }
@@ -2348,6 +2805,7 @@
     const p=evToLogical(e);
     if(state===ST.MENU){ const i=menuHit(p.x,p.y); if(i>=0) menuSel=i; }
     else if(state===ST.CLUBSEL){ const i=clubHit(p.x,p.y); if(i>=0) menuSel=i; }
+    else if(state===ST.NATSEL){ const i=natHit(p.x,p.y); if(i>=0) menuSel=i; }
     else if(TOUCH && state===ST.TABLE && tableSwipeAnchorY!==null){
       e.preventDefault();
       const rowH=TBL_ROWH, clipH=TBL_CLIPH, maxScroll=Math.max(0, 20*rowH-clipH);
@@ -2386,6 +2844,7 @@
     else if(state===ST.CLUBSEL){
       const i=clubHit(p.x,p.y); if(i>=0){ menuSel=i; pressSelect(); }
     }
+    else if(state===ST.NATSEL){ const i=natHit(p.x,p.y); if(i>=0){ menuSel=i; pressSelect(); } }
     else if(state===ST.HORSESETUP){ const f=horseFieldHit(p); if(f>=0){ hField=f; kbdOpen(hSetup[hField]); } else kbdOpen(hSetup[hField]); }
     else if(inPlay(state)||state===ST.RESULT){
       if(canCheckout() && p.y<42 && p.x<360){ checkoutEarly(); return; }   // tap the banner (view top-left) to bank the win
@@ -2478,6 +2937,25 @@
         state=ST.TABLE; return {state, clinched:titleClinched()};
       },
       kick: triggerKick,
+      // autoplay the next career calendar event (win=true to hit the win target) — for tests
+      playNext: function(win){
+        if (state===ST.TRNHUB){
+          const T=CAR.trn;
+          if (T.stage==='out'||T.stage==='won'){ CAR.trnDone=true; enterSeasonEnd(); return {trn:T.stage, exited:true, state}; }
+          const o=trnSetup(); matchBalls=5; matchKO=o.ko; setTargets();
+          M.score = win?M.winTarget:0; M.goals=win?2:0; commitMatch();
+          return {trn:CAR.trn.stage, state};
+        }
+        const ev=peekEvent(); if (!ev){ seasonOver(); return {done:true, state}; }
+        const o=eventSetup(ev); matchBalls=o.balls; matchKO=o.ko; setTargets();
+        M.score = win?M.winTarget:0; M.goals=win?2:0; commitMatch();
+        return {ev:ev.t, state};
+      },
+      newCareerSim: function(nation){ GMODE="career"; newCareer("TEST","Liverpool",nation||"Brazil"); return {cal:CAR.cal.length, state}; },
+      careerInfo: function(){ return { season:CAR.season, trophies:(CAR.trophies||[]).map(t=>t.t), caps:CAR.caps||0,
+        nextEuro:CAR.nextEuro, cup:CAR.cup&&{round:CAR.cup.round,out:CAR.cup.out,won:CAR.cup.won},
+        euro:CAR.euro&&CAR.euro.stage, pos:myPosition(), pts:CAR.table[CAR.slug].pts }; },
+      nextSeasonSim: function(){ nextSeason(null); return { season:CAR.season, euro:!!CAR.euro, cal:CAR.cal.length, state }; },
       setMan: function(x){ manX = x; },
       pause: togglePause,
       step: function(n){ for(var i=0;i<(n||1);i++) swfFrame(); return {state,xball:Math.round(xball),yball:Math.round(yball),z:Math.round(z),booted,kicked,manFinished,dbx:Math.round(dbx),dive,no_dive,divedirn,hk:hitkeeper}; },

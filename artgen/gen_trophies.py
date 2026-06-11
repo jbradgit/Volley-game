@@ -32,6 +32,12 @@ def build(kind, body, dark, lite, plinth=(60, 34, 16)):
             x0 = cx + sgn*46
             d.arc([x0-26, 66, x0+26, 130], 0, 360, fill=body, width=11)
         d.rectangle([cx-10, 160, cx+10, 200], fill=body)
+    elif kind == "intl":   # world trophy: golden globe held by a column
+        d.ellipse([cx-44, 40, cx+44, 128], fill=body)                                   # globe
+        d.arc([cx-44, 40, cx+44, 128], 0, 360, fill=dark, width=3)
+        d.arc([cx-20, 40, cx+20, 128], 0, 360, fill=dark, width=3)                      # meridians
+        d.line([cx-44, 84, cx+44, 84], fill=dark, width=3)                              # equator
+        d.polygon([(cx-26, 196), (cx+26, 196), (cx+10, 120), (cx-10, 120)], fill=body)  # column
     else:                  # "euro": tall jug with big handles
         d.polygon([(cx-40, 36), (cx+40, 36), (cx+30, 180), (cx-30, 180)], fill=body)
         d.rectangle([cx-46, 28, cx+46, 42], fill=body)
@@ -71,6 +77,7 @@ for kind, body, dark, lite, fn in [
     ("league", (244, 196, 48), (60, 38, 4),  (255, 246, 200), "trophy_league.png"),
     ("cup",    (228, 230, 238), (40, 44, 54), (255, 255, 255), "trophy_cup.png"),
     ("euro",   (244, 196, 48), (60, 38, 4),  (255, 246, 200), "trophy_euro.png"),
+    ("intl",   (244, 196, 48), (60, 38, 4),  (255, 246, 200), "trophy_intl.png"),
 ]:
     build(kind, body, dark, lite).save(os.path.join(dst, fn), optimize=True)
     print("wrote", fn)
