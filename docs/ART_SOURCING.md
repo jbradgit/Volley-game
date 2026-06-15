@@ -82,8 +82,21 @@ no keyframe reduction**) into `artgen/source3d/`:
 Commit them (they're embedded game inputs, not redistributed standalone — within
 the licence) or hand them over any other way. Everything after that is automated.
 
-## Status of current art
-The traced striker/defender stay live as the best-playing placeholder; the
-procedural keeper stays until the pipeline replaces all three in one style.
-Both are superseded the moment the 3D renders land. Keeper save-extent targets in
-SPRITE_SPEC §2 still bind the new renders.
+## Status
+**Pipeline built + tested** (`artgen/render_sprites.py`, 2026-06-15): bpy imports a
+rigged model, assigns region materials by bone weight, renders the tag + lit passes,
+encodes to the tag/UV format, and the output **round-trips through `build_kit()`**
+(solid + striped kits verified). **Blocked only on the Mixamo shopping list above.**
+
+The traced striker/defender + procedural keeper stay live as placeholders until the
+3D renders land. Keeper save-extent targets in SPRITE_SPEC §2 bind the new renders.
+
+### When the FBX files arrive — finish `render_sprites.py`
+The `striker`/`defender`/`keeper` subcommands are stubs. Against the real rig:
+1. `probe` the FBX to confirm Mixamo bone names match `bone_region()` (mixamorig:*).
+2. Set the orthographic camera per character to frame the exact sprite boxes
+   (SPRITE_SPEC §2): striker 131×191 origin (101.2,126.5) behind/high; defender
+   67×115 front; keeper unified 596×263 feet (300,197).
+3. Pick frames: striker idle=k0 + 5 kick frames with **contact on k3** (boot through
+   the physics contact zone); keeper idle + dive(L→mirror R) + 3 catch heights.
+4. Encode → `assets/sprites/*`; validate with `preview_kits.py` + `ci/smoke.js`.

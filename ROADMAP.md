@@ -66,20 +66,21 @@ The background becomes three independent layers — exactly the split you propos
 
 ### Track B — Characters, ball, sounds
 
-The keeper/striker/defender sprites, ball and all six SFX are ripped from the SWF and must be
-replaced before publication. The engine makes this easier than it sounds: every sprite has a
-documented registration origin and scale (HANDOVER §5), the keeper is atlas-driven
-(`keeper_atlas.json` — any same-shaped atlas drops in), and defenders are recoloured live from
-one region-tagged base image (index.html:88–136), so a *single* new defender base covers all 20 teams.
+The keeper/striker/defender sprites + ball + 6 SFX are ripped from the SWF and must be
+replaced before publication. **The recolour SYSTEM is done** (region-tag/UV contract +
+`build_kit()` + home/away/patterns); what remains is a clean **art source** that's both
+high-quality and 100% original. After procedural (too crude) and traced-from-original
+(derivative) attempts, the decision is **3D pre-rendered sprites** — pipeline built &
+tested (`artgen/render_sprites.py`), blocked on the Mixamo shopping list
+(`docs/ART_SOURCING.md`, HANDOVER §3). The 3D renders feed the same tag system unchanged.
 
 | # | Task | Notes | Effort | Status |
 |---|---|---|---|---|
-| B.1 | New ball + shadow | Generated (`artgen/gen_sprites.py`): classic pentagon ball, disc geometry matched to the original | S | ✅ |
-| B.2 | New striker sheet | Generated: ONE region-tagged base (idle + 5 kick frames, contact pose on k3) + universal live recolour — per-club PNGs retired entirely (docs/SPRITE_SPEC.md) | L–XL | ✅ |
-| B.3 | New defender base | Generated, tagged, pattern-aware (stripes/hoops/halves/quarters/sash) | M | ✅ |
-| B.4 | New keeper atlas | Generated: 104 frames (idle, 50-frame dives L/R, 3 catches), silhouette extents matched to the originals so the save hit-test behaves identically; keeper kit recoloured per match | L–XL | ✅ |
+| B.0 | Recolour system (tag/UV contract, `build_kit`, home/away, patterns, clash) | Done + reused by every art source | L | ✅ |
+| B.1 | Ball + shadow | `gen_sprites.py` pentagon ball, geometry matched | S | ✅ |
+| B.2–B.4 | Striker / defender / keeper ART | **In flight — switching to 3D pipeline.** Live now: traced striker/defender (placeholder, derivative) + procedural keeper. Replace via `render_sprites.py` once Mixamo FBX land | XL | 🟨 |
 | B.5 | Replace the 6 SFX (kick, post, whistle, goal, boos, ooh) | Licensed packs or recorded; keep the same filenames | S | ⬜ |
-| B.6 | Art direction | Decided + shipped: parametric 16-bit figures matching the stadium/HUD style; iterate poses/detail in `gen_sprites.py` | — | ✅ |
+| B.6 | Art direction | **Decided: 3D pre-rendered, one style for all three characters** (`docs/ART_SOURCING.md`) | — | ✅ |
 
 ### Track C — Names, fonts, history
 
@@ -134,7 +135,7 @@ watermarks; public repo history is clean; CI screenshots approved.
 
 | # | Decision | Options | Status |
 |---|---|---|---|
-| D1 | Art direction for sprites (gates Track B) | pixel-art (matches teletext identity, cheapest to produce) / clean vector / keep photo-traced look | ⬜ open |
+| D1 | Art direction for sprites (gates Track B) | **RESOLVED: 3D pre-rendered sprites** (realistic form, smooth motion, one style, original). Pipeline built; needs Mixamo FBX — `docs/ART_SOURCING.md` | ✅ |
 | D2 | Club rebrand approach | fully fictional names / parody names ("Manningham City") — fictional is safer | ⬜ open |
 | D3 | Daily leaderboard backend | none for v1 / serverless KV / third-party (e.g. a games-portal API) | ⬜ open |
 | D4 | Drop or finish HANDOVER §3.6 idle/commentary | | ⬜ open |

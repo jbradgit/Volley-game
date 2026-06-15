@@ -1,13 +1,20 @@
 # Sprite System — Geometry & Region-Tag Contract
 
-*This file is the contract the engine and generators depend on.
-STRIKER + DEFENDER: `artgen/trace_sprites.py` — traced from the original Villa
-frames (owner direction: silhouettes/animation must match the original; the
-kick-timing read is sacred). NOTE: that makes them derivative of the source
-game's art — acceptable for now, revisit at the C.3 publication split (options:
-licensed redraw over these as guides, or commissioned art to the same poses).
-KEEPER + BALL: `artgen/gen_sprites.py` — procedural, clean-room, save-extent
-verified. Kit data: `artgen/gen_kits.py` · visual check: `artgen/preview_kits.py`.*
+*This file is the contract the engine and generators depend on — honour it whatever
+the art source.*
+
+**Current pipeline (the future, built + tested): `artgen/render_sprites.py`** renders
+a rigged 3D human + real animation clips to these tagged sprites. It is the chosen
+permanent path (replaces both placeholders below in one consistent style, 100%
+original). It needs Mixamo FBX input — see `docs/ART_SOURCING.md` and HANDOVER §3.
+
+**Live placeholders until the 3D renders land:**
+- STRIKER + DEFENDER: `artgen/trace_sprites.py` — traced from the original Villa
+  frames (silhouettes/animation match the original; kick-timing read is sacred).
+  **Derivative of the source game's art — not publishable; superseded by the 3D pipeline.**
+- KEEPER + BALL: `artgen/gen_sprites.py` — procedural, clean-room, save-extent verified.
+
+Kit data: `artgen/gen_kits.py` · visual check: `artgen/preview_kits.py`.*
 
 ## 1. Region tags (how recolouring works)
 
