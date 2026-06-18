@@ -11,7 +11,15 @@ game.zip
 
 # Python cache
 decomp/__pycache__/
+artgen/__pycache__/
+
+# 3D sprite pipeline: large Mixamo source clips (re-downloadable; see docs/ART_SOURCING.md)
+artgen/source3d/
+
+# artgen debug/scratch scaffolding (previews, picker sheets, throwaway scripts)
+artgen/_*
 
 # Temp and log files
 *.tmp
 *.log
+server.*.log

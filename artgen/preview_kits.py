@@ -52,7 +52,8 @@ def kit_of(slug, away=False):
     return TJ[slug]["kits"]["a" if away else "h"]
 
 if __name__ == "__main__":
-    strik = Image.open(os.path.join(ROOT, "assets/sprites/striker_k0.png"))
+    _ssheet = Image.open(os.path.join(ROOT, "assets/sprites/striker_sheet.png"))
+    strik = _ssheet.crop((0, 0, 300, _ssheet.height))   # frame 0 = idle (full-motion sheet)
     deff = Image.open(os.path.join(ROOT, "assets/sprites/defender.png"))
     man = json.load(open(os.path.join(ROOT, "assets/sprites/keeper_atlas.json")))["frames"]["1"]
     ksheet = Image.open(os.path.join(ROOT, "assets/sprites/keeper_atlas.png"))
