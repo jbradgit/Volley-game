@@ -16,6 +16,9 @@ artgen/__pycache__/
 # 3D sprite pipeline: large Mixamo source clips (re-downloadable; see docs/ART_SOURCING.md)
 artgen/source3d/
 
+# Blender auto-save backups (the .blend itself is tracked as pipeline source)
+*.blend1
+
 # artgen debug/scratch scaffolding (previews, picker sheets, throwaway scripts)
 artgen/_*
 
