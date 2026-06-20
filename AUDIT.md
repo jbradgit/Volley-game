@@ -1,6 +1,14 @@
 # SCORDAGOL / Volley-game — Technical Audit
 *Audit date: 2026-06-10 · Commit audited: `3c1e5e4` · Scope: full repo, depth-focused on `index.html` (the entire game)*
 
+> **Status update (2026-06-20):** this is a point-in-time audit; its findings were accurate as
+> of commit `3c1e5e4`. Several have since been resolved — README added; CI wired with golden
+> test suites (`ci/smoke.js`, `ci/physics.test.js`, `ci/career.test.js`); repo junk pruned
+> (`scordagol_web/`, the stray ~9 MB PNG, `game2.zip`, the `page_*.html` scrapes, Ruffle
+> source-maps); the dev server bound to localhost (L-2); and the asset scripts verified portable
+> (M-5). `index.html` has since grown to ~3,035 lines. **Live status lives in `ROADMAP.md` — do
+> not read this document as current state.** The findings below are kept verbatim as the record.
+
 ---
 
 ## Executive Summary

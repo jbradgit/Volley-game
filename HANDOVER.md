@@ -11,7 +11,7 @@ device or a fresh session. Last updated: 2026-06-20.
 time a volley, beat the keeper. Began as a 1:1 remake of a 2007 Flash game and has
 since grown into its own original game with a full career universe.
 
-- **The whole game is `index.html`** (one file, ~2700 lines, vanilla JS + Canvas 2D).
+- **The whole game is `index.html`** (one file, ~3,000 lines, vanilla JS + Canvas 2D).
   No framework, no build step. Served over http (never `file://` — that taints the
   canvas and breaks the keeper save test).
 - **Assets** in `assets/`. **Art generators** (Python) in `artgen/`. **Docs** in `docs/`.
