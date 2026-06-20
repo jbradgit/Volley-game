@@ -9,9 +9,9 @@ tools/ruffle.zip
 scordagol_web.zip
 game.zip
 
-# Python cache
-decomp/__pycache__/
-artgen/__pycache__/
+# Python cache (anywhere in the tree)
+__pycache__/
+*.pyc
 
 # 3D sprite pipeline: large Mixamo source clips (re-downloadable; see docs/ART_SOURCING.md)
 artgen/source3d/
