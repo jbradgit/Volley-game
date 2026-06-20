@@ -11,6 +11,7 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
         super().end_headers()
 
 socketserver.TCPServer.allow_reuse_address = True
-with socketserver.TCPServer(('', PORT), NoCacheHandler) as httpd:
+# Bind to localhost only — this is a local dev convenience, not a LAN/public server (AUDIT L-2).
+with socketserver.TCPServer(('127.0.0.1', PORT), NoCacheHandler) as httpd:
     print('Volley Challenge serving (no-cache) on http://localhost:%d/index.html' % PORT)
     httpd.serve_forever()
