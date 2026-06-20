@@ -64,6 +64,27 @@ test("shots wide of either post are not goals", async () => {
   assert.ok(left.rs.finalx  < goal.rs.finalx, "wide-left resolves left of a central goal");
 });
 
+test("a shot that strikes a post is kept out (woodwork)", async () => {
+  const left = await forced(135, 0, 30);
+  assert.equal(left.rs.lp, true, "left post struck");
+  assert.equal(left.rs.rp, false);
+  assert.equal(left.rs.innet, false, "woodwork keeps it out of the net");
+  assert.equal(left.score, 150, "hitting the post scores the woodwork bonus, not a goal");
+
+  const right = await forced(430, 0, 30);
+  assert.equal(right.rs.rp, true, "right post struck");
+  assert.equal(right.rs.lp, false);
+  assert.equal(right.rs.innet, false);
+  assert.equal(right.score, 150);
+});
+
+test("a shot that strikes the bar is kept out", async () => {
+  const bar = await forced(282, 0, 40);
+  assert.equal(bar.rs.bar, true, "crossbar struck");
+  assert.equal(bar.rs.innet, false, "no goal off the bar");
+  assert.equal(bar.score, 150, "woodwork, not a goal");
+});
+
 test("the timing sweep finds connecting shots carrying trajectory data", async () => {
   const { dbg } = await loadGame();
   const sw = dbg.sweep(300, 20, 37, true);
