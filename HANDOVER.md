@@ -1,7 +1,7 @@
 # SCORDAGOL — Handover / State of Play
 
 **Read this first.** Single source of truth for picking the project up on a new
-device or a fresh session. Last updated: 2026-06-15.
+device or a fresh session. Last updated: 2026-06-20.
 
 ---
 
@@ -41,20 +41,24 @@ node ci/smoke.js              # headless: physics shots, a goal, 2 full career s
 `ci/smoke.js` loads `index.html` in Node with DOM stubs and drives the `?cap=1`
 debug harness (`window.__dbg`). It is the safety net — if it fails, do not push.
 
-### Deploy (this is how every change this session went live)
-Work happens on branch **`claude/repo-technical-audit-7gkib8`**, then:
+### Deploy (how changes go live)
+Work happens on a short-lived **feature branch** (`claude/<topic>`), is tested
+locally, then fast-forwarded onto `main`. **`main` is the only branch GitHub Pages
+serves — landing on `main` *is* the deploy.** Don't hardcode a branch name here; it
+goes stale (a previous one did). Pattern:
 ```
+node ci/smoke.js                         # must print SMOKE PASS first
 git add -A && git commit -m "..."
-git checkout main && git merge --ff-only claude/repo-technical-audit-7gkib8
-git push origin main
-git push origin claude/repo-technical-audit-7gkib8
-git checkout claude/repo-technical-audit-7gkib8
+git checkout main && git merge --ff-only <feature-branch>
+git push origin main                     # Pages republishes in ~1–2 min
+git checkout <feature-branch>            # carry on — or delete the branch if done
 ```
-GitHub Pages publishes `main` automatically (~1–2 min). The owner tests by **hard
-refresh** (`Ctrl+F5` / `Cmd+Shift+R`, or add `?new=N` to the URL on mobile).
-Commit messages end with the session URL line (see existing commits). **Never push
-to `main` without the smoke test passing.** If another session has pushed to `main`
-meanwhile, `git fetch origin main` and merge it in first (happened once this session).
+Feature branches now live **locally only** (the old remote `claude/*` branches were
+deleted in the 2026-06-20 tidy-up); push them to origin only if you need a PR or
+backup. The owner tests by **hard refresh** (`Ctrl+F5` / `Cmd+Shift+R`, or add
+`?new=N` to the URL on mobile). **Never push to `main` without the smoke test
+passing.** If another session has pushed to `main` meanwhile, `git fetch origin main`
+and merge it in first.
 
 ---
 
