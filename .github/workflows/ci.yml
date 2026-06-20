@@ -19,5 +19,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: node ci/smoke.js  (must print SMOKE PASS)
+      - name: Smoke test (one golden season; must print SMOKE PASS)
         run: node ci/smoke.js
+      - name: Career-engine regression suite
+        run: node --test ci/career.test.js

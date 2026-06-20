@@ -101,7 +101,7 @@ watermarks; public repo history is clean; CI screenshots approved.
 | # | Task | Why | Effort | Status |
 |---|---|---|---|---|
 | 2.1 | Split `index.html` into ES modules (`physics.js`, `career.js`, `modes.js`, `render/`, `input.js`, `dbg.js`) — no bundler, no TS; HTTP serving is already mandatory so nothing is lost | The 2,310-line monolith is where regressions breed (AUDIT H-2); extraction order + state-object first step in AUDIT T-2.1 | XL (staged) | ⬜ |
-| 2.2 | Unit tests for `career.js` (fixtures round-robin, `titleClinched`, odds bounds, offers) via `node --test` | Pure functions, free coverage | M | ⬜ |
+| 2.2 | Unit tests for `career.js` (fixtures round-robin, `titleClinched`, odds bounds, offers) via `node --test` | Pure functions, free coverage | M | 🟨 **✅ 2026-06-20:** `ci/career.test.js` (8 tests) asserts career invariants through the `__dbg` harness — calendar size, 114-pt/1st all-win season, cup/Europe/World-Tournament structure (49/51/42-match seasons), trophy + caps accounting over 3 seasons, `titleClinched`, offers. Shares `ci/harness.js` with `smoke.js`; wired into CI. *Becomes true unit tests after the 2.1 split.* |
 | 2.3 | Portable asset scripts (kill `C:\Users\Office` paths) or retire them to the workshop repo | Currently single-machine (AUDIT M-5) | S | ⬜ |
 | 2.4 | Mobile battery pass: skip repaints on static teletext screens | Only if a real device shows drain; measure first | M | ⬜ |
 

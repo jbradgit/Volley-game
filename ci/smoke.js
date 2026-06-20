@@ -5,84 +5,14 @@
 //  keeper never "saves" here; goals/posts/misses resolve exactly as in the real game.)
 //
 // Run:  node ci/smoke.js     (exit 0 = pass)
+// Deeper career-invariant coverage lives in ci/career.test.js (node --test).
 "use strict";
-const fs = require("fs"), path = require("path");
-const ROOT = path.join(__dirname, "..");
-
-// ---- minimal DOM/browser stubs ----
-const ctxStub = () => new Proxy({}, {
-  get(t, p) {
-    if (p === "measureText") return () => ({ width: 10 });
-    if (p === "getImageData") return (x, y, w, h) => ({ data: new Uint8ClampedArray((w || 1) * (h || 1) * 4) });
-    if (p === "createImageData") return (w, h) => ({ data: new Uint8ClampedArray(w * h * 4), width: w, height: h });
-    if (p === "createLinearGradient" || p === "createRadialGradient") return () => ({ addColorStop: () => {} });
-    if (typeof p === "string") return () => {};
-    return undefined;
-  },
-  set() { return true; }
-});
-const mkCanvas = () => ({
-  width: 0, height: 0, style: {},
-  getContext: () => ctxStub(),
-  toDataURL: () => "data:image/png;base64,",
-  addEventListener: () => {}, setPointerCapture: () => {},
-  getBoundingClientRect: () => ({ left: 0, top: 0, width: 924, height: 520 }),
-});
-class StubImage {
-  constructor() { this.complete = false; this.naturalWidth = 0; }
-  set src(v) { this._src = v; this.complete = true; this.naturalWidth = 100; this.naturalHeight = 100;
-               if (this.onload) this.onload(); }
-  get src() { return this._src; }
-}
-class StubAudio {
-  constructor() { this.muted = false; this.volume = 1; this.currentTime = 0; }
-  play() { return { then: (f) => { f && f(); return { catch: () => {} }; }, catch: () => {} }; }
-  pause() {} cloneNode() { return new StubAudio(); }
-}
-const store = {};
-const sandbox = {
-  console, Math, JSON, Date, parseInt, parseFloat, isNaN, Number, String, Object, Array,
-  Uint8ClampedArray, Promise, Error, RegExp,
-  performance: { now: () => Date.now() },
-  requestAnimationFrame: () => 0,
-  setInterval: () => 0, setTimeout: () => 0, clearInterval: () => {},
-  location: { search: "?cap=1" },
-  localStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); }, removeItem: k => { delete store[k]; } },
-  document: {
-    getElementById: () => Object.assign(mkCanvas(), { value: "", focus: () => {}, blur: () => {} }),
-    createElement: () => mkCanvas(),
-    addEventListener: () => {},
-    activeElement: null,
-    fullscreenElement: null,
-  },
-  Image: StubImage, Audio: StubAudio,
-  fetch: (url) => {                       // serve real repo files so teams/ads/atlas are genuine
-    const f = path.join(ROOT, url.split("?")[0]);
-    try {
-      const txt = fs.readFileSync(f, "utf8");
-      return Promise.resolve({ ok: true, json: () => Promise.resolve(JSON.parse(txt)) });
-    } catch (e) { return Promise.reject(new Error("404 " + url)); }
-  },
-};
-sandbox.window = sandbox;
-sandbox.window.matchMedia = () => ({ matches: false });
-sandbox.window.addEventListener = () => {};
-sandbox.window.innerWidth = 1280; sandbox.window.innerHeight = 720;
-sandbox.window.devicePixelRatio = 1;
-
-// ---- load the game ----
-const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
-const js = html.match(/<script>([\s\S]*)<\/script>/)[1];
-const vm = require("vm");
-vm.createContext(sandbox);
-vm.runInContext(js, sandbox, { filename: "index.html<script>" });
-
-const fail = (m) => { console.error("FAIL:", m); process.exit(1); };
-const dbg = sandbox.window.__dbg;
-if (!dbg) fail("__dbg harness not exposed under ?cap=1");
+const { loadGame } = require("./harness");
 
 (async () => {
-  await new Promise(r => setTimeout(r, 0) || setImmediate(r));   // let fetch promises settle
+  const { dbg } = await loadGame();
+  const fail = (m) => { console.error("FAIL:", m); process.exit(1); };
+  if (!dbg) fail("__dbg harness not exposed under ?cap=1");
 
   // 0. render the title screen (exercises ttClear/drawMenu/_buildLogo/_ball8)
   dbg.tick(); dbg.tick();
@@ -160,4 +90,4 @@ if (!dbg) fail("__dbg harness not exposed under ?cap=1");
   console.log("kit build ok:", JSON.stringify(kt));
 
   console.log("SMOKE PASS");
-})().catch(e => fail(e.stack || e));
+})().catch(e => { console.error("FAIL:", e.stack || e); process.exit(1); });
