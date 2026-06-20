@@ -1,0 +1,23 @@
+name: CI
+
+# The transcribed physics/scoring is the product's soul (HANDOVER constraint #1).
+# ci/smoke.js runs the whole game headlessly in Node and asserts golden outcomes
+# (shot resolution, goal scoring, full-season event counts, trophies, kit build),
+# so this job goes red on any change that alters those outcomes. No deps to install
+# — smoke.js uses only Node built-ins (fs/path/vm).
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  smoke:
+    name: Headless physics smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: node ci/smoke.js  (must print SMOKE PASS)
+        run: node ci/smoke.js
