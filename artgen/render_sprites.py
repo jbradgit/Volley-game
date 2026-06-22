@@ -223,6 +223,37 @@ def to_lit(bpy, meshes, cam=None):
         for i in range(len(me.data.materials)): me.data.materials[i] = w
     add_lights(bpy, cam)
 
+# torso Generated-coord extent (pose-stable, from striker_base_v01.blend) -> planar pattern space
+TORSO_X0, TORSO_XR, TORSO_Y0, TORSO_YR = 0.3575, 0.2879, 0.0, 0.9806
+
+def to_orco(bpy, meshes):
+    """Swap meshes to an EMISSION of the Generated (orco) coordinate -> a pose-stable
+    PLANAR pattern coordinate (the same space kit_patterns.py uses). Rendered raw so
+    stripes are parallel, not warped by the body silhouette like the screen-space UV."""
+    m = bpy.data.materials.new("orco"); m.use_nodes = True
+    nt = m.node_tree; nt.nodes.clear()
+    tc = nt.nodes.new("ShaderNodeTexCoord")
+    em = nt.nodes.new("ShaderNodeEmission"); em.inputs[1].default_value = 1.0
+    nt.links.new(tc.outputs["Generated"], em.inputs[0])
+    o = nt.nodes.new("ShaderNodeOutputMaterial"); nt.links.new(em.outputs[0], o.inputs[0])
+    for me in meshes:
+        for i in range(len(me.data.materials)): me.data.materials[i] = m
+
+def render_orco(bpy, px_w, px_h, path):
+    """Render the orco coord pass LINEAR (Raw view transform) so R=orcoX, G=orcoY are read back true."""
+    sc = bpy.context.scene
+    sc.render.engine = "CYCLES"; sc.cycles.samples = 1; sc.cycles.device = "CPU"
+    sc.render.resolution_x, sc.render.resolution_y = px_w, px_h
+    sc.render.film_transparent = True
+    sc.cycles.pixel_filter_type = "BOX"; sc.cycles.filter_width = 0.01
+    sc.cycles.use_denoising = False
+    try: sc.view_settings.view_transform = "Raw"
+    except Exception:
+        try: sc.view_settings.view_transform = "Standard"
+        except Exception: pass
+    sc.render.filepath = path
+    bpy.ops.render.render(write_still=True)
+
 def _smooth_labels(L, n):
     """3x3 majority filter on an integer label image — removes isolated speckle pixels
     so region boundaries become clean lines."""
@@ -234,13 +265,17 @@ def _smooth_labels(L, n):
                 counts[k] += (s == k)
     return np.argmax(counts, axis=0).astype(np.uint8)
 
-def encode(tag_png, lit_png, out_png, out_size, beauty_png=None):
+def encode(tag_png, lit_png, out_png, out_size, beauty_png=None, orco_png=None):
     """Tag+lit renders -> engine tag/UV format. When a BEAUTY render (original Mixamo
     materials) is supplied, the non-kit regions (skin/face/hair/boots/gloves) take the
-    real detailed pixels; only the kit regions stay flat-tagged for recolouring."""
+    real detailed pixels; only the kit regions stay flat-tagged for recolouring.
+    orco_png (linear Generated coords) gives the shirt PLANAR pattern UV -> parallel stripes."""
     from PIL import Image
     tag = np.asarray(Image.open(tag_png).convert("RGBA")).astype(np.int16)
     lit = np.asarray(Image.open(lit_png).convert("L")).astype(np.float32)
+    orco = None
+    if orco_png is not None:
+        orco = np.asarray(Image.open(orco_png).convert("RGB")).astype(np.float32) / 255.0
     r, g, b, al = tag[...,0], tag[...,1], tag[...,2], tag[...,3]
     vis = al > 120
     out = np.zeros(tag.shape, np.uint8); out[...,3] = np.where(vis, 255, 0)
@@ -288,7 +323,15 @@ def encode(tag_png, lit_png, out_png, out_size, beauty_png=None):
         sh = np.zeros(m.shape, np.uint8)
         sh[m] = shade_of(lit[m])
         if kind in ("shirt", "shorts", "socks", "sleeve"):     # patterned: carry UV
-            U, V = uv_of(m)
+            if kind == "shirt" and orco is not None:            # PLANAR torso coord -> parallel stripes/hoops
+                U = np.clip((orco[...,0] - TORSO_X0) / TORSO_XR, 0, 1)
+                V = np.clip((orco[...,1] - TORSO_Y0) / TORSO_YR, 0, 1)
+            elif kind == "sleeve" and orco is not None:         # per-arm planar coord (arms at the bbox extremes)
+                ox = orco[...,0]; x1 = TORSO_X0 + TORSO_XR
+                U = np.clip(np.where(ox > 0.5, (ox - x1) / max(1e-3, 1 - x1), ox / max(1e-3, TORSO_X0)), 0, 1)
+                V = np.clip((orco[...,1] - TORSO_Y0) / TORSO_YR, 0, 1)
+            else:
+                U, V = uv_of(m)
             uu = (np.clip(U,0,1)*88).astype(np.uint8); vv = (np.clip(V,0,1)*88).astype(np.uint8)
             if kind in ("shirt","shorts","socks"):
                 ch = {"shirt":(0,1,2), "shorts":(1,0,2), "socks":(2,0,1)}[kind]
@@ -694,9 +737,9 @@ KEEPER_IDLE_TGT = dict(top=138, feet=394, cx=600)     # idle silhouette -> ~x267
 KEEPER_AZ, KEEPER_EL = 0, 6                            # keeper faces the camera (front)
 KEEPER_DIVE_FRAMES = (7, 40)                           # Diving Save f7->f40 (f40 = full horizontal stretch; f57 was the prone collapse, reached short)
 
-def _encode_open(tag, lit, tmpname, beauty=None):
+def _encode_open(tag, lit, tmpname, beauty=None, orco=None):
     p = os.path.join(TMP, tmpname)
-    encode(tag, lit, p, None, beauty_png=beauty)
+    encode(tag, lit, p, None, beauty_png=beauty, orco_png=orco)
     from PIL import Image
     return Image.open(p).convert("RGBA").copy()
 
@@ -747,11 +790,15 @@ def _render_clip_frames(bpy, arm, meshes, cam, clip_frames, prefix, lit_samples,
     tags = [os.path.join(TMP, f"{prefix}_{i}_t.png") for i in range(n)]
     for fr, tp in zip(clip_frames, tags):
         bpy.context.scene.frame_set(fr); render(bpy, *res, tp, samples=1, hard=True)
+    to_orco(bpy, meshes)                                        # planar pattern-coord pass (parallel stripes)
+    orcos = [os.path.join(TMP, f"{prefix}_{i}_o.png") for i in range(n)]
+    for fr, op in zip(clip_frames, orcos):
+        bpy.context.scene.frame_set(fr); render_orco(bpy, *res, op)
     to_lit(bpy, meshes, cam)
     lits = [os.path.join(TMP, f"{prefix}_{i}_l.png") for i in range(n)]
     for fr, lp in zip(clip_frames, lits):
         bpy.context.scene.frame_set(fr); render(bpy, *res, lp, samples=lit_samples, denoise=True, hard=False)
-    return [_encode_open(tags[i], lits[i], f"{prefix}_{i}_e.png", beauties[i]) for i in range(n)]
+    return [_encode_open(tags[i], lits[i], f"{prefix}_{i}_e.png", beauties[i], orcos[i]) for i in range(n)]
 
 # central catch poses: (filename in source3d, frame) -> low / mid / high
 KEEPER_CATCH = {323: ("Goalkeeper Catch Low.fbx", 19),    # low  (ground gather) - owner pick
