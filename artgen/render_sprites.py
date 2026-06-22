@@ -199,6 +199,17 @@ def to_lit(bpy, meshes, cam=None):
         for i in range(len(me.data.materials)): me.data.materials[i] = w
     add_lights(bpy, cam)
 
+def _smooth_labels(L, n):
+    """3x3 majority filter on an integer label image — removes isolated speckle pixels
+    so region boundaries become clean lines."""
+    counts = np.zeros((n,) + L.shape, np.int16)
+    for dy in (-1, 0, 1):
+        for dx in (-1, 0, 1):
+            s = np.roll(np.roll(L, dy, 0), dx, 1)
+            for k in range(n):
+                counts[k] += (s == k)
+    return np.argmax(counts, axis=0).astype(np.uint8)
+
 def encode(tag_png, lit_png, out_png, out_size, beauty_png=None):
     """Tag+lit renders -> engine tag/UV format. When a BEAUTY render (original Mixamo
     materials) is supplied, the non-kit regions (skin/face/hair/boots/gloves) take the
@@ -209,20 +220,25 @@ def encode(tag_png, lit_png, out_png, out_size, beauty_png=None):
     r, g, b, al = tag[...,0], tag[...,1], tag[...,2], tag[...,3]
     vis = al > 120
     out = np.zeros(tag.shape, np.uint8); out[...,3] = np.where(vis, 255, 0)
-    masks = {
-      "shirt":  vis & (r>180) & (g<70) & (b<70),
-      "shorts": vis & (g>180) & (r<70) & (b<70),
-      "socks":  vis & (b>180) & (r<70) & (g<70),
-      "sleeve": vis & (r>180) & (g>180) & (b<70),
-    }
-    if beauty_png is None:                                      # hair recolours only without detail
-        masks["hair"] = vis & (r>180) & (b>180) & (g<70)
-    finals = vis.copy()
-    for m in masks.values(): finals &= ~m
+    # Label every visible pixel, then MAJORITY-FILTER the labels to kill the
+    # salt-and-pepper speckle at garment/skin boundaries (z-fight + AA fringe).
+    SKIN, NLAB = 7, 8     # 0 bg,1 shirt,2 shorts,3 socks,4 sleeve,5 hair,6 glove,7 skin/boot
+    L = np.zeros(vis.shape, np.uint8); L[vis] = SKIN
+    L[vis & (r>180) & (g<70) & (b<70)] = 1                       # shirt
+    L[vis & (g>180) & (r<70) & (b<70)] = 2                       # shorts
+    L[vis & (b>180) & (r<70) & (g<70)] = 3                       # socks
+    L[vis & (r>180) & (g>180) & (b<70)] = 4                      # sleeve
+    L[vis & (r>180) & (b>180) & (g<70)] = 5                      # hair
+    L[vis & (r>200) & (g>200) & (b>200)] = 6                     # glove (~white)
+    L = _smooth_labels(L, NLAB); L[~vis] = 0
+    masks = {"shirt": L==1, "shorts": L==2, "socks": L==3, "sleeve": L==4}
+    if beauty_png is None:
+        masks["hair"] = L==5
+    glove = L==6
+    finals = vis & (L!=1) & (L!=2) & (L!=3) & (L!=4)
     if beauty_png is not None:                                  # detail pass: real skin/face/hair/boots
         beauty = np.asarray(Image.open(beauty_png).convert("RGBA"))
-        glove = vis & (r > 200) & (g > 200) & (b > 200)          # keeper glove tag (~white) — keep white
-        detail = finals & ~glove
+        detail = finals & ~glove                                # skin/hair/boots get real pixels
         for c in range(3):
             out[..., c] = np.where(detail, beauty[..., c], out[..., c])
         if glove.any():                                          # gloves: white with the lit shading
@@ -230,6 +246,7 @@ def encode(tag_png, lit_png, out_png, out_size, beauty_png=None):
             for c in range(3):
                 out[..., c] = np.where(glove, np.clip(238 * lf, 0, 255), out[..., c])
     else:
+        finals = finals & (L!=5)                                # hair is a recolour region here
         out[finals] = tag[finals].astype(np.uint8)              # skin/boot/glove pass through (flat)
         lf = np.clip(0.55 + 0.55 * lit / 255.0, 0, 1.05)
         for c in range(3):
@@ -412,11 +429,26 @@ STRIKER_RES = (300, 382)                       # wider canvas; union auto-fit ce
 STRIKER_TGT = dict(top=12, feet=372, cx=150)   # initial idle fit; correct_for_union then fits all 6 frames
 STRIKER_AZ, STRIKER_EL = 190, 12          # from behind, slight over-shoulder (owner pick az190)
 
+def _puff_garments(bpy, meshes, delta=0.007):
+    """Push garment meshes out along their normals so they cleanly cover the body mesh
+    instead of z-fighting with it (the salt-and-pepper speckle on socks/shorts/collar)."""
+    import bmesh
+    for me in meshes:
+        n = me.name.lower()
+        if not any(k in n for k in ("shirt", "shorts", "sock", "shoe", "jersey", "kit", "top")):
+            continue
+        bm = bmesh.new(); bm.from_mesh(me.data); bm.normal_update()
+        for v in bm.verts:
+            v.co += v.normal * delta
+        bm.to_mesh(me.data); bm.free()
+
 def _import_clean(bpy, path):
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    return import_model(bpy, path)
+    arm, meshes = import_model(bpy, path)
+    _puff_garments(bpy, meshes)
+    return arm, meshes
 
-STRIKER_KICK = [8, 11, 14, 18, 22]        # Striker Shot frames -> k1..k5, contact (k3) on f14 (owner pick)
+STRIKER_KICK = [9, 11, 13, 14, 16]        # GROUNDED k1..k5, contact (k3) on f14 (dropped airborne f18/f22)
 
 def _render_tag_lit_set(bpy, meshes, cam, frames, tags, lits, res):
     """Render the TAG pass for every frame, then swap to lit and render the LIT pass."""
@@ -463,8 +495,8 @@ def cmd_striker(idle_fbx, shot_fbx):
     for i in range(6):
         print(f"STRIKER k{i}:", _measure(os.path.join(OUT, f"striker_k{i}.png")))
 
-STRIKER_KICK_CLIP = list(range(8, 28))     # 20 dense kick frames; engine shows clip[manKickT-1],
-STRIKER_STRIKE_TICK = 6                    # so foot-low contact (clip f13 = sheet-frame 6) lands on the contact tick
+STRIKER_KICK_CLIP = list(range(8, 19))     # GROUNDED: stop before the f19+ airborne leap (contact f14 = index 6)
+STRIKER_STRIKE_TICK = 6
 
 def cmd_striker_sheet(idle_fbx, shot_fbx):
     """FULL-MOTION striker: idle + 20 dense kick frames packed L->R into one sheet
@@ -505,6 +537,24 @@ def cmd_striker_sheet(idle_fbx, shot_fbx):
 DEF_RES = (134, 230)
 DEF_TGT = dict(top=4, feet=226, cx=67)
 DEF_AZ, DEF_EL = 0, 8                       # front-on (owner: defenders face straight front)
+
+DEF_VARIANTS = [1, 110, 220]                  # Striker Idle frames -> distinct defender poses
+
+def cmd_defender_sheet(model_fbx):
+    """Several front-facing defender poses packed into defender_sheet.png so the
+    engine can give each defender a different stance (no clone army)."""
+    bpy = __import__("bpy")
+    from PIL import Image
+    arm, meshes = _import_clean(bpy, model_fbx)
+    mn, mx = world_bbox(meshes)
+    cam, emp = make_ortho_cam(bpy, (mn + mx) / 2, DEF_AZ, DEF_EL, mx.z - mn.z)
+    fit_camera(bpy, cam, emp, DEF_RES, DEF_VARIANTS[0], DEF_TGT)
+    imgs = _render_clip_frames(bpy, arm, meshes, cam, DEF_VARIANTS, "defv", 24,
+                               keeper=False, detail=True, res=DEF_RES)
+    sheet = Image.new("RGBA", (DEF_RES[0] * len(imgs), DEF_RES[1]), (0, 0, 0, 0))
+    for i, im in enumerate(imgs): sheet.paste(im, (i * DEF_RES[0], 0))
+    sheet.save(os.path.join(OUT, "defender_sheet.png"), optimize=True)
+    print(f"DEFENDER SHEET {len(imgs)} variants @ {DEF_RES[0]}x{DEF_RES[1]}")
 
 def cmd_defender(model_fbx, frame=None):
     """One front-facing base (outfield kit, not keeper) -> defender.png, with the
@@ -677,7 +727,7 @@ def cmd_keeper(idle_fbx, dive_fbx, catch_fbx=None, ndive=None, lit_samples=None)
     frames = {}
     # --- idle: fit + lock camera, detail pass ---
     arm, meshes = _import_clean(bpy, idle_fbx)
-    idle_fr = frame_range(arm)[0] + (frame_range(arm)[1] - frame_range(arm)[0]) // 4
+    idle_fr = frame_range(arm)[0] + 20            # widest 'set' ready frame of the idle bob
     mn, mx = world_bbox(meshes)
     cam, emp = make_ortho_cam(bpy, (mn + mx) / 2, KEEPER_AZ, KEEPER_EL, mx.z - mn.z)
     fit_camera(bpy, cam, emp, KEEPER_RES, idle_fr, KEEPER_IDLE_TGT)
@@ -717,6 +767,7 @@ if __name__ == "__main__":
     elif cmd == "striker": cmd_striker(argv[1], argv[2])
     elif cmd == "strikersheet": cmd_striker_sheet(argv[1], argv[2])
     elif cmd == "defender": cmd_defender(argv[1], argv[2] if len(argv) > 2 else None)
+    elif cmd == "defendersheet": cmd_defender_sheet(argv[1])
     elif cmd == "keeper": cmd_keeper(*argv[1:])
     elif cmd == "ball": cmd_ball()
     else: print("unknown command:", cmd)

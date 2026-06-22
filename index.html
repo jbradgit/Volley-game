@@ -78,7 +78,7 @@
                     katlas:"assets/sprites/keeper_atlas.png?v=m1",
                     ball:"assets/sprites/ball_sheet.png?v=m1", shadow:"assets/sprites/shadow.png?v=s1",
                     strikersheet:"assets/sprites/striker_sheet.png?v=m3",
-                    defbase:"assets/sprites/defender.png?v=s4" };
+                    defbase:"assets/sprites/defender_sheet.png?v=m1" };
   let loaded = 0, total = Object.keys(sources).length, assetsReady = false;
   for (const k in sources) {
     const im = new Image();
@@ -220,6 +220,7 @@
   const KICK_FRAMES = 6;             // SWF frames from Space to contact (kick anim -> frame 7)
   // Defender = inner man sprite (DefineSprite_151), exact registration origin from swf.xml
   const DEF_W = 90, DEF_H = 155, DEF_OX = 45, DEF_OY = 78;   // bigger defenders (owner: were child-sized)
+  const DEF_FW = 134, DEF_FH = 230, DEF_FRAMES = 3;          // defender_sheet: per-defender pose variants
   // defender stage bbox (= opponent.man.hitTest); origin (ox,oy) maps to the opponent placement
   function defBox(d){ return { x0:d.ox-DEF_OX*d.sx, x1:d.ox+(DEF_W-DEF_OX)*d.sx,
                                y0:d.oy-DEF_OY*d.sy, y1:d.oy+(DEF_H-DEF_OY)*d.sy }; }
@@ -274,7 +275,7 @@
   let pendingMode = "career";  // 'quick' or 'career' — what the club-select confirms into
   let GMODE = "career";     // active game mode: 'career' | 'daily' | 'horse'
   let serveQueue = null, serveIdx = 0;   // pre-rolled serves for seeded (daily/HORSE) matches
-  const HORSE_BALLS = 5;    // balls per turn in 2-player HORSE
+  const HORSE_BALLS = 1;    // one delivery per HORSE challenge
 
   const M = { score:0, attempts:10, winTarget:0, drawTarget:0, goals:0,
               best:Number(localStorage.getItem("vc_best")||0) };
@@ -852,9 +853,9 @@
     // Defenders: exact placements from the SWF (PlaceObject matrices, twips/20).
     // opponent1 deflects -=10+rnd8 @ yball<240; opponent2 -=20+rnd8 @ yball<200; opponent3 +=10+rnd8 @ yball<200.
     defenders = [
-      { ox:117.95, oy:210.25, sx:1.0000, sy:1.0000, thr:240, mag:10, sign:-1, chk:false },
-      { ox: 27.60, oy:163.35, sx:0.8982, sy:0.8960, thr:200, mag:20, sign:-1, chk:false },
-      { ox:471.15, oy:157.75, sx:0.8234, sy:0.8264, thr:200, mag:10, sign:+1, chk:false }
+      { ox:117.95, oy:210.25, sx:1.0000, sy:1.0000, thr:240, mag:10, sign:-1, chk:false, variant:0 },
+      { ox: 27.60, oy:163.35, sx:0.8982, sy:0.8960, thr:200, mag:20, sign:-1, chk:false, variant:1 },
+      { ox:471.15, oy:157.75, sx:0.8234, sy:0.8264, thr:200, mag:10, sign:+1, chk:false, variant:2 }
     ];
     state = ST.SERVE;
   }
@@ -953,7 +954,7 @@
       z = (sangle*velocity*t - 5*t*t)*10;
       if (z<0) { t=0; bounce=ay; bounced=2; velocity*=0.7; z=0; }
       yscale = 10 + 90*yball/325;
-    } else if (!innet) {
+    } else if (!innet && !held) {        // held = keeper has caught it: freeze the ball in his hands
       xball -= dbx; yball -= ybit; z += dby/13;
       yscale = 10 + 90*yball/325;
       if (yball<GOAL_RESOLVE_Y && !checked) {
@@ -1062,7 +1063,7 @@
   const BALL_FW = 132, BALL_FH = 132, BALL_FRAMES = 24;   // rotating Tango sheet
   const SHADOW_W = 28, SHADOW_H = 11, SHADOW_OX = 13.0, SHADOW_OY = 0.0;
   function drawBall() {
-    if (held || state===ST.COUNTDOWN) return;
+    if (state===ST.COUNTDOWN) return;     // when held, keep drawing the ball (frozen in the keeper's hands)
     const ss = yscale/100;                          // shadow + in-net ball use full yscale
     const bs = (innet ? yscale : yscale*0.8)/100;   // /ball uses yscale*0.8, /ball2 (in net) uses yscale (frame_9 :276/:285)
     // shadow: origin (13.0, 0.0) maps to (xball, yball); alpha ~0.25 (original CXFORM alphaMult 64/256)
@@ -1122,7 +1123,9 @@
     // far (smaller) first for correct overlap; draw man origin (DEF_OX,DEF_OY) at the opponent placement
     const order = defenders.slice().sort((a,b)=>a.sy-b.sy);
     for (const d of order) {
-      ctx.drawImage(dim, d.ox - DEF_OX*d.sx, d.oy - DEF_OY*d.sy, DEF_W*d.sx, DEF_H*d.sy);
+      const v = ((d.variant||0) % DEF_FRAMES + DEF_FRAMES) % DEF_FRAMES;   // per-defender pose
+      ctx.drawImage(dim, v*DEF_FW, 0, DEF_FW, DEF_FH,
+                    d.ox - DEF_OX*d.sx, d.oy - DEF_OY*d.sy, DEF_W*d.sx, DEF_H*d.sy);
     }
   }
 
@@ -1628,7 +1631,7 @@
 
   // ---- career screens ----
   // Career first so SPACE on the menu starts a career (and asks your name + club).
-  function menuOptions(){ const o=[]; if (loadCareer()) o.push("CONTINUE CAREER"); o.push("NEW CAREER","DAILY CHALLENGE","2 PLAYER"); return o; }
+  function menuOptions(){ const o=[]; if (loadCareer()) o.push("CONTINUE CAREER"); o.push("NEW CAREER","DAILY CHALLENGE","HORSE"); return o; }
   const MENU_Y0=276, MENU_DY=50, MENU_BW=480, MENU_BH=42;   // shared by drawMenu + menuHit (CX = VW/2)
   const MENU_OPTCOL=[TTX.cyan, TTX.yellow, "#5fff9e", "#ff8af0", TTX.white];   // teletext multi-colour options
   function drawMenu(){
@@ -2313,38 +2316,59 @@
     dailyLastScore=M.score; state=ST.DAILYBOARD;
   }
 
-  // ================= 2-PLAYER HORSE (turn-based beat-my-score) =================
-  // Word length = number of rounds. Each round both players play the SAME seeded serves;
-  // higher score claims that letter. Most letters at the end wins.
-  let H=null, hSetup=["","","HORSE"], hField=0;
-  const COL_A="#5bd0ff", COL_B="#ff8a5b";              // player colours
+  // ================= MULTIPLAYER HORSE (leader sets a challenge; fail to match = a letter) =================
+  // Real HORSE: the leader takes ONE delivery. If they SCORE it, every other active player must
+  // score the SAME seeded delivery or take the next letter of the word (tracked independently).
+  // The leader keeps setting challenges until they miss, then leadership passes to the next player.
+  // Spell the word and you're out; last player standing wins. 2-6 players, pass-and-play.
+  let H=null;
+  let hCount=2, hNames=["","","","","",""], hWord="HORSE", hField=0, horseStartBtn=null;   // setup state
+  const HCOLS=["#5bd0ff","#ff8a5b","#7dff8a","#ffd24a","#c78bff","#ff7ab0"];   // per-player colours
+  const HORSE_MIN=2, HORSE_MAX=6, HSETUP_Y0=92, HSETUP_RH=40;
   function beginHorse(){
-    const word=(hSetup[2].trim().toUpperCase().replace(/[^A-Z]/g,"")).slice(0,8) || "HORSE";
-    H={ p:[hSetup[0].trim()||"PLAYER 1", hSetup[1].trim()||"PLAYER 2"], word:word, L:word.length,
-        round:0, turn:0, owner:[], scores:[null,null], seedBase:(Date.now()>>>0) };
+    const word=(hWord.trim().toUpperCase().replace(/[^A-Z]/g,"")).slice(0,8) || "HORSE";
+    const players=[];
+    for (let i=0;i<hCount;i++) players.push({ name:(hNames[i]||"").trim()||("PLAYER "+(i+1)), letters:0, out:false });
+    H={ players, word, L:word.length, leader:0, phase:'lead', current:0, followQ:[], seed:null, setShots:0, winner:null };
     state=ST.HORSEPASS;
   }
+  function horseActiveCount(){ return H.players.filter(p=>!p.out).length; }
+  function horseNextActive(i){ let j=i; for(let k=0;k<H.players.length;k++){ j=(j+1)%H.players.length; if(!H.players[j].out) return j; } return i; }
   function startHorseTurn(){
     GMODE="horse"; CAR=null;
     const lp=TEAMBY["Liverpool"]||TEAMS[0];
-    MYCLUB={ slug:lp.slug, name:lp.name, rating:lp.rating };       // both players use the same club (fair)
-    const seed=(H.seedBase + H.round*7919)>>>0, pr=mulberry32(seed);
+    MYCLUB={ slug:lp.slug, name:lp.name, rating:lp.rating };          // everyone plays the same club (fair)
+    if (H.phase==='lead') H.seed=((Date.now()>>>0) ^ (H.setShots++ * 2654435761))>>>0;   // leader: a fresh delivery
+    const seed=H.seed>>>0, pr=mulberry32(seed);                       // followers replay the leader's exact seed
     const ot=TEAMS[Math.floor(pr()*TEAMS.length)];
     OPPONENT={ slug:ot.slug, name:ot.name, rating:ot.rating, home:true };
-    H.roundSeed=seed;
-    loadKits(MYCLUB.slug, OPPONENT.slug, ()=>startMatch({seed:seed, balls:HORSE_BALLS}));
+    loadKits(MYCLUB.slug, OPPONENT.slug, ()=>startMatch({seed:seed, balls:1}));
   }
-  function horseTurnDone(){
-    H.scores[H.turn]=M.score;
-    if (H.turn===0){ H.turn=1; state=ST.HORSEPASS; }              // pass device to player 2, same round
-    else {
-      const a=H.scores[0], b=H.scores[1];
-      H.owner[H.round] = a<b ? "A" : (b<a ? "B" : "T");           // round LOSER gets the letter (spell the word = you lose)
-      H.round++; H.turn=0; H.scores=[null,null];
-      state = (H.round>=H.L) ? ST.HORSEEND : ST.HORSEPASS;
+  function horseTurnDone(){ horseResolve(M.goals>0); }                // a goal = the challenge is made
+  // Advance the state machine given whether the current player scored. No DOM -> unit-testable via __dbg.
+  function horseResolve(made){
+    if (H.phase==='lead'){
+      if (made){                                                      // challenge set: queue the other active players
+        H.followQ=[]; let j=H.leader;
+        for (let k=0;k<H.players.length;k++){ j=(j+1)%H.players.length; if(j!==H.leader && !H.players[j].out) H.followQ.push(j); }
+        if (!H.followQ.length){ H.winner=H.leader; state=ST.HORSEEND; return; }   // leader is the only one left
+        H.phase='follow'; H.current=H.followQ.shift();
+      } else {                                                        // leader missed: pass leadership, no letters
+        H.leader=horseNextActive(H.leader); H.phase='lead'; H.current=H.leader;
+      }
+    } else {                                                          // a follower responding to the leader's goal
+      if (!made){
+        const p=H.players[H.current]; p.letters++;
+        if (p.letters>=H.L){ p.out=true;
+          if (horseActiveCount()===1){ H.winner=H.players.findIndex(x=>!x.out); state=ST.HORSEEND; return; } }
+      }
+      if (H.followQ.length) H.current=H.followQ.shift();
+      else { H.phase='lead'; H.current=H.leader; }                    // challenge done: same leader sets again
     }
+    state=ST.HORSEPASS;
   }
-  function horseTally(){ let a=0,b=0; for(const o of H.owner){ if(o==="A")a++; else if(o==="B")b++; } return [a,b]; }
+  function horseSnap(){ return { phase:H.phase, leader:H.leader, current:H.current, winner:H.winner,
+    players:H.players.map(p=>({name:p.name,letters:p.letters,out:p.out})), state }; }
 
   // ---- new-mode screens (teletext) ----
   function drawDailyBoard(){
@@ -2364,57 +2388,63 @@
     if (ttCursorOn()){ ctx.fillStyle=TTX.neon; ctx.font=ttFont(18); ctx.fillText(TOUCH?"TAP  TO  RETURN  TO  MENU":"SPACE  TO  RETURN  TO  MENU", VW/2, 470); }
     ctx.textAlign="left";
   }
-  function drawHorseWord(y){
-    ctx.textAlign="center"; ctx.font=ttFont(40);
-    const letters=H.word.split(""), gap=ctx.measureText("M").width*1.5, total=letters.length*gap;
-    let x=VW/2-total/2+gap/2;
-    for (let i=0;i<letters.length;i++){ const o=H.owner[i];
-      ctx.fillStyle = o==="A"?COL_A:(o==="B"?COL_B:(o==="T"?TTX.grey:TTX.dim));
-      ctx.fillText(letters[i], x, y); x+=gap; }
+  function drawHorseStandings(y0){
+    for (let i=0;i<H.players.length;i++){
+      const p=H.players[i], y=y0+i*30;
+      ctx.textAlign="left"; ctx.font=ttFont(15);
+      ctx.fillStyle = p.out?TTX.dim:(i===H.current?TTX.yellow:HCOLS[i%HCOLS.length]);
+      ctx.fillText((i===H.leader&&!p.out?"▶ ":"  ")+p.name+(p.out?"  OUT":""), VW/2-220, y);
+      ctx.textAlign="right"; ctx.font=ttFont(17);
+      let s=""; for (let j=0;j<H.L;j++) s+=(j<p.letters?H.word[j]:"·")+(j<H.L-1?" ":"");
+      ctx.fillStyle = p.out?TTX.red:TTX.white; ctx.fillText(s, VW/2+220, y);
+    }
+    ctx.textAlign="left";
   }
   function drawHorseSetup(){
-    ttBar("SCORDAGOL   2 PLAYER  -  HORSE", 0,12,VW,30,TTX.blue,TTX.white,{size:16});
-    ctx.textAlign="center"; ctx.font=ttFont(12); ctx.fillStyle=TTX.white;
-    ctx.fillText("TAKE TURNS. LOSE A ROUND AND YOU GET A LETTER. SPELL THE WORD = YOU LOSE.", VW/2, 64);
-    const labels=["PLAYER 1 NAME","PLAYER 2 NAME","ROUNDS WORD"];
-    for (let i=0;i<3;i++){
-      const y=112+i*64, sel=i===hField;
-      ctx.font=ttFont(12); ctx.fillStyle=sel?TTX.yellow:TTX.cyan; ctx.textAlign="center"; ctx.fillText(labels[i], VW/2, y-20);
-      ctx.strokeStyle=sel?TTX.yellow:TTX.dim; ctx.lineWidth=2; ctx.strokeRect(VW/2-200, y-10, 400, 38);
-      ctx.font=ttFont(22); ctx.fillStyle=TTX.white; ctx.textAlign="left";
-      const txt=hSetup[i]||"", w=ctx.measureText(txt).width, gx=VW/2-w/2;
-      ctx.fillText(txt, gx, y+16);
-      if (sel && ttCursorOn()){ ctx.fillStyle=TTX.yellow; ctx.fillRect(gx+w+3, y-2, 11, 22); }
+    ttBar("SCORDAGOL   HORSE  -  SET UP", 0,12,VW,30,TTX.blue,TTX.white,{size:16});
+    ctx.textAlign="center"; ctx.font=ttFont(11); ctx.fillStyle=TTX.white;
+    ctx.fillText("LEADER SETS A SHOT. FAIL TO MATCH THEIR GOAL = A LETTER. SPELL THE WORD = OUT. LAST IN WINS.", VW/2, 62);
+    const n=hCount+2;
+    for (let i=0;i<n;i++){
+      const y=HSETUP_Y0+i*HSETUP_RH, sel=i===hField, isCount=i===0, isWord=i===hCount+1;
+      ctx.font=ttFont(10); ctx.fillStyle=sel?TTX.yellow:TTX.cyan; ctx.textAlign="left";
+      ctx.fillText(isCount?"PLAYERS":(isWord?"WORD  (LETTERS = LIVES)":"PLAYER "+i), VW/2-200, y-10);
+      ctx.strokeStyle=sel?TTX.yellow:TTX.dim; ctx.lineWidth=2; ctx.strokeRect(VW/2-200, y-5, 400, 30);
+      ctx.font=ttFont(18);
+      if (isCount){ ctx.textAlign="center"; ctx.fillStyle=TTX.white; ctx.fillText("◀    "+hCount+"    ▶", VW/2, y+16); }
+      else {
+        const txt=isWord?hWord:(hNames[i-1]||""); ctx.textAlign="left";
+        ctx.fillStyle=txt?TTX.white:TTX.dim; ctx.fillText(txt||("PLAYER "+i), VW/2-190, y+16);
+        if (sel && ttCursorOn()){ const w=ctx.measureText(txt).width; ctx.fillStyle=TTX.yellow; ctx.fillRect(VW/2-190+w+3, y+3, 9, 16); }
+      }
     }
-    ctx.textAlign="center"; ctx.font=ttFont(11); ctx.fillStyle=TTX.grey;
-    if (!TOUCH) ctx.fillText("TYPE · ENTER = NEXT · ENTER ON WORD STARTS · ESC BACK", VW/2, 326);
-    ctx.fillText("WORD LENGTH = NUMBER OF ROUNDS  (HORSE = 5)", VW/2, TOUCH?326:346);
+    const sy=HSETUP_Y0+n*HSETUP_RH+14;
+    horseStartBtn = {x:VW/2-130, y:sy-20, w:260, h:34};
+    if (ttCursorOn()){ ctx.textAlign="center"; ctx.font=ttFont(15); ctx.fillStyle=TTX.neon;
+      ctx.fillText(TOUCH?"TAP HERE TO START":"ENTER ON WORD = START    ·    ◀ ▶ ON PLAYERS", VW/2, sy); }
     ctx.textAlign="left";
   }
   function drawHorsePass(){
     ttBar("SCORDAGOL   HORSE", 0,12,VW,30,TTX.blue,TTX.white,{size:16});
-    ctx.textAlign="center";
-    ctx.font=ttFont(13); ctx.fillStyle=TTX.green; ctx.fillText("ROUND "+(H.round+1)+" OF "+H.L, VW/2, 82);
-    drawHorseWord(132);
-    const t=horseTally();
-    ctx.font=ttFont(13); ctx.fillStyle=TTX.cyan;
-    ctx.fillText(H.p[0]+"  "+t[0]+"   -   "+t[1]+"  "+H.p[1], VW/2, 172);
-    ctx.font=ttFont(26); ctx.fillStyle=(H.turn===0?COL_A:COL_B); ctx.fillText("PASS TO  "+H.p[H.turn], VW/2, 244);
-    if (H.turn===1 && H.scores[0]!=null){ ctx.font=ttFont(14); ctx.fillStyle=TTX.white;
-      ctx.fillText(H.p[0]+" SCORED "+H.scores[0]+" — BEAT IT!", VW/2, 282); }
-    if (ttCursorOn()){ ctx.fillStyle=TTX.neon; ctx.font=ttFont(18); ctx.fillText(TOUCH?"TAP TO START  ("+HORSE_BALLS+" BALLS)":"SPACE TO START  ("+HORSE_BALLS+" BALLS)", VW/2, 342); }
+    drawHorseStandings(72);
+    const cur=H.players[H.current];
+    ctx.textAlign="center"; ctx.font=ttFont(24); ctx.fillStyle=HCOLS[H.current%HCOLS.length];
+    ctx.fillText("PASS TO  "+cur.name, VW/2, 300);
+    ctx.font=ttFont(14); ctx.fillStyle=TTX.white;
+    ctx.fillText(H.phase==='lead' ? "YOU'RE THE LEADER — SCORE TO SET A CHALLENGE"
+                                  : ("MATCH "+H.players[H.leader].name+"'S GOAL OR TAKE A LETTER"), VW/2, 330);
+    if (ttCursorOn()){ ctx.fillStyle=TTX.neon; ctx.font=ttFont(16);
+      ctx.fillText(TOUCH?"TAP TO TAKE YOUR SHOT  (1 BALL)":"SPACE TO TAKE YOUR SHOT  (1 BALL)", VW/2, 366); }
     ctx.textAlign="left";
   }
   function drawHorseEnd(){
     ttBar("SCORDAGOL   HORSE  -  FULL TIME", 0,12,VW,30,TTX.blue,TTX.white,{size:16});
-    ctx.textAlign="center";
-    drawHorseWord(120);
-    const t=horseTally(), winner = t[0]<t[1]?0:(t[1]<t[0]?1:-1);   // FEWER letters wins
-    ctx.font=ttFont(14); ctx.fillStyle=TTX.cyan; ctx.fillText(H.p[0]+"  "+t[0]+"   -   "+t[1]+"  "+H.p[1]+"   (LETTERS)", VW/2, 168);
-    ctx.font=ttFont(30);
-    if (winner===-1){ ctx.fillStyle=TTX.yellow; ctx.fillText("IT'S A DRAW!", VW/2, 240); }
-    else { ctx.fillStyle=winner===0?COL_A:COL_B; ctx.fillText(H.p[winner]+" WINS!", VW/2, 240); }
-    if (ttCursorOn()){ ctx.fillStyle=TTX.neon; ctx.font=ttFont(18); ctx.fillText(TOUCH?"TAP  TO  RETURN  TO  MENU":"SPACE  TO  RETURN  TO  MENU", VW/2, 360); }
+    drawHorseStandings(84);
+    const w=H.players[H.winner];
+    ctx.textAlign="center"; ctx.font=ttFont(30); ctx.fillStyle=w?HCOLS[H.winner%HCOLS.length]:TTX.yellow;
+    ctx.fillText(w?(w.name+" WINS!"):"GAME OVER", VW/2, 326);
+    if (ttCursorOn()){ ctx.fillStyle=TTX.neon; ctx.font=ttFont(16);
+      ctx.fillText(TOUCH?"TAP  TO  RETURN  TO  MENU":"SPACE  TO  RETURN  TO  MENU", VW/2, 362); }
     ctx.textAlign="left";
   }
 
@@ -2668,7 +2698,7 @@
       const opts=menuOptions(), o=opts[menuSel];
       if (!TEAMS.length) return;                          // wait for roster
       if (o==="DAILY CHALLENGE"){ if(localStorage.getItem("vc_name")){ startDaily(); } else { pendingMode="daily"; nameBuf=""; state=ST.NAME; kbdOpen(""); } }
-      else if (o==="2 PLAYER"){ hSetup=["","","HORSE"]; hField=0; state=ST.HORSESETUP; kbdOpen(""); }
+      else if (o==="HORSE"){ hCount=2; hNames=["","","","","",""]; hWord="HORSE"; hField=0; state=ST.HORSESETUP; }
       else if (o==="CONTINUE CAREER"){ CAR=loadCareer(); if(CAR){ GMODE="career"; CAR.titleOdds=null; menuSel=0;
         if (!peekEvent()) seasonOver(); else state=ST.TABLE; } }
       else { GMODE="career"; pendingMode="career"; nameBuf=""; state=ST.NAME; kbdOpen(""); }   // NEW CAREER
@@ -2722,14 +2752,22 @@
       }
       return;
     }
-    if (state===ST.HORSESETUP){      // 3-field entry: P1, P2, ROUNDS WORD
-      if (k==="Enter"){ e.preventDefault(); if(!enterLock){ enterLock=true; if(hField<2) hField++; else beginHorse(); } return; }
-      if (k==="ArrowDown"){ e.preventDefault(); hField=Math.min(2,hField+1); return; }
+    if (state===ST.HORSESETUP){      // fields: [players count] [name x N] [word]
+      const last=hCount+1;
+      if (k==="Enter"){ e.preventDefault(); if(!enterLock){ enterLock=true; if(hField<last) hField++; else beginHorse(); } return; }
+      if (k==="ArrowDown"){ e.preventDefault(); hField=Math.min(last,hField+1); return; }
       if (k==="ArrowUp"){ e.preventDefault(); hField=Math.max(0,hField-1); return; }
-      if (k==="Backspace"){ e.preventDefault(); hSetup[hField]=hSetup[hField].slice(0,-1); return; }
+      if (hField===0){             // player-count selector
+        if (k==="ArrowLeft"){ e.preventDefault(); hCount=Math.max(HORSE_MIN,hCount-1); return; }
+        if (k==="ArrowRight"){ e.preventDefault(); hCount=Math.min(HORSE_MAX,hCount+1); return; }
+        if (/^[2-6]$/.test(e.key)){ e.preventDefault(); hCount=+e.key; if(hField>hCount+1) hField=hCount+1; return; }
+        return;
+      }
+      const isWord=hField===last, idx=hField-1, cur=isWord?hWord:(hNames[idx]||"");
+      if (k==="Backspace"){ e.preventDefault(); if(isWord) hWord=cur.slice(0,-1); else hNames[idx]=cur.slice(0,-1); return; }
       if (e.key && e.key.length===1){
-        const max = hField<2?12:8, ok = hField<2 ? /[A-Za-z0-9 .'-]/.test(e.key) : /[A-Za-z]/.test(e.key);
-        if (ok && hSetup[hField].length<max){ e.preventDefault(); hSetup[hField]+=e.key.toUpperCase(); }
+        const max=isWord?8:12, ok=isWord?/[A-Za-z]/.test(e.key):/[A-Za-z0-9 .'-]/.test(e.key);
+        if (ok && cur.length<max){ e.preventDefault(); const nv=cur+e.key.toUpperCase(); if(isWord) hWord=nv; else hNames[idx]=nv; }
       }
       return;
     }
@@ -2757,17 +2795,18 @@
   // ---- hidden-input text entry (soft keyboard on phones; also used on desktop while focused) ----
   kbd.addEventListener("input",()=>{
     if (state===ST.NAME){ nameBuf=sanitizeField(kbd.value,14,false); if(kbd.value!==nameBuf) kbd.value=nameBuf; }
-    else if (state===ST.HORSESETUP){ const wordOnly=hField===2, max=wordOnly?8:12;
-      hSetup[hField]=sanitizeField(kbd.value,max,wordOnly); if(kbd.value!==hSetup[hField]) kbd.value=hSetup[hField]; }
+    else if (state===ST.HORSESETUP && hField>0){ const isWord=hField===hCount+1, idx=hField-1, max=isWord?8:12;
+      const v=sanitizeField(kbd.value,max,isWord); if(isWord) hWord=v; else hNames[idx]=v; if(kbd.value!==v) kbd.value=v; }
   });
   kbd.addEventListener("keydown",(e)=>{
     e.stopPropagation();   // confirmName() blurs kbd mid-handler, so without this the event bubbles to window.keydown with stale state
     if (e.key==="Enter"){ e.preventDefault();
       if (state===ST.NAME) confirmName();
-      else if (state===ST.HORSESETUP){ if(hField<2){ hField++; kbd.value=hSetup[hField]; } else { kbdClose(); beginHorse(); } }
+      else if (state===ST.HORSESETUP){ const last=hCount+1; if(hField<last){ hField++; kbd.value=(hField===last)?hWord:(hNames[hField-1]||""); } else { kbdClose(); beginHorse(); } }
     } else if (e.key==="Escape"){ e.preventDefault(); kbdClose(); goBack(); }
     else if (state===ST.HORSESETUP && (e.key==="ArrowUp"||e.key==="ArrowDown")){ e.preventDefault();
-      hField = e.key==="ArrowDown"?Math.min(2,hField+1):Math.max(0,hField-1); kbd.value=hSetup[hField]; }
+      const last=hCount+1; hField = e.key==="ArrowDown"?Math.min(last,hField+1):Math.max(0,hField-1);
+      if(hField===0) kbdClose(); else kbd.value=(hField===last)?hWord:(hNames[hField-1]||""); }
   });
   // ---- mouse / pointer control ----
   function evToLogical(e){           // -> VIEW space (0..VW): menus use this directly; gameplay subtracts OX
@@ -2788,7 +2827,7 @@
   }
   // map a pointer's FIELD x to the striker's logical x (mirror when left-footed). Caller passes view.x - OX.
   function manTargetFromPointer(px){ return clamp(leftFooted ? (2*GCX - px) : px, MAN_MIN_X, MAN_MAX_X); }
-  function horseFieldHit(p){ for(let i=0;i<3;i++){ const y=112+i*64; if(p.x>=VW/2-200 && p.x<=VW/2+200 && p.y>=y-10 && p.y<=y+28) return i; } return -1; }
+  function horseFieldHit(p){ const n=hCount+2; for(let i=0;i<n;i++){ const y=HSETUP_Y0+i*HSETUP_RH; if(p.x>=VW/2-200 && p.x<=VW/2+200 && p.y>=y-8 && p.y<=y+25) return i; } return -1; }
   const inPlay = (s)=> s===ST.SERVE||s===ST.FLIGHT||s===ST.COUNTDOWN;
   canvas.addEventListener("pointermove",(e)=>{
     const p=evToLogical(e);
@@ -2834,7 +2873,12 @@
       const i=clubHit(p.x,p.y); if(i>=0){ menuSel=i; pressSelect(); }
     }
     else if(state===ST.NATSEL){ const i=natHit(p.x,p.y); if(i>=0){ menuSel=i; pressSelect(); } }
-    else if(state===ST.HORSESETUP){ const f=horseFieldHit(p); if(f>=0){ hField=f; kbdOpen(hSetup[hField]); } else kbdOpen(hSetup[hField]); }
+    else if(state===ST.HORSESETUP){
+      if(horseStartBtn && p.x>=horseStartBtn.x && p.x<=horseStartBtn.x+horseStartBtn.w && p.y>=horseStartBtn.y && p.y<=horseStartBtn.y+horseStartBtn.h){ kbdClose(); beginHorse(); return; }
+      const f=horseFieldHit(p);
+      if(f===0){ hField=0; kbdClose(); hCount=hCount>=HORSE_MAX?HORSE_MIN:hCount+1; }   // tap cycles player count
+      else if(f>0){ hField=f; kbdOpen(hField===hCount+1?hWord:(hNames[hField-1]||"")); }
+    }
     else if(inPlay(state)||state===ST.RESULT){
       if(canCheckout() && p.y<42 && p.x<360){ checkoutEarly(); return; }   // tap the banner (view top-left) to bank the win
       dragging=true; manVelX=0; _dragPrevMT=null; _dragVel=0;
@@ -2941,6 +2985,10 @@
         return {ev:ev.t, state};
       },
       newCareerSim: function(nation){ GMODE="career"; newCareer("TEST","Liverpool",nation||"Brazil"); return {cal:CAR.cal.length, state}; },
+      // HORSE harness: drive the state machine without playing real shots (made = scored the delivery)
+      horseStart: function(names, word){ hCount=Math.max(HORSE_MIN,Math.min(HORSE_MAX,(names&&names.length)||2)); hNames=(names||[]).slice(0,6); while(hNames.length<6) hNames.push(""); hWord=word||"HORSE"; beginHorse(); return horseSnap(); },
+      horsePlay: function(scored){ horseResolve(!!scored); return horseSnap(); },
+      horseState: function(){ return horseSnap(); },
       buildKitsTest: function(){
         OPPONENT={slug:"Everton",name:"Everton",rating:8,home:true};
         loadKits("Liverpool","Everton",null);
@@ -2989,9 +3037,9 @@
         leftcorner=0; rightcorner=0; topnet=0; znet=0; manKicking=false; manKickT=0;
         keeperPose={ x:KEEPER_START_X, dir:"up", anim:"idle", frame:1 };
         defenders=[
-          { ox:117.95, oy:210.25, sx:1.0000, sy:1.0000, thr:240, mag:10, sign:-1, chk:false },
-          { ox: 27.60, oy:163.35, sx:0.8982, sy:0.8960, thr:200, mag:20, sign:-1, chk:false },
-          { ox:471.15, oy:157.75, sx:0.8234, sy:0.8264, thr:200, mag:10, sign:+1, chk:false } ];
+          { ox:117.95, oy:210.25, sx:1.0000, sy:1.0000, thr:240, mag:10, sign:-1, chk:false, variant:0 },
+          { ox: 27.60, oy:163.35, sx:0.8982, sy:0.8960, thr:200, mag:20, sign:-1, chk:false, variant:1 },
+          { ox:471.15, oy:157.75, sx:0.8234, sy:0.8264, thr:200, mag:10, sign:+1, chk:false, variant:2 } ];
         M.score=0; M.attempts=10; manX=MAN_START_X; mouseTargetX=null; window.__rs=null; clearResult(); state=ST.SERVE;
       },
       // Run ONE real shot: serve, position man, trigger kick at tick `kt`, step to result. Returns the outcome.
