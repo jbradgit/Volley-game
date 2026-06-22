@@ -1108,13 +1108,20 @@
 
   // exact: gameplay player placed at scale 1.0 (root); registration origin (101.2,126.5) -> (man._x, man._y)
   const STRIKER_OX = 109, STRIKER_OY = 162, STRIKER_W = 191, STRIKER_H = 243;   // 3D sprite: 300x382 frame, az190, body-centre at manX
-  const STRIKER_FW = 300, STRIKER_FH = 382, STRIKER_FRAMES = 21;   // full-motion sheet: frame 0 idle, 1..20 kick (strike on contact tick 6)
+  const STRIKER_FW = 300, STRIKER_FH = 382, STRIKER_FRAMES = 16;   // sheet: frame 0 idle, 1..15 = Shot f1..f15
+  const STRIKER_CONTACT = 13;   // sheet frame of the foot-on-ball strike (Shot f13), aligned to the boot tick
   function drawStriker() {
     const sh=SPRITES.striker;
     if (!sh) return;
-    // full-motion playback: one sheet frame per SWF tick; foot-on-ball strike is frame 6,
-    // which the engine shows at manKickT===6 — exactly the contact tick (KICK_FRAMES).
-    const f = manKicking ? Math.min(manKickT, STRIKER_FRAMES-1) : 0;
+    // Ball is booted at manKickT≈KICK_FRAMES, so the strike pose (STRIKER_CONTACT) must land on
+    // that tick: wind-up plays over 0..KICK_FRAMES, then follow-through 1/tick, holding the last
+    // frame (never index past the sheet, so the striker never vanishes after the kick).
+    let f = 0;
+    if (manKicking) {
+      f = (manKickT <= KICK_FRAMES)
+        ? Math.round(manKickT / KICK_FRAMES * STRIKER_CONTACT)
+        : Math.min(STRIKER_CONTACT + (manKickT - KICK_FRAMES), STRIKER_FRAMES - 1);
+    }
     ctx.drawImage(sh, f*STRIKER_FW, 0, STRIKER_FW, STRIKER_FH,
                   manX - STRIKER_OX, MAN_Y - STRIKER_OY, STRIKER_W, STRIKER_H);
   }
