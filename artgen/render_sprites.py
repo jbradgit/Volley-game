@@ -427,7 +427,7 @@ def apply_cam_state(cam, emp, st):
 
 STRIKER_RES = (300, 382)                       # wider canvas; union auto-fit centres the whole volley arc
 STRIKER_TGT = dict(top=12, feet=372, cx=150)   # initial idle fit; correct_for_union then fits all 6 frames
-STRIKER_AZ, STRIKER_EL = 190, 12          # from behind, slight over-shoulder (owner pick az190)
+STRIKER_AZ, STRIKER_EL = 180, 12          # from directly behind (owner pick az180)
 
 def _puff_garments(bpy, meshes, delta=0.007):
     """Push garment meshes out along their normals so they cleanly cover the body mesh
