@@ -318,9 +318,14 @@
     "h": {
      "p": "stripes",
      "c1": "black",
+     "c2": "white",
+     "sleeves": "black",
+     "sleeveP": "stripes",
      "shorts": "black",
      "socks": "black",
-     "c2": "white"
+     "collar": "black",
+     "cuff": "#6cb4ee",
+     "sockTop": "white"
     },
     "a": {
      "p": "solid",

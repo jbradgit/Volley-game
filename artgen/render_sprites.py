@@ -246,20 +246,24 @@ def encode(tag_png, lit_png, out_png, out_size, beauty_png=None):
     out = np.zeros(tag.shape, np.uint8); out[...,3] = np.where(vis, 255, 0)
     # Label every visible pixel, then MAJORITY-FILTER the labels to kill the
     # salt-and-pepper speckle at garment/skin boundaries (z-fight + AA fringe).
-    SKIN, NLAB = 7, 8     # 0 bg,1 shirt,2 shorts,3 socks,4 sleeve,5 hair,6 glove,7 skin/boot
+    SKIN, NLAB = 7, 11    # +8 collar, 9 cuff, 10 sock_top (owner's extra solid kit regions)
     L = np.zeros(vis.shape, np.uint8); L[vis] = SKIN
-    L[vis & (r>180) & (g<70) & (b<70)] = 1                       # shirt
-    L[vis & (g>180) & (r<70) & (b<70)] = 2                       # shorts
-    L[vis & (b>180) & (r<70) & (g<70)] = 3                       # socks
-    L[vis & (r>180) & (g>180) & (b<70)] = 4                      # sleeve
-    L[vis & (r>180) & (b>180) & (g<70)] = 5                      # hair
-    L[vis & (r>200) & (g>200) & (b>200)] = 6                     # glove (~white)
+    L[vis & (r>180) & (g<70) & (b<70)] = 1                       # shirt    red
+    L[vis & (g>180) & (r<70) & (b<70)] = 2                       # shorts   green
+    L[vis & (b>180) & (r<70) & (g<70)] = 3                       # socks    blue
+    L[vis & (r>180) & (g>180) & (b<70)] = 4                      # sleeve   yellow
+    L[vis & (r>180) & (b>180) & (g<70)] = 5                      # hair     magenta
+    L[vis & (r>200) & (g>200) & (b>200)] = 6                     # glove    ~white
+    L[vis & (g>180) & (b>180) & (r<70)] = 8                      # collar   cyan
+    L[vis & (r>180) & (g>70) & (g<180) & (b<70)] = 9             # cuff     orange
+    L[vis & (r>70) & (r<180) & (g<70) & (b>180)] = 10            # sock_top purple
     L = _smooth_labels(L, NLAB); L[~vis] = 0
-    masks = {"shirt": L==1, "shorts": L==2, "socks": L==3, "sleeve": L==4}
+    masks = {"shirt": L==1, "shorts": L==2, "socks": L==3, "sleeve": L==4,
+             "collar": L==8, "cuff": L==9, "sock_top": L==10}
     if beauty_png is None:
         masks["hair"] = L==5
     glove = L==6
-    finals = vis & (L!=1) & (L!=2) & (L!=3) & (L!=4)
+    finals = vis & ~np.isin(L, (1, 2, 3, 4, 8, 9, 10))
     if beauty_png is not None:                                  # detail pass: real skin/face/hair/boots
         bimg = Image.open(beauty_png).convert("RGBA")
         # composite over a skin-tone backing so mesh gaps / AA fringe at the hair-neck seam
@@ -283,14 +287,21 @@ def encode(tag_png, lit_png, out_png, out_size, beauty_png=None):
         if not m.any(): continue
         sh = np.zeros(m.shape, np.uint8)
         sh[m] = shade_of(lit[m])
-        U, V = uv_of(m)
-        uu = (np.clip(U,0,1)*88).astype(np.uint8); vv = (np.clip(V,0,1)*88).astype(np.uint8)
-        if kind in ("shirt","shorts","socks"):
-            ch = {"shirt":(0,1,2), "shorts":(1,0,2), "socks":(2,0,1)}[kind]
-            out[m, ch[0]] = sh[m]; out[m, ch[1]] = uu[m]; out[m, ch[2]] = vv[m]
-        elif kind == "sleeve":
-            out[m,0] = out[m,1] = sh[m]; out[m,2] = uu[m]
-        else:
+        if kind in ("shirt", "shorts", "socks", "sleeve"):     # patterned: carry UV
+            U, V = uv_of(m)
+            uu = (np.clip(U,0,1)*88).astype(np.uint8); vv = (np.clip(V,0,1)*88).astype(np.uint8)
+            if kind in ("shirt","shorts","socks"):
+                ch = {"shirt":(0,1,2), "shorts":(1,0,2), "socks":(2,0,1)}[kind]
+                out[m, ch[0]] = sh[m]; out[m, ch[1]] = uu[m]; out[m, ch[2]] = vv[m]
+            else:                                              # sleeve: RG=shade, B=u
+                out[m,0] = out[m,1] = sh[m]; out[m,2] = uu[m]
+        elif kind == "collar":                                 # solid: GB=shade, R=0
+            out[m,1] = out[m,2] = sh[m]; out[m,0] = 0
+        elif kind == "cuff":                                   # solid: RB=shade, G=0
+            out[m,0] = out[m,2] = sh[m]; out[m,1] = 0
+        elif kind == "sock_top":                               # solid: B=shade, R=110 marker, G=0
+            out[m,2] = sh[m]; out[m,0] = 110; out[m,1] = 0
+        else:                                                  # hair (procedural path only)
             out[m,0] = out[m,2] = sh[m]; out[m,1] = 0
     img = Image.fromarray(out)
     if out_size: img = img.resize(out_size, Image.NEAREST)
@@ -768,7 +779,7 @@ def cmd_keeper(idle_fbx, dive_fbx, catch_fbx=None, ndive=None, lit_samples=None)
     apply_cam_state(cam2, emp2, st)
     lo, hi = KEEPER_DIVE_FRAMES                         # owner pick: Diving Save f7..f57
     clip_frames = [int(round(lo + (hi - lo) * i / (ndive - 1))) for i in range(ndive)]
-    dive_imgs = _render_clip_frames(bpy, arm2, meshes2, cam2, clip_frames, "kdive", lit_samples, detail=False)
+    dive_imgs = _render_clip_frames(bpy, arm2, meshes2, cam2, clip_frames, "kdive", lit_samples, detail=True)
     for j in range(50):
         idx = round(j / 49 * (ndive - 1))
         frames[50 + j] = dive_imgs[idx]                   # dive_left = screen-left (clip dives left)
