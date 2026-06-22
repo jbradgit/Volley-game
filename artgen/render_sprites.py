@@ -495,8 +495,8 @@ def cmd_striker(idle_fbx, shot_fbx):
     for i in range(6):
         print(f"STRIKER k{i}:", _measure(os.path.join(OUT, f"striker_k{i}.png")))
 
-STRIKER_KICK_CLIP = list(range(8, 19))     # GROUNDED: stop before the f19+ airborne leap (contact f14 = index 6)
-STRIKER_STRIKE_TICK = 6
+STRIKER_KICK_CLIP = list(range(1, 16))     # owner pick: full volley wind-up->strike, Shot f1..f15
+STRIKER_STRIKE_TICK = 12                    # contact = Shot f13 = index 12 in the kick list
 
 def cmd_striker_sheet(idle_fbx, shot_fbx):
     """FULL-MOTION striker: idle + 20 dense kick frames packed L->R into one sheet
@@ -538,7 +538,7 @@ DEF_RES = (134, 230)
 DEF_TGT = dict(top=4, feet=226, cx=67)
 DEF_AZ, DEF_EL = 0, 8                       # front-on (owner: defenders face straight front)
 
-DEF_VARIANTS = [1, 110, 220]                  # Striker Idle frames -> distinct defender poses
+DEF_VARIANTS = [5, 6, 7, 8]                   # Goalkeeper Miss frames -> 4 distinct defender poses (engine picks 3 of 4)
 
 def cmd_defender_sheet(model_fbx):
     """Several front-facing defender poses packed into defender_sheet.png so the
@@ -653,7 +653,7 @@ def cmd_ball():
 KEEPER_RES = (1192, 526)
 KEEPER_IDLE_TGT = dict(top=138, feet=394, cx=600)     # idle silhouette -> ~x267-334 y69-198
 KEEPER_AZ, KEEPER_EL = 0, 6                            # keeper faces the camera (front)
-KEEPER_DIVE_FRAC = (0.03, 0.42)                        # dive clip fraction (stand -> full low stretch) -> 50..99
+KEEPER_DIVE_FRAMES = (7, 40)                           # Diving Save f7->f40 (f40 = full horizontal stretch; f57 was the prone collapse, reached short)
 
 def _encode_open(tag, lit, tmpname, beauty=None):
     p = os.path.join(TMP, tmpname)
@@ -715,9 +715,9 @@ def _render_clip_frames(bpy, arm, meshes, cam, clip_frames, prefix, lit_samples,
     return [_encode_open(tags[i], lits[i], f"{prefix}_{i}_e.png", beauties[i]) for i in range(n)]
 
 # central catch poses: (filename in source3d, frame) -> low / mid / high
-KEEPER_CATCH = {323: ("Goalkeeper Body Block.fbx", 49),   # low  (ground block) - owner pick
-                328: ("Goalkeeper Catch.fbx", 19),         # mid  (gather) - owner pick
-                354: ("Goalkeeper Miss.fbx", 17)}          # high (overhead reach) - owner pick
+KEEPER_CATCH = {323: ("Goalkeeper Catch Low.fbx", 19),    # low  (ground gather) - owner pick
+                328: ("Goalkeeper Catch.fbx", 13),         # mid  (chest gather) - owner pick
+                354: ("Goalkeeper Catch High.fbx", 28)}    # high (overhead reach) - owner pick
 
 def cmd_keeper(idle_fbx, dive_fbx, catch_fbx=None, ndive=None, lit_samples=None):
     bpy = __import__("bpy")
@@ -727,7 +727,7 @@ def cmd_keeper(idle_fbx, dive_fbx, catch_fbx=None, ndive=None, lit_samples=None)
     frames = {}
     # --- idle: fit + lock camera, detail pass ---
     arm, meshes = _import_clean(bpy, idle_fbx)
-    idle_fr = frame_range(arm)[0] + 20            # widest 'set' ready frame of the idle bob
+    idle_fr = frame_range(arm)[0] + 5             # owner pick: Catch f6 (clip starts at f1)
     mn, mx = world_bbox(meshes)
     cam, emp = make_ortho_cam(bpy, (mn + mx) / 2, KEEPER_AZ, KEEPER_EL, mx.z - mn.z)
     fit_camera(bpy, cam, emp, KEEPER_RES, idle_fr, KEEPER_IDLE_TGT)
@@ -738,8 +738,7 @@ def cmd_keeper(idle_fbx, dive_fbx, catch_fbx=None, ndive=None, lit_samples=None)
     mn2, mx2 = world_bbox(meshes2)
     cam2, emp2 = make_ortho_cam(bpy, (mn2 + mx2) / 2, KEEPER_AZ, KEEPER_EL, mx2.z - mn2.z)
     apply_cam_state(cam2, emp2, st)
-    d0, d1 = frame_range(arm2)
-    lo = d0 + KEEPER_DIVE_FRAC[0] * (d1 - d0); hi = d0 + KEEPER_DIVE_FRAC[1] * (d1 - d0)
+    lo, hi = KEEPER_DIVE_FRAMES                         # owner pick: Diving Save f7..f57
     clip_frames = [int(round(lo + (hi - lo) * i / (ndive - 1))) for i in range(ndive)]
     dive_imgs = _render_clip_frames(bpy, arm2, meshes2, cam2, clip_frames, "kdive", lit_samples, detail=False)
     for j in range(50):
