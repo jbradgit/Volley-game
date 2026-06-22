@@ -40,8 +40,16 @@ SRC = os.path.join(ROOT, "artgen", "source3d")
 # tag colours for the TAG pass (pure hues; engine contract)
 TAGCOL = { "shirt": (1,0,0), "shorts": (0,1,0), "socks": (0,0,1), "sleeve": (1,1,0),
            "hair": (1,0,1), "skin": (0.93,0.75,0.58), "boot": (0.16,0.15,0.18),
-           "glove": (0.95,0.95,0.97) }
+           "glove": (0.95,0.95,0.97),
+           "collar": (0,1,1), "cuff": (1,0.5,0), "sock_top": (0.5,0,1) }   # owner's 3 extra kit regions
 TAGID = {k: i for i, k in enumerate(TAGCOL)}                   # id+1 in the id render
+
+# owner's resolved polygon->region map (from striker_base_v01.blend material slots),
+# transferred onto the same-topology FBX meshes so the sprite uses the EXACT regions.
+_REGIONMAP_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kit_regions.json")
+try:
+    with open(_REGIONMAP_PATH) as _f: KIT_REGION_MAP = json.load(_f)
+except Exception: KIT_REGION_MAP = {}
 
 # Mixamo bone-name -> (region, along-bone split [(t_end, region), ...])
 def bone_region(name, keeper=False):
@@ -133,10 +141,20 @@ def assign_regions(bpy, arm, meshes, keeper=False):
     order = list(TAGCOL)
     for me in meshes:
         mesh = me.data
-        gnames = [g.name for g in me.vertex_groups]
-        vreg = [_vertex_region(me.name, v, gnames, bone_names, keeper) for v in mesh.vertices]
         mesh.materials.clear()
         for rg in order: mesh.materials.append(mats[rg])
+        # OWNER'S RESOLVED REGIONS: if this mesh has a saved per-poly region map
+        # (same topology), use it verbatim -> exact torso/sleeve/cuff/collar/socks/sock_top.
+        base = me.name.split(".")[0]
+        rmap = KIT_REGION_MAP.get(base)
+        if rmap and len(rmap) == len(mesh.polygons):
+            for pi, poly in enumerate(mesh.polygons):
+                rg = rmap[pi]
+                poly.material_index = order.index(rg) if rg in TAGCOL else order.index("skin")
+            continue
+        # fallback: bone-weight per-vertex region voting
+        gnames = [g.name for g in me.vertex_groups]
+        vreg = [_vertex_region(me.name, v, gnames, bone_names, keeper) for v in mesh.vertices]
         for poly in mesh.polygons:
             votes = {}
             for vi in poly.vertices: votes[vreg[vi]] = votes.get(vreg[vi], 0) + 1
@@ -163,6 +181,12 @@ def render(bpy, px_w, px_h, path, samples=16, denoise=False, hard=True):
     sc.cycles.use_denoising = denoise                                    # smooth shade -> clean cel bands
     if denoise:
         try: sc.cycles.denoiser = "OPENIMAGEDENOISE"
+        except Exception: pass
+        # clamp bright fireflies (the salt-and-pepper speckle at skin/garment seams) before denoise
+        try:
+            sc.cycles.sample_clamp_indirect = 3.0
+            sc.cycles.sample_clamp_direct = 0.0
+            sc.cycles.blur_glossy = 2.0
         except Exception: pass
     # keep flat tag colours numerically pure (no Filmic/AgX tone-mapping)
     try: sc.view_settings.view_transform = "Standard"
@@ -237,7 +261,11 @@ def encode(tag_png, lit_png, out_png, out_size, beauty_png=None):
     glove = L==6
     finals = vis & (L!=1) & (L!=2) & (L!=3) & (L!=4)
     if beauty_png is not None:                                  # detail pass: real skin/face/hair/boots
-        beauty = np.asarray(Image.open(beauty_png).convert("RGBA"))
+        bimg = Image.open(beauty_png).convert("RGBA")
+        # composite over a skin-tone backing so mesh gaps / AA fringe at the hair-neck seam
+        # read as skin instead of bright background speckle (the salt-and-pepper)
+        back = Image.new("RGBA", bimg.size, (236, 188, 146, 255))
+        beauty = np.asarray(Image.alpha_composite(back, bimg))
         detail = finals & ~glove                                # skin/hair/boots get real pixels
         for c in range(3):
             out[..., c] = np.where(detail, beauty[..., c], out[..., c])
