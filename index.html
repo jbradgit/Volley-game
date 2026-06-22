@@ -220,7 +220,7 @@
   const KICK_FRAMES = 6;             // SWF frames from Space to contact (kick anim -> frame 7)
   // Defender = inner man sprite (DefineSprite_151), exact registration origin from swf.xml
   const DEF_W = 90, DEF_H = 155, DEF_OX = 45, DEF_OY = 78;   // bigger defenders (owner: were child-sized)
-  const DEF_FW = 134, DEF_FH = 230, DEF_FRAMES = 3;          // defender_sheet: per-defender pose variants
+  const DEF_FW = 134, DEF_FH = 230, DEF_FRAMES = 4;          // defender_sheet: 4 per-defender pose variants (engine picks 3 distinct/match)
   // defender stage bbox (= opponent.man.hitTest); origin (ox,oy) maps to the opponent placement
   function defBox(d){ return { x0:d.ox-DEF_OX*d.sx, x1:d.ox+(DEF_W-DEF_OX)*d.sx,
                                y0:d.oy-DEF_OY*d.sy, y1:d.oy+(DEF_H-DEF_OY)*d.sy }; }
@@ -595,7 +595,7 @@
   let dragGlideMod = clamp(parseInt(localStorage.getItem("vc_glide")||"0"), -8, 10);   // release glide: -80%..+100% momentum
   let manKicking=false, manKickT=0;
   let ballSpin=0;                 // rotating-ball frame counter (advances while ball is live)
-  let defenders = [];
+  let defenders = [], defVariants = [0,1,2];
   let keeperPose = { x:KEEPER_START_X, dir:"up", anim:"idle", frame:1 };
   let leftFooted=false;           // ~1 in 5 matches: mirror the play (left-footed)
   let matchEndText="", matchEndColor="#fff", matchEndTimer=0;   // end-of-match VICTORY/DRAW/LOSS burst
@@ -614,6 +614,7 @@
   function startMatch(opts) {
     opts = opts || {};
     matchBalls=opts.balls||10; matchKO=!!opts.ko; M.score=0; M.attempts=matchBalls; M.goals=0; manX=MAN_START_X; mouseTargetX=null; firstShotShown=false;
+    { const a=[0,1,2,3]; for(let i=3;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]];} defVariants=a.slice(0,3); }   // 3 distinct defender poses from the 4-pose sheet (no two alike), randomised per match
     if (opts.seed!=null){                 // seeded: a reproducible serve sequence (daily / HORSE round)
       const pr=mulberry32(opts.seed>>>0);
       serveQueue=[]; for (let i=0;i<M.attempts+4;i++) serveQueue.push({v:Math.floor(pr()*5)+18, a:Math.floor(pr()*5)+35});
@@ -853,9 +854,9 @@
     // Defenders: exact placements from the SWF (PlaceObject matrices, twips/20).
     // opponent1 deflects -=10+rnd8 @ yball<240; opponent2 -=20+rnd8 @ yball<200; opponent3 +=10+rnd8 @ yball<200.
     defenders = [
-      { ox:117.95, oy:210.25, sx:1.0000, sy:1.0000, thr:240, mag:10, sign:-1, chk:false, variant:0 },
-      { ox: 27.60, oy:163.35, sx:0.8982, sy:0.8960, thr:200, mag:20, sign:-1, chk:false, variant:1 },
-      { ox:471.15, oy:157.75, sx:0.8234, sy:0.8264, thr:200, mag:10, sign:+1, chk:false, variant:2 }
+      { ox:117.95, oy:210.25, sx:1.0000, sy:1.0000, thr:240, mag:10, sign:-1, chk:false, variant:defVariants[0] },
+      { ox: 27.60, oy:163.35, sx:0.8982, sy:0.8960, thr:200, mag:20, sign:-1, chk:false, variant:defVariants[1] },
+      { ox:471.15, oy:157.75, sx:0.8234, sy:0.8264, thr:200, mag:10, sign:+1, chk:false, variant:defVariants[2] }
     ];
     state = ST.SERVE;
   }
