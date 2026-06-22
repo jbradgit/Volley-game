@@ -75,10 +75,10 @@
                     logo:"assets/ui/logo.png?v=2",
                     trophyL:"assets/ui/trophy_league.png?v=1", trophyC:"assets/ui/trophy_cup.png?v=1",
                     trophyE:"assets/ui/trophy_euro.png?v=1",   trophyI:"assets/ui/trophy_intl.png?v=1",
-                    katlas:"assets/sprites/keeper_atlas.png?v=m4",
+                    katlas:"assets/sprites/keeper_atlas.png?v=m5",
                     ball:"assets/sprites/ball_sheet.png?v=m1", shadow:"assets/sprites/shadow.png?v=s1",
-                    strikersheet:"assets/sprites/striker_sheet.png?v=m7",
-                    defbase:"assets/sprites/defender_sheet.png?v=m4" };
+                    strikersheet:"assets/sprites/striker_sheet.png?v=m8",
+                    defbase:"assets/sprites/defender_sheet.png?v=m5" };
   let loaded = 0, total = Object.keys(sources).length, assetsReady = false;
   for (const k in sources) {
     const im = new Image();
@@ -175,7 +175,7 @@
     .catch(e=>{ rosterStatus="error"; try{ console.error("teams.json failed to load:", e); }catch(_){} });
   // Keeper sprite-atlas manifest (per-frame rects + offsets, all 371-frame anims packed).
   let KMAN = null;
-  fetch("assets/sprites/keeper_atlas.json?v=m4").then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
+  fetch("assets/sprites/keeper_atlas.json?v=m5").then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
     .then(j=>{ KMAN = j.frames; })
     .catch(e=>{ try{ console.error("keeper_atlas.json failed to load:", e); }catch(_){} });
   // ---- L1 perimeter ad boards: manifest + images (sold sponsor boards just replace files in

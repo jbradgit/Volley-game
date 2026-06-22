@@ -184,8 +184,8 @@ def render(bpy, px_w, px_h, path, samples=16, denoise=False, hard=True):
         except Exception: pass
         # clamp bright fireflies (the salt-and-pepper speckle at skin/garment seams) before denoise
         try:
-            sc.cycles.sample_clamp_indirect = 3.0
-            sc.cycles.sample_clamp_direct = 0.0
+            sc.cycles.sample_clamp_indirect = 1.5    # tighter: kill fireflies on dark skin
+            sc.cycles.sample_clamp_direct = 3.0
             sc.cycles.blur_glossy = 2.0
         except Exception: pass
     # keep flat tag colours numerically pure (no Filmic/AgX tone-mapping)
@@ -288,7 +288,7 @@ def encode(tag_png, lit_png, out_png, out_size, beauty_png=None, orco_png=None):
     L[vis & (b>180) & (r<70) & (g<70)] = 3                       # socks    blue
     L[vis & (r>180) & (g>180) & (b<70)] = 4                      # sleeve   yellow
     L[vis & (r>180) & (b>180) & (g<70)] = 5                      # hair     magenta
-    L[vis & (r>200) & (g>200) & (b>200)] = 6                     # glove    ~white
+    L[vis & (r>230) & (g>230) & (b>230)] = 6                     # glove ~neutral-white (NOT warm skin, whose sRGB blue is ~201)
     L[vis & (g>180) & (b>180) & (r<70)] = 8                      # collar   cyan
     L[vis & (r>180) & (g>70) & (g<180) & (b<70)] = 9             # cuff     orange
     L[vis & (r>70) & (r<180) & (g<70) & (b>180)] = 10            # sock_top purple
@@ -300,11 +300,24 @@ def encode(tag_png, lit_png, out_png, out_size, beauty_png=None, orco_png=None):
     glove = L==6
     finals = vis & ~np.isin(L, (1, 2, 3, 4, 8, 9, 10))
     if beauty_png is not None:                                  # detail pass: real skin/face/hair/boots
+        from PIL import ImageFilter
         bimg = Image.open(beauty_png).convert("RGBA")
-        # composite over a skin-tone backing so mesh gaps / AA fringe at the hair-neck seam
-        # read as skin instead of bright background speckle (the salt-and-pepper)
+        # composite over a skin-tone backing so mesh gaps / AA fringe read as skin not background
         back = Image.new("RGBA", bimg.size, (236, 188, 146, 255))
-        beauty = np.asarray(Image.alpha_composite(back, bimg))
+        bc = Image.alpha_composite(back, bimg).convert("RGB")
+        # despeckle: real skin is saturated tan; the fireflies are NEUTRAL + BRIGHT clusters.
+        # Target that signature and replace with a 7x7 median (pulls in surrounding dark skin),
+        # plus a 3x3 pass for isolated outliers. Kills salt-and-pepper without softening real detail.
+        b0 = np.asarray(bc).astype(np.int16)
+        med3 = np.asarray(bc.filter(ImageFilter.MedianFilter(3))).astype(np.int16)
+        med7 = np.asarray(bc.filter(ImageFilter.MedianFilter(7))).astype(np.int16)
+        mx = b0.max(axis=2); mn = b0.min(axis=2)
+        spec = ((mx - mn) < 30) & (mx > 160)                 # neutral + bright = specular firefly
+        out3 = np.abs(b0 - med3).max(axis=2) > 38            # isolated outlier
+        beauty = b0.copy()
+        beauty = np.where(out3[..., None], med3, beauty)
+        beauty = np.where(spec[..., None], med7, beauty)
+        beauty = beauty.astype(np.uint8)
         detail = finals & ~glove                                # skin/hair/boots get real pixels
         for c in range(3):
             out[..., c] = np.where(detail, beauty[..., c], out[..., c])
@@ -785,7 +798,7 @@ def _render_clip_frames(bpy, arm, meshes, cam, clip_frames, prefix, lit_samples,
         add_lights(bpy, cam)
         for i, fr in enumerate(clip_frames):
             bpy.context.scene.frame_set(fr); bp = os.path.join(TMP, f"{prefix}_{i}_b.png")
-            render(bpy, *res, bp, samples=36, denoise=True, hard=False); beauties[i] = bp
+            render(bpy, *res, bp, samples=96, denoise=True, hard=False); beauties[i] = bp
     assign_regions(bpy, arm, meshes, keeper=keeper)
     tags = [os.path.join(TMP, f"{prefix}_{i}_t.png") for i in range(n)]
     for fr, tp in zip(clip_frames, tags):
