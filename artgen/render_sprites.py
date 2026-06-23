@@ -317,8 +317,8 @@ def encode(tag_png, lit_png, out_png, out_size, beauty_png=None, orco_png=None):
     L[vis & (r>180) & (b>180) & (g<70)] = 5                      # hair     magenta
     L[vis & (r>230) & (g>230) & (b>230)] = 6                     # glove ~neutral-white (NOT warm skin, whose sRGB blue is ~201)
     L[vis & (g>180) & (b>180) & (r<70)] = 8                      # collar   cyan
-    L[vis & (r>180) & (g>70) & (g<180) & (b<70)] = 9             # cuff     orange
-    L[vis & (r>70) & (r<180) & (g<70) & (b>180)] = 10            # sock_top purple
+    L[vis & (r>180) & (g>70) & (g<215) & (b<70)] = 9             # cuff     orange (linear 0.5 -> sRGB 188, so <215 not <180)
+    L[vis & (r>70) & (r<215) & (g<70) & (b>180)] = 10            # sock_top purple (linear 0.5 -> sRGB 188)
     L = _smooth_labels(L, NLAB); L[~vis] = 0
     masks = {"shirt": L==1, "shorts": L==2, "socks": L==3, "sleeve": L==4,
              "collar": L==8, "cuff": L==9, "sock_top": L==10}
