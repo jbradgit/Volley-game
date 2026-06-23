@@ -1,0 +1,17 @@
+{
+  "name": "SCORDAGOL — Volley Challenge",
+  "short_name": "SCORDAGOL",
+  "description": "Time your volley, beat the keeper. A football volley arcade game with a full career mode.",
+  "start_url": "index.html",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "landscape",
+  "background_color": "#06070b",
+  "theme_color": "#06070b",
+  "categories": ["games", "sports"],
+  "icons": [
+    { "src": "assets/ui/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "assets/ui/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

@@ -12,7 +12,15 @@
   "orange": "#FF9900",
   "darkblue": "#1F2F77",
   "navy": "#11203F",
-  "gold": "#FDB913"
+  "gold": "#FDB913",
+  "darkgreen": "#114B2E",
+  "offwhite": "#ECE7D8",
+  "cream": "#EFE2B3",
+  "purple": "#5B2A86",
+  "darkpurple": "#37205A",
+  "darkbrown": "#3A271C",
+  "mint": "#A9E5C5",
+  "darkteal": "#11433F"
  },
  "teams": [
   {
@@ -31,15 +39,22 @@
     "h": {
      "p": "solid",
      "c1": "red",
+     "sleeves": "white",
+     "collar": "white",
+     "cuff": "white",
      "shorts": "white",
      "socks": "red",
-     "sleeves": "white"
+     "sockTop": "white"
     },
     "a": {
      "p": "solid",
-     "c1": "yellow",
-     "shorts": "darkblue",
-     "socks": "yellow"
+     "c1": "navy",
+     "sleeves": "navy",
+     "collar": "navy",
+     "cuff": "navy",
+     "shorts": "navy",
+     "socks": "navy",
+     "sockTop": "red"
     }
    }
   },
@@ -59,14 +74,22 @@
     "h": {
      "p": "solid",
      "c1": "skyblue",
+     "sleeves": "skyblue",
+     "collar": "skyblue",
+     "cuff": "white",
      "shorts": "white",
-     "socks": "navy"
+     "socks": "skyblue",
+     "sockTop": "navy"
     },
     "a": {
      "p": "solid",
      "c1": "black",
+     "sleeves": "black",
+     "collar": "black",
+     "cuff": "black",
      "shorts": "black",
-     "socks": "black"
+     "socks": "black",
+     "sockTop": "grey"
     }
    }
   },
@@ -86,14 +109,22 @@
     "h": {
      "p": "solid",
      "c1": "red",
+     "sleeves": "red",
+     "collar": "black",
+     "cuff": "black",
      "shorts": "white",
-     "socks": "black"
+     "socks": "black",
+     "sockTop": "white"
     },
     "a": {
      "p": "solid",
      "c1": "white",
-     "shorts": "black",
-     "socks": "white"
+     "sleeves": "white",
+     "collar": "purple",
+     "cuff": "purple",
+     "shorts": "purple",
+     "socks": "white",
+     "sockTop": "purple"
     }
    }
   },
@@ -114,15 +145,22 @@
     "h": {
      "p": "solid",
      "c1": "claret",
+     "sleeves": "skyblue",
+     "collar": "claret",
+     "cuff": "claret",
      "shorts": "white",
      "socks": "skyblue",
-     "sleeves": "skyblue"
+     "sockTop": "claret"
     },
     "a": {
      "p": "solid",
-     "c1": "white",
-     "shorts": "claret",
-     "socks": "white"
+     "c1": "black",
+     "sleeves": "black",
+     "collar": "skyblue",
+     "cuff": "skyblue",
+     "shorts": "black",
+     "socks": "black",
+     "sockTop": "skyblue"
     }
    }
   },
@@ -142,14 +180,22 @@
     "h": {
      "p": "solid",
      "c1": "red",
+     "sleeves": "red",
+     "collar": "red",
+     "cuff": "white",
      "shorts": "red",
-     "socks": "red"
+     "socks": "red",
+     "sockTop": "white"
     },
     "a": {
      "p": "solid",
-     "c1": "gold",
+     "c1": "offwhite",
+     "sleeves": "offwhite",
+     "collar": "black",
+     "cuff": "black",
      "shorts": "black",
-     "socks": "gold"
+     "socks": "offwhite",
+     "sockTop": "black"
     }
    }
   },
@@ -171,15 +217,24 @@
     "h": {
      "p": "stripes",
      "c1": "red",
+     "c2": "black",
+     "sleeves": "black",
+     "collar": "gold",
+     "cuff": "gold",
      "shorts": "black",
      "socks": "black",
-     "c2": "black"
+     "sockTop": "gold"
     },
     "a": {
-     "p": "solid",
-     "c1": "white",
-     "shorts": "white",
-     "socks": "white"
+     "p": "stripes",
+     "c1": "blue",
+     "c2": "black",
+     "sleeves": "blue",
+     "collar": "black",
+     "cuff": "black",
+     "shorts": "blue",
+     "socks": "blue",
+     "sockTop": "black"
     }
    }
   },
@@ -201,15 +256,23 @@
     "h": {
      "p": "stripes",
      "c1": "blue",
-     "shorts": "white",
-     "socks": "white",
-     "c2": "white"
+     "c2": "white",
+     "sleeves": "blue",
+     "collar": "white",
+     "cuff": "white",
+     "shorts": "blue",
+     "socks": "blue",
+     "sockTop": "white"
     },
     "a": {
      "p": "solid",
-     "c1": "yellow",
-     "shorts": "blue",
-     "socks": "yellow"
+     "c1": "purple",
+     "sleeves": "purple",
+     "collar": "purple",
+     "cuff": "darkpurple",
+     "shorts": "purple",
+     "socks": "purple",
+     "sockTop": "darkpurple"
     }
    }
   },
@@ -229,14 +292,22 @@
     "h": {
      "p": "solid",
      "c1": "blue",
+     "sleeves": "blue",
+     "collar": "blue",
+     "cuff": "blue",
      "shorts": "blue",
-     "socks": "white"
+     "socks": "white",
+     "sockTop": "blue"
     },
     "a": {
      "p": "solid",
-     "c1": "yellow",
-     "shorts": "yellow",
-     "socks": "yellow"
+     "c1": "offwhite",
+     "sleeves": "offwhite",
+     "collar": "darkgreen",
+     "cuff": "darkgreen",
+     "shorts": "offwhite",
+     "socks": "darkgreen",
+     "sockTop": "red"
     }
    }
   },
@@ -258,15 +329,23 @@
     "h": {
      "p": "stripes",
      "c1": "red",
+     "c2": "white",
+     "sleeves": "white",
+     "collar": "white",
+     "cuff": "white",
      "shorts": "black",
-     "socks": "red",
-     "c2": "white"
+     "socks": "black",
+     "sockTop": "red"
     },
     "a": {
      "p": "solid",
-     "c1": "yellow",
-     "shorts": "black",
-     "socks": "yellow"
+     "c1": "darkbrown",
+     "sleeves": "darkbrown",
+     "collar": "gold",
+     "cuff": "gold",
+     "shorts": "darkbrown",
+     "socks": "darkbrown",
+     "sockTop": "gold"
     }
    }
   },
@@ -288,15 +367,24 @@
     "h": {
      "p": "stripes",
      "c1": "red",
+     "c2": "white",
+     "sleeves": "red",
+     "sleeveP": "stripes",
+     "collar": "black",
+     "cuff": "black",
      "shorts": "black",
      "socks": "red",
-     "c2": "white"
+     "sockTop": "white"
     },
     "a": {
      "p": "solid",
-     "c1": "navy",
-     "shorts": "navy",
-     "socks": "navy"
+     "c1": "blue",
+     "sleeves": "blue",
+     "collar": "white",
+     "cuff": "blue",
+     "shorts": "blue",
+     "socks": "blue",
+     "sockTop": "white"
     }
    }
   },
@@ -321,17 +409,21 @@
      "c2": "white",
      "sleeves": "black",
      "sleeveP": "stripes",
+     "collar": "black",
+     "cuff": "black",
      "shorts": "black",
      "socks": "black",
-     "collar": "black",
-     "cuff": "#6cb4ee",
      "sockTop": "white"
     },
     "a": {
      "p": "solid",
-     "c1": "gold",
-     "shorts": "navy",
-     "socks": "gold"
+     "c1": "green",
+     "sleeves": "green",
+     "collar": "white",
+     "cuff": "white",
+     "shorts": "white",
+     "socks": "green",
+     "sockTop": "white"
     }
    }
   },
@@ -351,14 +443,22 @@
     "h": {
      "p": "solid",
      "c1": "blue",
+     "sleeves": "blue",
+     "collar": "white",
+     "cuff": "white",
      "shorts": "white",
-     "socks": "white"
+     "socks": "blue",
+     "sockTop": "white"
     },
     "a": {
      "p": "solid",
      "c1": "yellow",
-     "shorts": "grey",
-     "socks": "yellow"
+     "sleeves": "yellow",
+     "collar": "navy",
+     "cuff": "navy",
+     "shorts": "navy",
+     "socks": "yellow",
+     "sockTop": "navy"
     }
    }
   },
@@ -378,14 +478,22 @@
     "h": {
      "p": "solid",
      "c1": "white",
-     "shorts": "black",
-     "socks": "white"
+     "sleeves": "white",
+     "collar": "black",
+     "cuff": "black",
+     "shorts": "white",
+     "socks": "white",
+     "sockTop": "black"
     },
     "a": {
      "p": "solid",
-     "c1": "red",
-     "shorts": "black",
-     "socks": "red"
+     "c1": "green",
+     "sleeves": "green",
+     "collar": "navy",
+     "cuff": "navy",
+     "shorts": "navy",
+     "socks": "navy",
+     "sockTop": "green"
     }
    }
   },
@@ -405,14 +513,22 @@
     "h": {
      "p": "solid",
      "c1": "white",
+     "sleeves": "white",
+     "collar": "white",
+     "cuff": "white",
      "shorts": "white",
-     "socks": "white"
+     "socks": "white",
+     "sockTop": "blue"
     },
     "a": {
      "p": "solid",
-     "c1": "yellow",
+     "c1": "blue",
+     "sleeves": "blue",
+     "collar": "blue",
+     "cuff": "blue",
      "shorts": "blue",
-     "socks": "yellow"
+     "socks": "blue",
+     "sockTop": "yellow"
     }
    }
   },
@@ -433,16 +549,25 @@
    "kits": {
     "h": {
      "p": "stripes",
-     "c1": "red",
+     "c1": "blue",
+     "c2": "red",
+     "sleeves": "blue",
+     "sleeveP": "stripes",
+     "collar": "white",
+     "cuff": "white",
      "shorts": "blue",
      "socks": "blue",
-     "c2": "blue"
+     "sockTop": "white"
     },
     "a": {
      "p": "solid",
      "c1": "white",
+     "sleeves": "white",
+     "collar": "white",
+     "cuff": "white",
      "shorts": "white",
-     "socks": "white"
+     "socks": "white",
+     "sockTop": "red"
     }
    }
   },
@@ -460,16 +585,25 @@
    "position": 16,
    "kits": {
     "h": {
-     "p": "solid",
+     "p": "stripes",
      "c1": "red",
+     "c2": "white",
+     "sleeves": "red",
+     "collar": "red",
+     "cuff": "red",
      "shorts": "white",
-     "socks": "red"
+     "socks": "red",
+     "sockTop": "white"
     },
     "a": {
      "p": "solid",
-     "c1": "white",
-     "shorts": "white",
-     "socks": "white"
+     "c1": "cream",
+     "sleeves": "cream",
+     "collar": "cream",
+     "cuff": "cream",
+     "shorts": "cream",
+     "socks": "white",
+     "sockTop": "gold"
     }
    }
   },
@@ -489,14 +623,22 @@
     "h": {
      "p": "solid",
      "c1": "white",
+     "sleeves": "white",
+     "collar": "white",
+     "cuff": "white",
      "shorts": "navy",
-     "socks": "white"
+     "socks": "white",
+     "sockTop": "navy"
     },
     "a": {
      "p": "solid",
-     "c1": "navy",
-     "shorts": "navy",
-     "socks": "navy"
+     "c1": "black",
+     "sleeves": "black",
+     "collar": "black",
+     "cuff": "black",
+     "shorts": "black",
+     "socks": "black",
+     "sockTop": "black"
     }
    }
   },
@@ -517,15 +659,22 @@
     "h": {
      "p": "solid",
      "c1": "claret",
+     "sleeves": "claret",
+     "collar": "claret",
+     "cuff": "skyblue",
      "shorts": "white",
-     "socks": "claret",
-     "sleeves": "skyblue"
+     "socks": "white",
+     "sockTop": "claret"
     },
     "a": {
      "p": "solid",
-     "c1": "skyblue",
-     "shorts": "skyblue",
-     "socks": "skyblue"
+     "c1": "cream",
+     "sleeves": "cream",
+     "collar": "navy",
+     "cuff": "navy",
+     "shorts": "navy",
+     "socks": "cream",
+     "sockTop": "navy"
     }
    }
   },
@@ -546,15 +695,22 @@
     "h": {
      "p": "solid",
      "c1": "claret",
+     "sleeves": "claret",
+     "collar": "skyblue",
+     "cuff": "skyblue",
      "shorts": "white",
-     "socks": "claret",
-     "sleeves": "skyblue"
+     "socks": "skyblue",
+     "sockTop": "claret"
     },
     "a": {
      "p": "solid",
-     "c1": "yellow",
-     "shorts": "claret",
-     "socks": "yellow"
+     "c1": "skyblue",
+     "sleeves": "skyblue",
+     "collar": "claret",
+     "cuff": "claret",
+     "shorts": "skyblue",
+     "socks": "white",
+     "sockTop": "claret"
     }
    }
   },
@@ -574,14 +730,22 @@
     "h": {
      "p": "solid",
      "c1": "gold",
+     "sleeves": "gold",
+     "collar": "black",
+     "cuff": "black",
      "shorts": "black",
-     "socks": "gold"
+     "socks": "gold",
+     "sockTop": "black"
     },
     "a": {
      "p": "solid",
-     "c1": "black",
-     "shorts": "black",
-     "socks": "black"
+     "c1": "mint",
+     "sleeves": "mint",
+     "collar": "darkteal",
+     "cuff": "darkteal",
+     "shorts": "darkteal",
+     "socks": "mint",
+     "sockTop": "darkteal"
     }
    }
   }

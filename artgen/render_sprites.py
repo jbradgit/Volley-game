@@ -214,9 +214,10 @@ def render(bpy, px_w, px_h, path, samples=16, denoise=False, hard=True):
     sc.render.filepath = path
     bpy.ops.render.render(write_still=True)
 
-def add_lights(bpy, cam=None, energy=4.6, ambient=0.95):
-    """CAMERA-RELATIVE key light + BRIGHT neutral ambient fill (used for BOTH the beauty and the
-    lit/shade pass). Owner: previous lighting was too low -> skin/ball read dark and grey.
+def add_lights(bpy, cam=None, energy=3.8, ambient=0.7):
+    """CAMERA-RELATIVE key light + neutral ambient fill (used for BOTH the beauty and the
+    lit/shade pass). Owner round 1: too low -> dark/grey skin (lifted to 4.6/0.95). Round 2:
+    that was too HOT -> skin overexposed/shiny, so dialled back to sun 3.8 / ambient 0.7.
     Idempotent: skips if a sun already exists."""
     from mathutils import Matrix
     if any(o.type == "LIGHT" for o in bpy.context.scene.objects):
@@ -235,6 +236,20 @@ def add_lights(bpy, cam=None, energy=4.6, ambient=0.95):
     bg.inputs[0].default_value = (0.92, 0.92, 0.95, 1)   # bright neutral fill lifts the shadow side (no dark/grey skin)
     bg.inputs[1].default_value = ambient
     bpy.context.scene.world = amb
+
+def _tame_specular(meshes, spec=0.12):
+    """Lower the Principled specular hotspot on the imported BEAUTY materials so skin/boots
+    don't read shiny/blown under the key light (owner: skin overexposed). Beauty pass only —
+    runs before assign_regions swaps in the flat tag materials. Handles both the 4.x+
+    'Specular IOR Level' input and the legacy 'Specular' name."""
+    for me in meshes:
+        for m in me.data.materials:
+            if not (m and m.use_nodes): continue
+            for nd in m.node_tree.nodes:
+                if nd.type != "BSDF_PRINCIPLED": continue
+                for key in ("Specular IOR Level", "Specular"):
+                    if key in nd.inputs:
+                        nd.inputs[key].default_value = spec; break
 
 def to_lit(bpy, meshes, cam=None):
     """Swap meshes to a white diffuse for the shade pass; ensure lights exist."""
@@ -663,7 +678,11 @@ def cmd_striker_sheet(idle_fbx, shot_fbx):
     print(f"STRIKER SHEET {len(frames)} frames @ {R[0]}x{R[1]}; idle bbox {m}; strike at frame {STRIKER_STRIKE_TICK}")
 
 DEF_RES = (268, 460)   # 2x source res for crisp defenders
-DEF_TGT = dict(top=4, feet=226, cx=67)
+# Fit the figure to FILL the frame. BUG FIX (2026-06-24): the 2x resolution bump doubled DEF_RES
+# but left DEF_TGT at the 1x values (top=4,feet=226,cx=67 in a 230-tall frame), so the figure
+# rendered into the TOP-LEFT QUADRANT of the 460-tall frame -> tiny + mis-anchored in-game.
+# Derive the targets from DEF_RES so they always scale with it (same proportions as the 1x fit).
+DEF_TGT = dict(top=round(DEF_RES[1] * 4 / 230), feet=round(DEF_RES[1] * 226 / 230), cx=DEF_RES[0] // 2)
 DEF_AZ, DEF_EL = 0, 8                       # front-on (owner: defenders face straight front)
 
 DEF_VARIANTS = [5, 6, 7, 8]                   # Goalkeeper Miss frames -> 4 distinct defender poses (engine picks 3 of 4)
@@ -694,6 +713,7 @@ def cmd_defender(model_fbx, frame=None):
     mn, mx = world_bbox(meshes)
     cam, emp = make_ortho_cam(bpy, (mn + mx) / 2, DEF_AZ, DEF_EL, mx.z - mn.z)
     fit_camera(bpy, cam, emp, DEF_RES, fr, DEF_TGT)
+    _tame_specular(meshes)                                      # calm shiny skin before the beauty pass
     add_lights(bpy, cam)
     bp = os.path.join(TMP, "def_beauty.png")
     bpy.context.scene.frame_set(fr); render(bpy, *DEF_RES, bp, samples=40, denoise=True, hard=False)
@@ -830,6 +850,7 @@ def _render_clip_frames(bpy, arm, meshes, cam, clip_frames, prefix, lit_samples,
     n = len(clip_frames)
     beauties = [None] * n
     if detail:
+        _tame_specular(meshes)                                  # calm shiny skin before the beauty pass
         add_lights(bpy, cam)
         for i, fr in enumerate(clip_frames):
             bpy.context.scene.frame_set(fr); bp = os.path.join(TMP, f"{prefix}_{i}_b.png")

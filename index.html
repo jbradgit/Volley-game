@@ -9,6 +9,9 @@
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="theme-color" content="#06070b" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="apple-touch-icon" href="assets/ui/icon-180.png" />
+<link rel="icon" type="image/png" sizes="192x192" href="assets/ui/icon-192.png" />
 <title>SCORDAGOL — Volley Your Way To Greatness</title>
 <!-- Retro fonts: VT323 = teletext/CRT body text · Press Start 2P = chunky 8-bit (countdown, headings).
      Falls back to monospace offline; self-host these for the production/app build. -->
@@ -75,10 +78,10 @@
                     logo:"assets/ui/logo.png?v=2",
                     trophyL:"assets/ui/trophy_league.png?v=1", trophyC:"assets/ui/trophy_cup.png?v=1",
                     trophyE:"assets/ui/trophy_euro.png?v=1",   trophyI:"assets/ui/trophy_intl.png?v=1",
-                    katlas:"assets/sprites/keeper_atlas.png?v=m9",
+                    katlas:"assets/sprites/keeper_atlas.png?v=m10",
                     ball:"assets/sprites/ball_sheet.png?v=m2", shadow:"assets/sprites/shadow.png?v=s1",
-                    strikersheet:"assets/sprites/striker_sheet.png?v=m12",
-                    defbase:"assets/sprites/defender_sheet.png?v=m9" };
+                    strikersheet:"assets/sprites/striker_sheet.png?v=m13",
+                    defbase:"assets/sprites/defender_sheet.png?v=m10" };
   let loaded = 0, total = Object.keys(sources).length, assetsReady = false;
   for (const k in sources) {
     const im = new Image();
@@ -116,11 +119,14 @@
     return 0;
   }
   const SLEEVE_STRIPE_N = 5;   // sleeve stripe count (the arm cylinder is narrower than the torso -> fewer stripes match the torso width)
-  // Anti-aliased stripe colour: blend c1<->c2 with a soft ~2px transition at each boundary,
-  // so stripes read smooth like the Blender kit_patterns render instead of hard/blocky.
+  // Anti-aliased stripe colour: blend c1<->c2 with a SOFT but TIGHT transition at each boundary.
+  // aa was 0.16 (too soft -> "fuzzy") -> 0.08 = crisper edge while still hiding the source UV
+  // stair-step. This is the cheap lever; the hard floor is the ~88-level baked UV (channels must
+  // stay <100 so warm skin isn't mistaken for a kit region) — a razor edge needs the skin-region
+  // rework so the UV channels can use the full range. The in-game ~3x downscale adds its own AA.
   function stripeMix(u, n, c1, c2){
     const x=Math.min(0.999,Math.max(0,u))*n, fl=Math.floor(x), fr=x-fl, band=fl&1;
-    const d=Math.min(fr,1-fr), aa=0.16;       // distance to nearest stripe edge
+    const d=Math.min(fr,1-fr), aa=0.08;       // distance to nearest stripe edge (tighter = crisper)
     let t = band;
     if (d<aa){ const k=(aa-d)/aa*0.5; t = band ? 1-k : k; }   // soften toward the neighbour near the edge
     return [c1[0]+(c2[0]-c1[0])*t, c1[1]+(c2[1]-c1[1])*t, c1[2]+(c2[2]-c1[2])*t];
@@ -198,7 +204,7 @@
     .catch(e=>{ rosterStatus="error"; try{ console.error("teams.json failed to load:", e); }catch(_){} });
   // Keeper sprite-atlas manifest (per-frame rects + offsets, all 371-frame anims packed).
   let KMAN = null, KSCALE = 2;   // KSCALE = atlas export scale (render px per unified px); read from the manifest
-  fetch("assets/sprites/keeper_atlas.json?v=m9").then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
+  fetch("assets/sprites/keeper_atlas.json?v=m10").then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
     .then(j=>{ KMAN = j.frames; KSCALE = j.scale || 2; })
     .catch(e=>{ try{ console.error("keeper_atlas.json failed to load:", e); }catch(_){} });
   // ---- L1 perimeter ad boards: manifest + images (sold sponsor boards just replace files in
@@ -246,6 +252,15 @@
     LG_DIFF = (LEAGUE_META[id] && LEAGUE_META[id].targetMod) || 1.0; }   // scales the league-sim AI strength only (sacred physics untouched)
   function leagueList(){ return ["ENG","ESP","ITA","GER","FRA"].filter(id=>LEAGUE_META[id]); }
   function activeLeagueMeta(){ return LEAGUE_META[(CAR&&CAR.leagueId)||"ENG"] || LEAGUE_META.ENG || {name:"League",targetMod:1,drawMod:1}; }
+  // Reigning champion shown on the league-select screen. That screen is new-career-only (no save
+  // exists yet), so the champion of a fresh universe = the strongest club: position 1 where the
+  // league supplies positions (ENG), else top rating, stable tie-break by name.
+  function leagueChampion(id){
+    const teams=LEAGUES[id]; if(!teams||!teams.length) return null;
+    return teams.slice().sort((a,b)=>
+      ((a.position||99)-(b.position||99)) || ((b.rating||0)-(a.rating||0)) || a.name.localeCompare(b.name)
+    )[0];
+  }
   function nationOf(slug){ return ((WORLD&&WORLD.nations)||[]).find(n=>n.slug===slug)||null; }
 
   // Keeper labelled animation ranges actually used by the original (frame_10 / frame_9):
@@ -262,7 +277,7 @@
   const KEEPER_START_X = 263;
   const MAN_MIN_X = 50, MAN_MAX_X = 500, MAN_START_X = 450, MAN_Y = 300;
   const SERVE_Y = 300, GOAL_RESOLVE_Y = 160, NET_GOAL_Y = 150, YBIT = 8;
-  const KICK_FRAMES = 6;             // SWF frames from Space to contact (kick anim -> frame 7)
+  const KICK_FRAMES = 5;             // SWF frames from Space to contact (owner 2026-06-24: one frame earlier, 6->5; drawStriker is parameterised on this so the strike pose auto-re-syncs)
   // Defender = inner man sprite (DefineSprite_151), exact registration origin from swf.xml
   const DEF_W = 90, DEF_H = 155, DEF_OX = 45, DEF_OY = 78;   // OX/OY are ON-SCREEN anchors (rel. to W/H) -> stay fixed when DEF_FW/FH bump for 2x source
   const DEF_FW = 268, DEF_FH = 460, DEF_FRAMES = 4;          // defender_sheet: 268x460 frame (2x), 4 pose variants (engine picks 3 distinct/match)
@@ -2267,9 +2282,11 @@
       drawFlag(cx+12, mid-18, 54, 36, m.flag);
       ctx.font=ttFont(22); ctx.textAlign="left"; ctx.textBaseline="middle"; ctx.fillStyle = sel ? TTX.yellow : TTX.white;
       ctx.fillText(m.name, cx+82, mid-8);
-      ctx.font=ttFont(13); ctx.fillStyle=TTX.grey;
-      const teams=(LEAGUES[id]||[]).length, diff=Math.round((m.targetMod||1)*100);
-      ctx.fillText(m.country+"   ·   "+teams+" clubs   ·   difficulty "+diff+"%", cx+82, mid+13);
+      ctx.font=ttFont(13);
+      const champ=leagueChampion(id);
+      ctx.fillStyle=TTX.grey; ctx.fillText("Reigning champions:", cx+82, mid+13);
+      const lblW=ctx.measureText("Reigning champions:  ").width;
+      ctx.fillStyle=TTX.yellow; ctx.fillText(champ?champ.name:"—", cx+82+lblW, mid+13);
       ctx.textBaseline="alphabetic";
     });
     ctx.textAlign="center"; ctx.font=ttFont(13); ctx.fillStyle=TTX.grey;
@@ -3183,6 +3200,14 @@
     };
   }
 })();
+
+// ---- PWA: register the service worker (installable / "Add to Home Screen" + offline). Guarded
+// with typeof so the Node smoke harness (no `navigator`) skips it; http(s) only (not file://).
+if (typeof navigator !== "undefined" && navigator.serviceWorker && location.protocol.indexOf("http") === 0) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("sw.js").catch(function (e) { try { console.warn("SW register failed:", e); } catch (_) {} });
+  });
+}
 </script>
 </body>
 </html>
