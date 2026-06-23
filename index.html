@@ -3067,6 +3067,7 @@
       },
       newCareerSim: function(nation, league, slug){ GMODE="career"; setActiveLeague(league||"ENG"); newCareer("TEST", slug||(TEAMS[0]&&TEAMS[0].slug)||"Liverpool", nation||"Brazil", league||"ENG"); return {cal:CAR.cal.length, leagueId:CAR.leagueId, teams:TEAMS.length, slug:CAR.slug, state}; },
       leaguesSim: function(){ return leagueList().map(id=>({id, name:LEAGUE_META[id].name, teams:(LEAGUES[id]||[]).length})); },
+      renderStateSim: function(s){ const prev=state; state=ST[s]||s; try{ render(); } finally { state=prev; } return true; },
       // HORSE harness: drive the state machine without playing real shots (made = scored the delivery)
       horseStart: function(names, word){ hCount=Math.max(HORSE_MIN,Math.min(HORSE_MAX,(names&&names.length)||2)); hNames=(names||[]).slice(0,6); while(hNames.length<6) hNames.push(""); hWord=word||"HORSE"; beginHorse(); return horseSnap(); },
       horsePlay: function(scored){ horseResolve(!!scored); return horseSnap(); },

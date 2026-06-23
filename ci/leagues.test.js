@@ -24,6 +24,12 @@ test("a Spanish-league career uses Spanish clubs and a Spanish slug", async () =
   assert.ok(espSlugs.includes(r.slug), "career slug not a La Liga club: " + r.slug);
 });
 
+test("the league-select screen renders without error", async () => {
+  const { dbg, errors } = await loadGame();
+  dbg.renderStateSim("LEAGUESEL");
+  assert.equal(errors.length, 0, "errors rendering league select: " + errors.join(" | "));
+});
+
 test("a foreign-league season autoplays to completion without error", async () => {
   const { dbg, errors } = await loadGame();
   dbg.newCareerSim("Italy", "ITA");
