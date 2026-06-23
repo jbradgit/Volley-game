@@ -51,6 +51,13 @@ try:
     with open(_REGIONMAP_PATH) as _f: KIT_REGION_MAP = json.load(_f)
 except Exception: KIT_REGION_MAP = {}
 
+# owner's cylindrical sleeve unwrap (Kit_UV, per-loop, from the .blend) -> lengthwise sleeve stripes
+_KITUV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kit_uv.json")
+try:
+    with open(_KITUV_PATH) as _f: KIT_UV_MAP = json.load(_f)
+except Exception: KIT_UV_MAP = None
+SLEEVE_U0, SLEEVE_UR = 0.1168, 0.87        # sleeve Kit_UV.x extent (pose-stable)
+
 # Mixamo bone-name -> (region, along-bone split [(t_end, region), ...])
 def bone_region(name, keeper=False):
     n = name.lower().split(":")[-1]
@@ -127,8 +134,21 @@ def _vertex_region(me_name, v, gnames, bone_names, keeper):
     if keeper and "hand" in b:        return "glove"
     return "skin"
 
+def apply_kit_uv(meshes):
+    """Transfer the owner's cylindrical Kit_UV (per-loop, same topology) onto the FBX shirt
+    so the orco pass can emit it -> lengthwise sleeve stripes (orco-X gives rings, not stripes)."""
+    if not KIT_UV_MAP: return
+    for me_o in meshes:
+        if me_o.name.split(".")[0] != "Ch38_Shirt": continue
+        me = me_o.data
+        if len(me.loops) != len(KIT_UV_MAP): continue
+        uvl = me.uv_layers.get("Kit_UV") or me.uv_layers.new(name="Kit_UV")
+        for li in range(len(me.loops)):
+            uvl.data[li].uv = KIT_UV_MAP[li]
+
 def assign_regions(bpy, arm, meshes, keeper=False):
     """Split every mesh's faces into flat TAG materials (mesh-name + smooth weight split)."""
+    apply_kit_uv(meshes)                                        # ensure Kit_UV exists for the orco pass
     bone_names = set(b.name for b in arm.data.bones) if arm else set()
     mats = {}
     for region, col in TAGCOL.items():
@@ -233,8 +253,15 @@ def to_orco(bpy, meshes):
     m = bpy.data.materials.new("orco"); m.use_nodes = True
     nt = m.node_tree; nt.nodes.clear()
     tc = nt.nodes.new("ShaderNodeTexCoord")
+    sep = nt.nodes.new("ShaderNodeSeparateXYZ"); nt.links.new(tc.outputs["Generated"], sep.inputs[0])
+    uvn = nt.nodes.new("ShaderNodeUVMap"); uvn.uv_map = "Kit_UV"
+    sepuv = nt.nodes.new("ShaderNodeSeparateXYZ"); nt.links.new(uvn.outputs["UV"], sepuv.inputs[0])
+    comb = nt.nodes.new("ShaderNodeCombineXYZ")
+    nt.links.new(sep.outputs["X"], comb.inputs[0])             # R = Generated.X  (torso planar)
+    nt.links.new(sep.outputs["Y"], comb.inputs[1])             # G = Generated.Y
+    nt.links.new(sepuv.outputs["X"], comb.inputs[2])           # B = Kit_UV.x     (sleeve cylinder)
     em = nt.nodes.new("ShaderNodeEmission"); em.inputs[1].default_value = 1.0
-    nt.links.new(tc.outputs["Generated"], em.inputs[0])
+    nt.links.new(comb.outputs[0], em.inputs[0])
     o = nt.nodes.new("ShaderNodeOutputMaterial"); nt.links.new(em.outputs[0], o.inputs[0])
     for me in meshes:
         for i in range(len(me.data.materials)): me.data.materials[i] = m
@@ -339,9 +366,8 @@ def encode(tag_png, lit_png, out_png, out_size, beauty_png=None, orco_png=None):
             if kind == "shirt" and orco is not None:            # PLANAR torso coord -> parallel stripes/hoops
                 U = np.clip((orco[...,0] - TORSO_X0) / TORSO_XR, 0, 1)
                 V = np.clip((orco[...,1] - TORSO_Y0) / TORSO_YR, 0, 1)
-            elif kind == "sleeve" and orco is not None:         # per-arm planar coord (arms at the bbox extremes)
-                ox = orco[...,0]; x1 = TORSO_X0 + TORSO_XR
-                U = np.clip(np.where(ox > 0.5, (ox - x1) / max(1e-3, 1 - x1), ox / max(1e-3, TORSO_X0)), 0, 1)
+            elif kind == "sleeve" and orco is not None:         # cylindrical Kit_UV.x -> lengthwise stripes
+                U = np.clip((orco[...,2] - SLEEVE_U0) / SLEEVE_UR, 0, 1)
                 V = np.clip((orco[...,1] - TORSO_Y0) / TORSO_YR, 0, 1)
             else:
                 U, V = uv_of(m)
