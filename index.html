@@ -116,6 +116,15 @@
     return 0;
   }
   const SLEEVE_STRIPE_N = 5;   // sleeve stripe count (the arm cylinder is narrower than the torso -> fewer stripes match the torso width)
+  // Anti-aliased stripe colour: blend c1<->c2 with a soft ~2px transition at each boundary,
+  // so stripes read smooth like the Blender kit_patterns render instead of hard/blocky.
+  function stripeMix(u, n, c1, c2){
+    const x=Math.min(0.999,Math.max(0,u))*n, fl=Math.floor(x), fr=x-fl, band=fl&1;
+    const d=Math.min(fr,1-fr), aa=0.16;       // distance to nearest stripe edge
+    let t = band;
+    if (d<aa){ const k=(aa-d)/aa*0.5; t = band ? 1-k : k; }   // soften toward the neighbour near the edge
+    return [c1[0]+(c2[0]-c1[0])*t, c1[1]+(c2[1]-c1[1])*t, c1[2]+(c2[2]-c1[2])*t];
+  }
   function kitCols(kit){ const g=n=>PAL[n]||n||"#cccccc";
     return { c1:_hexRGB(g(kit.c1)), c2:_hexRGB(g(kit.c2||kit.c1)), sleeves:_hexRGB(g(kit.sleeves||kit.c1)),
              shorts:_hexRGB(g(kit.shorts||"white")), socks:_hexRGB(g(kit.socks||kit.c1)),
@@ -139,10 +148,10 @@
         continue;
       }
       let shade, col;
-      if (tg===1){ shade=r; col = patVal(kit.p, gg/88, b/88, sN) ? K.c2 : K.c1; }
+      if (tg===1){ shade=r; col = (kit.p==="stripes") ? stripeMix(gg/88, sN, K.c1, K.c2) : (patVal(kit.p, gg/88, b/88, sN) ? K.c2 : K.c1); }
       else if (tg===2){ shade=gg; col=K.shorts; }
       else if (tg===3){ shade=b;  col=K.socks; }
-      else if (tg===4){ shade=(r+gg)/2; col = (kit.sleeveP && patVal(kit.sleeveP, b/88, b/88, slN)) ? K.c2 : K.sleeves; }
+      else if (tg===4){ shade=(r+gg)/2; col = (kit.sleeveP==="stripes") ? stripeMix(b/88, slN, K.sleeves, K.c2) : ((kit.sleeveP && patVal(kit.sleeveP, b/88, b/88, slN)) ? K.c2 : K.sleeves); }
       else if (tg===8){ shade=(gg+b)/2; col=K.collar; }
       else if (tg===9){ shade=(r+b)/2;  col=K.cuff; }
       else if (tg===10){ shade=b;       col=K.sockTop; }
