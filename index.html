@@ -1800,7 +1800,7 @@
     {
       const ht=HBY+HBH, xPad=20;
       // section header: green title left, matchday indicator far right, on a blue rule
-      ctx.font=ttFont(20); ctx.fillStyle=TTX.green; ctx.textAlign="left"; ctx.fillText("PREMIER LEAGUE TABLE", xPad, ht+24);
+      ctx.font=ttFont(20); ctx.fillStyle=TTX.green; ctx.textAlign="left"; ctx.fillText(activeLeagueMeta().name.toUpperCase()+" TABLE", xPad, ht+24);
       ctx.textAlign="right"; ctx.font=ttFont(16); ctx.fillStyle=TTX.yellow;
       ctx.fillText("MATCHDAY "+(CAR.idx+1)+" OF "+CAR.fixtures.length, VW-xPad, ht+24); ctx.textAlign="left";
       ctx.fillStyle="#0044bb"; ctx.fillRect(xPad,ht+30,VW-xPad*2,3);
