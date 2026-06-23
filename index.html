@@ -264,7 +264,7 @@
   const SERVE_Y = 300, GOAL_RESOLVE_Y = 160, NET_GOAL_Y = 150, YBIT = 8;
   const KICK_FRAMES = 6;             // SWF frames from Space to contact (kick anim -> frame 7)
   // Defender = inner man sprite (DefineSprite_151), exact registration origin from swf.xml
-  const DEF_W = 90, DEF_H = 155, DEF_OX = 90, DEF_OY = 156;   // bigger defenders; 2x source -> OX/OY doubled (DEF_W/H = on-screen size, unchanged)
+  const DEF_W = 90, DEF_H = 155, DEF_OX = 45, DEF_OY = 78;   // OX/OY are ON-SCREEN anchors (rel. to W/H) -> stay fixed when DEF_FW/FH bump for 2x source
   const DEF_FW = 268, DEF_FH = 460, DEF_FRAMES = 4;          // defender_sheet: 268x460 frame (2x), 4 pose variants (engine picks 3 distinct/match)
   // defender stage bbox (= opponent.man.hitTest); origin (ox,oy) maps to the opponent placement
   function defBox(d){ return { x0:d.ox-DEF_OX*d.sx, x1:d.ox+(DEF_W-DEF_OX)*d.sx,
@@ -1160,7 +1160,7 @@
   }
 
   // exact: gameplay player placed at scale 1.0 (root); registration origin (101.2,126.5) -> (man._x, man._y)
-  const STRIKER_OX = 218, STRIKER_OY = 324, STRIKER_W = 191, STRIKER_H = 243;   // 3D sprite: 600x764 frame (2x source), body-centre at manX
+  const STRIKER_OX = 109, STRIKER_OY = 162, STRIKER_W = 191, STRIKER_H = 243;   // OX/OY are ON-SCREEN anchors (rel. to W/H), NOT source res -> stay fixed when FW/FH bump
   const STRIKER_FW = 600, STRIKER_FH = 764, STRIKER_FRAMES = 16;   // sheet: frame 0 idle, 1..15 = Shot f1..f15
   const STRIKER_CONTACT = 12;   // sheet frame of the foot-on-ball strike (Shot f12), aligned to the boot tick (owner: one frame earlier)
   function drawStriker() {
