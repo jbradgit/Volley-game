@@ -553,7 +553,7 @@ def apply_cam_state(cam, emp, st):
     cam.location = Vector(st["loc"]); cam.data.ortho_scale = st["scale"]
     emp.location = Vector(st["tgt"])
 
-STRIKER_RES = (300, 382)                       # wider canvas; union auto-fit centres the whole volley arc
+STRIKER_RES = (600, 764)                       # 2x source res for crisp sprites (union auto-fit centres the volley arc)
 STRIKER_TGT = dict(top=12, feet=372, cx=150)   # initial idle fit; correct_for_union then fits all 6 frames
 STRIKER_AZ, STRIKER_EL = 180, 12          # from directly behind (owner pick az180)
 
@@ -662,7 +662,7 @@ def cmd_striker_sheet(idle_fbx, shot_fbx):
     m = _measure(os.path.join(TMP, "sh_idle_enc.png"))
     print(f"STRIKER SHEET {len(frames)} frames @ {R[0]}x{R[1]}; idle bbox {m}; strike at frame {STRIKER_STRIKE_TICK}")
 
-DEF_RES = (134, 230)
+DEF_RES = (268, 460)   # 2x source res for crisp defenders
 DEF_TGT = dict(top=4, feet=226, cx=67)
 DEF_AZ, DEF_EL = 0, 8                       # front-on (owner: defenders face straight front)
 
@@ -775,12 +775,13 @@ def cmd_ball():
     print(f"BALL SHEET {BALL_FRAMES} frames @ {BALL_RES[0]}x{BALL_RES[1]}")
 
 # ---------------- keeper ----------------
-# Render INTO the engine's unified 596x263 canvas at 2x (1192x526), feet anchor at
-# unified (300,197) -> px (600,394). Each frame is then cropped+packed exactly like
-# gen_sprites.py, so the manifest (ox/oy/w/h + frame numbers) and the binding save
-# extents are reproduced and index.html needs no change.
-KEEPER_RES = (1192, 526)
-KEEPER_IDLE_TGT = dict(top=138, feet=394, cx=600)     # idle silhouette -> ~x267-334 y69-198
+# Render INTO the engine's unified 596x263 canvas at KS x (feet anchor unified (300,197)).
+# The manifest stores ox/oy in UNIFIED coords (bbox/KS) + w/h in render px + the scale, so the
+# engine divides w/h by KS to draw at unified size -> binding save extents are preserved at any KS.
+KS = 3                                                 # render scale (was 2); 3 = crisper keeper
+KEEPER_RES = (596*KS, 263*KS)                          # 1788x789
+KEEPER_FEET = (300*KS, 197*KS)                         # feet anchor in render px
+KEEPER_IDLE_TGT = dict(top=69*KS, feet=197*KS, cx=300*KS)     # idle silhouette (unified x267-334 y69-198)
 KEEPER_AZ, KEEPER_EL = 0, 6                            # keeper faces the camera (front)
 KEEPER_DIVE_FRAMES = (7, 40)                           # Diving Save f7->f40 (f40 = full horizontal stretch; f57 was the prone collapse, reached short)
 
@@ -812,11 +813,11 @@ def _pack_keeper(frames):
     sheet = Image.new("RGBA", (SHEET_W, y + rowh + 2), (0, 0, 0, 0)); man = {}
     for fn, im, bb, px_, py_ in places:
         sheet.paste(im, (px_, py_))
-        man[str(fn)] = dict(sheet=0, x=px_, y=py_, w=im.width, h=im.height, ox=bb[0]/2.0, oy=bb[1]/2.0)
+        man[str(fn)] = dict(sheet=0, x=px_, y=py_, w=im.width, h=im.height, ox=bb[0]/KS, oy=bb[1]/KS)
     sheet.save(os.path.join(OUT, "keeper_atlas.png"), optimize=True)
-    json.dump(dict(frames=man), open(os.path.join(OUT, "keeper_atlas.json"), "w"))
+    json.dump(dict(scale=KS, frames=man), open(os.path.join(OUT, "keeper_atlas.json"), "w"))
     def ext(fr):
-        m = man[str(fr)]; return (round(m["ox"]), round(m["ox"]+m["w"]/2), round(m["oy"]), round(m["oy"]+m["h"]/2))
+        m = man[str(fr)]; return (round(m["ox"]), round(m["ox"]+m["w"]/KS), round(m["oy"]), round(m["oy"]+m["h"]/KS))
     print("KEEPER atlas", sheet.size, len(man), "frames")
     print("  idle", ext(1), "target(267,334,69,198)")
     print("  dv99", ext(99), "target(5,178,153,211)")
@@ -885,7 +886,7 @@ def cmd_keeper(idle_fbx, dive_fbx, catch_fbx=None, ndive=None, lit_samples=None)
         cam_c, emp_c = make_ortho_cam(bpy, (mnc + mxc) / 2, KEEPER_AZ, KEEPER_EL, mxc.z - mnc.z)
         apply_cam_state(cam_c, emp_c, st)
         bpy.context.scene.frame_set(cfr)
-        recenter_feet(bpy, cam_c, emp_c, KEEPER_RES, (600, 394))   # keeper feet -> unified (300,197)
+        recenter_feet(bpy, cam_c, emp_c, KEEPER_RES, KEEPER_FEET)   # keeper feet -> unified (300,197)
         frames[fn] = _render_clip_frames(bpy, arm_c, meshes_c, cam_c, [cfr], f"kc{fn}", lit_samples, detail=True)[0]
     _pack_keeper(frames)
 

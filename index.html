@@ -75,10 +75,10 @@
                     logo:"assets/ui/logo.png?v=2",
                     trophyL:"assets/ui/trophy_league.png?v=1", trophyC:"assets/ui/trophy_cup.png?v=1",
                     trophyE:"assets/ui/trophy_euro.png?v=1",   trophyI:"assets/ui/trophy_intl.png?v=1",
-                    katlas:"assets/sprites/keeper_atlas.png?v=m8",
+                    katlas:"assets/sprites/keeper_atlas.png?v=m9",
                     ball:"assets/sprites/ball_sheet.png?v=m2", shadow:"assets/sprites/shadow.png?v=s1",
-                    strikersheet:"assets/sprites/striker_sheet.png?v=m11",
-                    defbase:"assets/sprites/defender_sheet.png?v=m8" };
+                    strikersheet:"assets/sprites/striker_sheet.png?v=m12",
+                    defbase:"assets/sprites/defender_sheet.png?v=m9" };
   let loaded = 0, total = Object.keys(sources).length, assetsReady = false;
   for (const k in sources) {
     const im = new Image();
@@ -197,9 +197,9 @@
       TEAMS=eng; PAL=j.palette; for (const t of eng) TEAMBY[t.slug]=t; rosterStatus="ok"; })
     .catch(e=>{ rosterStatus="error"; try{ console.error("teams.json failed to load:", e); }catch(_){} });
   // Keeper sprite-atlas manifest (per-frame rects + offsets, all 371-frame anims packed).
-  let KMAN = null;
-  fetch("assets/sprites/keeper_atlas.json?v=m8").then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
-    .then(j=>{ KMAN = j.frames; })
+  let KMAN = null, KSCALE = 2;   // KSCALE = atlas export scale (render px per unified px); read from the manifest
+  fetch("assets/sprites/keeper_atlas.json?v=m9").then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
+    .then(j=>{ KMAN = j.frames; KSCALE = j.scale || 2; })
     .catch(e=>{ try{ console.error("keeper_atlas.json failed to load:", e); }catch(_){} });
   // ---- L1 perimeter ad boards: manifest + images (sold sponsor boards just replace files in
   // assets/boards/ + boards.json — no code change). Failure falls back to procedural house boards.
@@ -264,8 +264,8 @@
   const SERVE_Y = 300, GOAL_RESOLVE_Y = 160, NET_GOAL_Y = 150, YBIT = 8;
   const KICK_FRAMES = 6;             // SWF frames from Space to contact (kick anim -> frame 7)
   // Defender = inner man sprite (DefineSprite_151), exact registration origin from swf.xml
-  const DEF_W = 90, DEF_H = 155, DEF_OX = 45, DEF_OY = 78;   // bigger defenders (owner: were child-sized)
-  const DEF_FW = 134, DEF_FH = 230, DEF_FRAMES = 4;          // defender_sheet: 4 per-defender pose variants (engine picks 3 distinct/match)
+  const DEF_W = 90, DEF_H = 155, DEF_OX = 90, DEF_OY = 156;   // bigger defenders; 2x source -> OX/OY doubled (DEF_W/H = on-screen size, unchanged)
+  const DEF_FW = 268, DEF_FH = 460, DEF_FRAMES = 4;          // defender_sheet: 268x460 frame (2x), 4 pose variants (engine picks 3 distinct/match)
   // defender stage bbox (= opponent.man.hitTest); origin (ox,oy) maps to the opponent placement
   function defBox(d){ return { x0:d.ox-DEF_OX*d.sx, x1:d.ox+(DEF_W-DEF_OX)*d.sx,
                                y0:d.oy-DEF_OY*d.sy, y1:d.oy+(DEF_H-DEF_OY)*d.sy }; }
@@ -1155,13 +1155,13 @@
     g.translate(keeperPose.x, KEEPER_STAGE_Y);     // central keeper shuffles x; dives keep x=263
     g.drawImage(sheet, fr.x, fr.y, fr.w, fr.h,
                 (fr.ox - KEEPER_FEET_PX)*KEEPER_SX, (fr.oy - KEEPER_FEET_PY)*KEEPER_SY,
-                (fr.w/2)*KEEPER_SX, (fr.h/2)*KEEPER_SY);   // /2: atlas is exported at 2x
+                (fr.w/KSCALE)*KEEPER_SX, (fr.h/KSCALE)*KEEPER_SY);   // /KSCALE: atlas export scale
     g.restore();
   }
 
   // exact: gameplay player placed at scale 1.0 (root); registration origin (101.2,126.5) -> (man._x, man._y)
-  const STRIKER_OX = 109, STRIKER_OY = 162, STRIKER_W = 191, STRIKER_H = 243;   // 3D sprite: 300x382 frame, az190, body-centre at manX
-  const STRIKER_FW = 300, STRIKER_FH = 382, STRIKER_FRAMES = 16;   // sheet: frame 0 idle, 1..15 = Shot f1..f15
+  const STRIKER_OX = 218, STRIKER_OY = 324, STRIKER_W = 191, STRIKER_H = 243;   // 3D sprite: 600x764 frame (2x source), body-centre at manX
+  const STRIKER_FW = 600, STRIKER_FH = 764, STRIKER_FRAMES = 16;   // sheet: frame 0 idle, 1..15 = Shot f1..f15
   const STRIKER_CONTACT = 12;   // sheet frame of the foot-on-ball strike (Shot f12), aligned to the boot tick (owner: one frame earlier)
   function drawStriker() {
     const sh=SPRITES.striker;
