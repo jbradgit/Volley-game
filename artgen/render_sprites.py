@@ -214,9 +214,10 @@ def render(bpy, px_w, px_h, path, samples=16, denoise=False, hard=True):
     sc.render.filepath = path
     bpy.ops.render.render(write_still=True)
 
-def add_lights(bpy, cam=None, energy=3.2, ambient=0.6):
-    """CAMERA-RELATIVE key light + high ambient (used for BOTH the beauty pass and the
-    lit/shade pass). Idempotent: skips if a sun already exists."""
+def add_lights(bpy, cam=None, energy=4.6, ambient=0.95):
+    """CAMERA-RELATIVE key light + BRIGHT neutral ambient fill (used for BOTH the beauty and the
+    lit/shade pass). Owner: previous lighting was too low -> skin/ball read dark and grey.
+    Idempotent: skips if a sun already exists."""
     from mathutils import Matrix
     if any(o.type == "LIGHT" for o in bpy.context.scene.objects):
         return
@@ -230,7 +231,9 @@ def add_lights(bpy, cam=None, energy=3.2, ambient=0.6):
         so.rotation_euler = (math.radians(55), 0, math.radians(-30))
     bpy.context.scene.collection.objects.link(so)
     amb = bpy.data.worlds.new("w"); amb.use_nodes = True
-    amb.node_tree.nodes["Background"].inputs[1].default_value = ambient
+    bg = amb.node_tree.nodes["Background"]
+    bg.inputs[0].default_value = (0.92, 0.92, 0.95, 1)   # bright neutral fill lifts the shadow side (no dark/grey skin)
+    bg.inputs[1].default_value = ambient
     bpy.context.scene.world = amb
 
 def to_lit(bpy, meshes, cam=None):
@@ -305,7 +308,11 @@ def encode(tag_png, lit_png, out_png, out_size, beauty_png=None, orco_png=None):
         orco = np.asarray(Image.open(orco_png).convert("RGB")).astype(np.float32) / 255.0
     r, g, b, al = tag[...,0], tag[...,1], tag[...,2], tag[...,3]
     vis = al > 120
-    out = np.zeros(tag.shape, np.uint8); out[...,3] = np.where(vis, 255, 0)
+    out = np.zeros(tag.shape, np.uint8)
+    # OUTPUT silhouette eroded 1px -> drops the fuzzy halo edge ring (hair light-fuzz from the
+    # skin-tone backing / AA fringe). Region classification still uses the full `vis`.
+    visE = vis & np.roll(vis,1,0) & np.roll(vis,-1,0) & np.roll(vis,1,1) & np.roll(vis,-1,1)
+    out[...,3] = np.where(visE, 255, 0)
     # Label every visible pixel, then MAJORITY-FILTER the labels to kill the
     # salt-and-pepper speckle at garment/skin boundaries (z-fight + AA fringe).
     SKIN, NLAB = 7, 11    # +8 collar, 9 cuff, 10 sock_top (owner's extra solid kit regions)
@@ -749,11 +756,12 @@ def cmd_ball():
     cam = bpy.data.objects.new("cam", cam_d); cam.location = (0, -6, 0)
     cam.rotation_euler = (math.radians(90), 0, 0)
     bpy.context.scene.collection.objects.link(cam); bpy.context.scene.camera = cam
-    sun = bpy.data.lights.new("s", "SUN"); sun.energy = 2.6; sun.angle = math.radians(15)
+    sun = bpy.data.lights.new("s", "SUN"); sun.energy = 3.6; sun.angle = math.radians(15)
     so = bpy.data.objects.new("s", sun); so.rotation_euler = (math.radians(50), 0, math.radians(-35))
     bpy.context.scene.collection.objects.link(so)
     w = bpy.data.worlds.new("w"); w.use_nodes = True
-    w.node_tree.nodes["Background"].inputs[1].default_value = 0.72; bpy.context.scene.world = w
+    bw = w.node_tree.nodes["Background"]; bw.inputs[0].default_value=(0.95,0.95,0.97,1); bw.inputs[1].default_value = 0.95   # brighter -> white ball, not grey
+    bpy.context.scene.world = w
     axis = Vector((0.32, 0.0, 1.0)).normalized()
     ball.rotation_mode = "AXIS_ANGLE"
     sheet = Image.new("RGBA", (BALL_RES[0]*BALL_FRAMES, BALL_RES[1]), (0, 0, 0, 0))
