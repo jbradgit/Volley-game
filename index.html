@@ -361,7 +361,7 @@
   function initCup(){ return { round:0, out:false, won:false, opp:null, home:true, results:[] }; }
   function initEuro(comp, mySlug){
     if (!comp || !WORLD) return null;
-    const pool=WORLD.euro.filter(t=> comp==='CT' ? t.rating>=8 : t.rating<=8);
+    const pool=WORLD.euro.filter(t=> t.slug!==mySlug && (comp==='CT' ? t.rating>=8 : t.rating<=8));   // never draw the player's own club (foreign leagues: your club is in WORLD.euro)
     const g=shuffle(pool.slice()).slice(0,3).map(t=>t.slug);
     const gt={}; gt[mySlug]={p:0,w:0,d:0,l:0,pts:0};
     for (const sg of g) gt[sg]={p:0,w:0,d:0,l:0,pts:0};
@@ -676,9 +676,9 @@
   function euroNextOpp(ev){ // current European opponent (lazily draws KO opponents)
     const e=CAR.euro;
     if (ev.k<6) return { slug:e.group[ev.k%3], home: ev.k<3 ? (ev.k%2===0) : (ev.k%2===1), ko:false };
-    if (ev.k===6){ if (!e.sfOpp){ const pool=WORLD.euro.filter(t=>e.group.indexOf(t.slug)<0);
+    if (ev.k===6){ if (!e.sfOpp){ const pool=WORLD.euro.filter(t=>e.group.indexOf(t.slug)<0 && t.slug!==CAR.slug);
         e.sfOpp=pool[rnd(pool.length)].slug; } return { slug:e.sfOpp, home:rnd(2)===0, ko:true }; }
-    if (!e.fOpp){ const pool=WORLD.euro.filter(t=>e.group.indexOf(t.slug)<0 && t.slug!==e.sfOpp);
+    if (!e.fOpp){ const pool=WORLD.euro.filter(t=>e.group.indexOf(t.slug)<0 && t.slug!==e.sfOpp && t.slug!==CAR.slug);
       e.fOpp=pool[rnd(pool.length)].slug; }
     return { slug:e.fOpp, home:true, ko:true };
   }
@@ -3068,6 +3068,7 @@
       newCareerSim: function(nation, league, slug){ GMODE="career"; setActiveLeague(league||"ENG"); newCareer("TEST", slug||(TEAMS[0]&&TEAMS[0].slug)||"Liverpool", nation||"Brazil", league||"ENG"); return {cal:CAR.cal.length, leagueId:CAR.leagueId, teams:TEAMS.length, slug:CAR.slug, state}; },
       leaguesSim: function(){ return leagueList().map(id=>({id, name:LEAGUE_META[id].name, teams:(LEAGUES[id]||[]).length})); },
       renderStateSim: function(s){ const prev=state; state=ST[s]||s; try{ render(); } finally { state=prev; } return true; },
+      euroSim: function(){ return CAR.euro ? {comp:CAR.euro.comp, group:CAR.euro.group.slice(), sfOpp:CAR.euro.sfOpp, fOpp:CAR.euro.fOpp, mine:CAR.slug} : null; },
       // HORSE harness: drive the state machine without playing real shots (made = scored the delivery)
       horseStart: function(names, word){ hCount=Math.max(HORSE_MIN,Math.min(HORSE_MAX,(names&&names.length)||2)); hNames=(names||[]).slice(0,6); while(hNames.length<6) hNames.push(""); hWord=word||"HORSE"; beginHorse(); return horseSnap(); },
       horsePlay: function(scored){ horseResolve(!!scored); return horseSnap(); },
