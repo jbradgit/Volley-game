@@ -15,13 +15,18 @@ test("leagues.json loads 5 elite leagues with clubs", async () => {
 
 test("a Spanish-league career uses Spanish clubs and a Spanish slug", async () => {
   const { dbg } = await loadGame();
-  const r = dbg.newCareerSim("Spain", "ESP");
+  const r = dbg.newCareerSim("Spain", "ESP", "RealMadrid");
   assert.equal(r.leagueId, "ESP", "career not in ESP");
-  assert.equal(r.teams, 10, "ESP should have 10 clubs");
-  const std = dbg.standings ? dbg.standings() : null;
-  // the player's club must be one of the league's clubs (not an English one)
-  const espSlugs = ["RealMadrid", "Barcelona", "Valencia", "Deportivo", "Sevilla", "Villarreal", "AthBilbao", "RealSociedad", "Betis", "CeltaVigo"];
-  assert.ok(espSlugs.includes(r.slug), "career slug not a La Liga club: " + r.slug);
+  assert.equal(r.teams, 20, "La Liga should have its full 20 clubs");
+  assert.equal(r.slug, "RealMadrid", "career slug should be the chosen La Liga club, got " + r.slug);
+});
+
+test("all foreign leagues have full real-life sizes", async () => {
+  const { dbg } = await loadGame();
+  const sizes = {}; for (const l of dbg.leaguesSim()) sizes[l.id] = l.teams;
+  assert.equal(sizes.ESP, 20, "La Liga"); assert.equal(sizes.ITA, 20, "Serie A");
+  assert.equal(sizes.GER, 18, "Bundesliga"); assert.equal(sizes.FRA, 20, "Ligue 1");
+  assert.equal(sizes.ENG, 20, "Premier League");
 });
 
 test("the league-select screen renders without error", async () => {

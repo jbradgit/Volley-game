@@ -1,68 +1,751 @@
 {
- "_note": "Elite foreign leagues for career mode (E3). ENG (default) lives in teams.json. Clubs use the compact derive-field kit schema (kitFor derives h/a from shirt/pattern/stripe2/sleeves); explicit kits only for non-stripe patterns. targetMod/drawMod scale the AI strength curve only, never the per-match score targets.",
+ "_note": "Elite foreign leagues (E3), full real-life sizes. ENG (default) in teams.json. Derive-field kit schema; halves get explicit kits. targetMod/drawMod scale the AI strength curve only.",
  "leagues": [
   {
-   "id": "ESP", "name": "La Liga", "country": "Spain", "targetMod": 0.95, "drawMod": 1.0,
-   "flag": { "t": "spain", "c": ["#d62718", "#ffce3d"] },
+   "id": "ESP",
+   "name": "La Liga",
+   "country": "Spain",
+   "targetMod": 0.95,
+   "drawMod": 1.0,
+   "flag": {
+    "t": "spain",
+    "c": [
+     "#d62718",
+     "#ffce3d"
+    ]
+   },
    "teams": [
-    { "slug": "RealMadrid", "name": "Real Madrid", "rating": 10, "shirt": "white", "shorts": "white", "socks": "white" },
-    { "slug": "Barcelona", "name": "Barcelona", "rating": 9, "shirt": "blue", "shorts": "darkblue", "socks": "darkblue", "pattern": "stripes", "stripe2": "claret" },
-    { "slug": "Valencia", "name": "Valencia", "rating": 8, "shirt": "white", "shorts": "black", "socks": "white" },
-    { "slug": "Deportivo", "name": "Deportivo", "rating": 8, "shirt": "blue", "shorts": "navy", "socks": "blue", "pattern": "stripes", "stripe2": "white" },
-    { "slug": "Sevilla", "name": "Sevilla", "rating": 7, "shirt": "white", "shorts": "white", "socks": "red" },
-    { "slug": "Villarreal", "name": "Villarreal", "rating": 6, "shirt": "yellow", "shorts": "navy", "socks": "yellow" },
-    { "slug": "AthBilbao", "name": "Athletic Bilbao", "rating": 7, "shirt": "red", "shorts": "white", "socks": "red", "pattern": "stripes", "stripe2": "white" },
-    { "slug": "RealSociedad", "name": "Real Sociedad", "rating": 6, "shirt": "blue", "shorts": "white", "socks": "blue", "pattern": "stripes", "stripe2": "white" },
-    { "slug": "Betis", "name": "Real Betis", "rating": 5, "shirt": "green", "shorts": "white", "socks": "green", "pattern": "stripes", "stripe2": "white" },
-    { "slug": "CeltaVigo", "name": "Celta Vigo", "rating": 5, "shirt": "skyblue", "shorts": "white", "socks": "skyblue" }
+    {
+     "slug": "RealMadrid",
+     "name": "Real Madrid",
+     "rating": 10,
+     "shirt": "white",
+     "shorts": "white",
+     "socks": "white"
+    },
+    {
+     "slug": "Barcelona",
+     "name": "Barcelona",
+     "rating": 9,
+     "shirt": "blue",
+     "shorts": "darkblue",
+     "socks": "darkblue",
+     "pattern": "stripes",
+     "stripe2": "claret"
+    },
+    {
+     "slug": "Valencia",
+     "name": "Valencia",
+     "rating": 8,
+     "shirt": "white",
+     "shorts": "black",
+     "socks": "white"
+    },
+    {
+     "slug": "Deportivo",
+     "name": "Deportivo",
+     "rating": 8,
+     "shirt": "blue",
+     "shorts": "navy",
+     "socks": "blue",
+     "pattern": "stripes",
+     "stripe2": "white"
+    },
+    {
+     "slug": "AtleticoMadrid",
+     "name": "Atletico Madrid",
+     "rating": 8,
+     "shirt": "red",
+     "shorts": "navy",
+     "socks": "red",
+     "pattern": "stripes",
+     "stripe2": "white"
+    },
+    {
+     "slug": "Sevilla",
+     "name": "Sevilla",
+     "rating": 7,
+     "shirt": "white",
+     "shorts": "white",
+     "socks": "red"
+    },
+    {
+     "slug": "AthBilbao",
+     "name": "Athletic Bilbao",
+     "rating": 7,
+     "shirt": "red",
+     "shorts": "white",
+     "socks": "red",
+     "pattern": "stripes",
+     "stripe2": "white"
+    },
+    {
+     "slug": "Villarreal",
+     "name": "Villarreal",
+     "rating": 6,
+     "shirt": "yellow",
+     "shorts": "navy",
+     "socks": "yellow"
+    },
+    {
+     "slug": "RealSociedad",
+     "name": "Real Sociedad",
+     "rating": 6,
+     "shirt": "blue",
+     "shorts": "white",
+     "socks": "blue",
+     "pattern": "stripes",
+     "stripe2": "white"
+    },
+    {
+     "slug": "Betis",
+     "name": "Real Betis",
+     "rating": 6,
+     "shirt": "green",
+     "shorts": "white",
+     "socks": "green",
+     "pattern": "stripes",
+     "stripe2": "white"
+    },
+    {
+     "slug": "Zaragoza",
+     "name": "Zaragoza",
+     "rating": 6,
+     "shirt": "white",
+     "shorts": "blue",
+     "socks": "white"
+    },
+    {
+     "slug": "CeltaVigo",
+     "name": "Celta Vigo",
+     "rating": 5,
+     "shirt": "skyblue",
+     "shorts": "white",
+     "socks": "skyblue"
+    },
+    {
+     "slug": "Mallorca",
+     "name": "Mallorca",
+     "rating": 5,
+     "shirt": "red",
+     "shorts": "black",
+     "socks": "red"
+    },
+    {
+     "slug": "Espanyol",
+     "name": "Espanyol",
+     "rating": 5,
+     "shirt": "blue",
+     "shorts": "white",
+     "socks": "blue",
+     "pattern": "stripes",
+     "stripe2": "white"
+    },
+    {
+     "slug": "Malaga",
+     "name": "Malaga",
+     "rating": 5,
+     "shirt": "blue",
+     "shorts": "white",
+     "socks": "blue"
+    },
+    {
+     "slug": "Osasuna",
+     "name": "Osasuna",
+     "rating": 4,
+     "shirt": "red",
+     "shorts": "navy",
+     "socks": "red"
+    },
+    {
+     "slug": "RacingSantander",
+     "name": "Racing Santander",
+     "rating": 4,
+     "shirt": "white",
+     "shorts": "green",
+     "socks": "white",
+     "pattern": "stripes",
+     "stripe2": "green"
+    },
+    {
+     "slug": "Getafe",
+     "name": "Getafe",
+     "rating": 4,
+     "shirt": "blue",
+     "shorts": "white",
+     "socks": "blue"
+    },
+    {
+     "slug": "Levante",
+     "name": "Levante",
+     "rating": 4,
+     "shirt": "claret",
+     "shorts": "blue",
+     "socks": "claret",
+     "pattern": "stripes",
+     "stripe2": "blue"
+    },
+    {
+     "slug": "Numancia",
+     "name": "Numancia",
+     "rating": 3,
+     "shirt": "red",
+     "shorts": "white",
+     "socks": "red"
+    }
    ]
   },
   {
-   "id": "ITA", "name": "Serie A", "country": "Italy", "targetMod": 0.9, "drawMod": 1.1,
-   "flag": { "t": "v", "c": ["#159b4a", "#ffffff", "#d62718"] },
+   "id": "ITA",
+   "name": "Serie A",
+   "country": "Italy",
+   "targetMod": 0.9,
+   "drawMod": 1.1,
+   "flag": {
+    "t": "v",
+    "c": [
+     "#159b4a",
+     "#ffffff",
+     "#d62718"
+    ]
+   },
    "teams": [
-    { "slug": "Juventus", "name": "Juventus", "rating": 9, "shirt": "white", "shorts": "white", "socks": "black", "pattern": "stripes", "stripe2": "black" },
-    { "slug": "ACMilan", "name": "AC Milan", "rating": 10, "shirt": "red", "shorts": "white", "socks": "black", "pattern": "stripes", "stripe2": "black" },
-    { "slug": "InterMilan", "name": "Inter Milan", "rating": 8, "shirt": "blue", "shorts": "black", "socks": "black", "pattern": "stripes", "stripe2": "black" },
-    { "slug": "Roma", "name": "Roma", "rating": 8, "shirt": "claret", "shorts": "white", "socks": "claret", "sleeves": "orange" },
-    { "slug": "Lazio", "name": "Lazio", "rating": 7, "shirt": "skyblue", "shorts": "white", "socks": "skyblue" },
-    { "slug": "Fiorentina", "name": "Fiorentina", "rating": 7, "shirt": "#6a2c8f", "shorts": "#6a2c8f", "socks": "#6a2c8f" },
-    { "slug": "Parma", "name": "Parma", "rating": 6, "shirt": "white", "shorts": "blue", "socks": "white" },
-    { "slug": "Napoli", "name": "Napoli", "rating": 6, "shirt": "skyblue", "shorts": "white", "socks": "skyblue" },
-    { "slug": "Udinese", "name": "Udinese", "rating": 5, "shirt": "black", "shorts": "black", "socks": "white", "pattern": "stripes", "stripe2": "white" },
-    { "slug": "Sampdoria", "name": "Sampdoria", "rating": 5, "shirt": "blue", "shorts": "white", "socks": "blue" }
+    {
+     "slug": "ACMilan",
+     "name": "AC Milan",
+     "rating": 10,
+     "shirt": "red",
+     "shorts": "white",
+     "socks": "black",
+     "pattern": "stripes",
+     "stripe2": "black"
+    },
+    {
+     "slug": "Juventus",
+     "name": "Juventus",
+     "rating": 9,
+     "shirt": "white",
+     "shorts": "white",
+     "socks": "black",
+     "pattern": "stripes",
+     "stripe2": "black"
+    },
+    {
+     "slug": "InterMilan",
+     "name": "Inter Milan",
+     "rating": 8,
+     "shirt": "blue",
+     "shorts": "black",
+     "socks": "black",
+     "pattern": "stripes",
+     "stripe2": "black"
+    },
+    {
+     "slug": "Roma",
+     "name": "Roma",
+     "rating": 8,
+     "shirt": "claret",
+     "shorts": "white",
+     "socks": "claret",
+     "sleeves": "orange"
+    },
+    {
+     "slug": "Lazio",
+     "name": "Lazio",
+     "rating": 7,
+     "shirt": "skyblue",
+     "shorts": "white",
+     "socks": "skyblue"
+    },
+    {
+     "slug": "Fiorentina",
+     "name": "Fiorentina",
+     "rating": 7,
+     "shirt": "#6a2c8f",
+     "shorts": "#6a2c8f",
+     "socks": "#6a2c8f"
+    },
+    {
+     "slug": "Parma",
+     "name": "Parma",
+     "rating": 7,
+     "shirt": "white",
+     "shorts": "blue",
+     "socks": "white"
+    },
+    {
+     "slug": "Napoli",
+     "name": "Napoli",
+     "rating": 6,
+     "shirt": "skyblue",
+     "shorts": "white",
+     "socks": "skyblue"
+    },
+    {
+     "slug": "Udinese",
+     "name": "Udinese",
+     "rating": 5,
+     "shirt": "black",
+     "shorts": "black",
+     "socks": "white",
+     "pattern": "stripes",
+     "stripe2": "white"
+    },
+    {
+     "slug": "Sampdoria",
+     "name": "Sampdoria",
+     "rating": 5,
+     "shirt": "blue",
+     "shorts": "white",
+     "socks": "blue"
+    },
+    {
+     "slug": "Bologna",
+     "name": "Bologna",
+     "rating": 5,
+     "shirt": "red",
+     "shorts": "blue",
+     "socks": "red",
+     "pattern": "stripes",
+     "stripe2": "blue"
+    },
+    {
+     "slug": "Atalanta",
+     "name": "Atalanta",
+     "rating": 5,
+     "shirt": "blue",
+     "shorts": "black",
+     "socks": "blue",
+     "pattern": "stripes",
+     "stripe2": "black"
+    },
+    {
+     "slug": "Lecce",
+     "name": "Lecce",
+     "rating": 4,
+     "shirt": "yellow",
+     "shorts": "red",
+     "socks": "yellow"
+    },
+    {
+     "slug": "Chievo",
+     "name": "Chievo",
+     "rating": 4,
+     "shirt": "yellow",
+     "shorts": "blue",
+     "socks": "yellow"
+    },
+    {
+     "slug": "Brescia",
+     "name": "Brescia",
+     "rating": 4,
+     "shirt": "blue",
+     "shorts": "white",
+     "socks": "blue"
+    },
+    {
+     "slug": "Reggina",
+     "name": "Reggina",
+     "rating": 4,
+     "shirt": "claret",
+     "shorts": "white",
+     "socks": "claret"
+    },
+    {
+     "slug": "Perugia",
+     "name": "Perugia",
+     "rating": 3,
+     "shirt": "red",
+     "shorts": "white",
+     "socks": "red"
+    },
+    {
+     "slug": "Empoli",
+     "name": "Empoli",
+     "rating": 3,
+     "shirt": "blue",
+     "shorts": "white",
+     "socks": "blue"
+    },
+    {
+     "slug": "Siena",
+     "name": "Siena",
+     "rating": 3,
+     "shirt": "white",
+     "shorts": "black",
+     "socks": "white"
+    },
+    {
+     "slug": "Modena",
+     "name": "Modena",
+     "rating": 3,
+     "shirt": "yellow",
+     "shorts": "blue",
+     "socks": "yellow"
+    }
    ]
   },
   {
-   "id": "GER", "name": "Bundesliga", "country": "Germany", "targetMod": 0.9, "drawMod": 0.9,
-   "flag": { "t": "h", "c": ["#111111", "#d62718", "#ffce3d"] },
+   "id": "GER",
+   "name": "Bundesliga",
+   "country": "Germany",
+   "targetMod": 0.9,
+   "drawMod": 0.9,
+   "flag": {
+    "t": "h",
+    "c": [
+     "#111111",
+     "#d62718",
+     "#ffce3d"
+    ]
+   },
    "teams": [
-    { "slug": "BayernMunich", "name": "Bayern Munich", "rating": 10, "shirt": "red", "shorts": "red", "socks": "red" },
-    { "slug": "Dortmund", "name": "Dortmund", "rating": 8, "shirt": "yellow", "shorts": "black", "socks": "yellow" },
-    { "slug": "Leverkusen", "name": "Leverkusen", "rating": 8, "shirt": "red", "shorts": "black", "socks": "red" },
-    { "slug": "Schalke", "name": "Schalke", "rating": 7, "shirt": "blue", "shorts": "white", "socks": "blue" },
-    { "slug": "WerderBremen", "name": "Werder Bremen", "rating": 7, "shirt": "green", "shorts": "white", "socks": "green" },
-    { "slug": "Stuttgart", "name": "Stuttgart", "rating": 6, "shirt": "white", "shorts": "white", "socks": "red" },
-    { "slug": "Hamburg", "name": "Hamburg", "rating": 6, "shirt": "white", "shorts": "red", "socks": "white" },
-    { "slug": "Wolfsburg", "name": "Wolfsburg", "rating": 5, "shirt": "green", "shorts": "green", "socks": "green" },
-    { "slug": "Gladbach", "name": "M'gladbach", "rating": 5, "shirt": "white", "shorts": "white", "socks": "green" },
-    { "slug": "Hertha", "name": "Hertha Berlin", "rating": 5, "shirt": "blue", "shorts": "white", "socks": "blue" }
+    {
+     "slug": "BayernMunich",
+     "name": "Bayern Munich",
+     "rating": 10,
+     "shirt": "red",
+     "shorts": "red",
+     "socks": "red"
+    },
+    {
+     "slug": "Dortmund",
+     "name": "Dortmund",
+     "rating": 8,
+     "shirt": "yellow",
+     "shorts": "black",
+     "socks": "yellow"
+    },
+    {
+     "slug": "Leverkusen",
+     "name": "Leverkusen",
+     "rating": 8,
+     "shirt": "red",
+     "shorts": "black",
+     "socks": "red"
+    },
+    {
+     "slug": "Schalke",
+     "name": "Schalke",
+     "rating": 7,
+     "shirt": "blue",
+     "shorts": "white",
+     "socks": "blue"
+    },
+    {
+     "slug": "WerderBremen",
+     "name": "Werder Bremen",
+     "rating": 7,
+     "shirt": "green",
+     "shorts": "white",
+     "socks": "green"
+    },
+    {
+     "slug": "Stuttgart",
+     "name": "Stuttgart",
+     "rating": 6,
+     "shirt": "white",
+     "shorts": "white",
+     "socks": "red"
+    },
+    {
+     "slug": "Hamburg",
+     "name": "Hamburg",
+     "rating": 6,
+     "shirt": "white",
+     "shorts": "red",
+     "socks": "white"
+    },
+    {
+     "slug": "Wolfsburg",
+     "name": "Wolfsburg",
+     "rating": 5,
+     "shirt": "green",
+     "shorts": "green",
+     "socks": "green"
+    },
+    {
+     "slug": "Gladbach",
+     "name": "M'gladbach",
+     "rating": 5,
+     "shirt": "white",
+     "shorts": "white",
+     "socks": "green"
+    },
+    {
+     "slug": "Hertha",
+     "name": "Hertha Berlin",
+     "rating": 5,
+     "shirt": "blue",
+     "shorts": "white",
+     "socks": "blue"
+    },
+    {
+     "slug": "Kaiserslautern",
+     "name": "Kaiserslautern",
+     "rating": 5,
+     "shirt": "red",
+     "shorts": "white",
+     "socks": "red"
+    },
+    {
+     "slug": "HansaRostock",
+     "name": "Hansa Rostock",
+     "rating": 4,
+     "shirt": "blue",
+     "shorts": "white",
+     "socks": "blue"
+    },
+    {
+     "slug": "Bochum",
+     "name": "Bochum",
+     "rating": 4,
+     "shirt": "blue",
+     "shorts": "white",
+     "socks": "blue"
+    },
+    {
+     "slug": "Hannover",
+     "name": "Hannover",
+     "rating": 4,
+     "shirt": "red",
+     "shorts": "black",
+     "socks": "red"
+    },
+    {
+     "slug": "Nuremberg",
+     "name": "Nuremberg",
+     "rating": 4,
+     "shirt": "red",
+     "shorts": "black",
+     "socks": "red"
+    },
+    {
+     "slug": "Bielefeld",
+     "name": "Bielefeld",
+     "rating": 3,
+     "shirt": "blue",
+     "shorts": "white",
+     "socks": "blue"
+    },
+    {
+     "slug": "Freiburg",
+     "name": "Freiburg",
+     "rating": 3,
+     "shirt": "red",
+     "shorts": "black",
+     "socks": "red"
+    },
+    {
+     "slug": "Cottbus",
+     "name": "Energie Cottbus",
+     "rating": 3,
+     "shirt": "red",
+     "shorts": "white",
+     "socks": "red"
+    }
    ]
   },
   {
-   "id": "FRA", "name": "Ligue 1", "country": "France", "targetMod": 0.9, "drawMod": 1.0,
-   "flag": { "t": "v", "c": ["#1b3f9b", "#ffffff", "#d62718"] },
+   "id": "FRA",
+   "name": "Ligue 1",
+   "country": "France",
+   "targetMod": 0.9,
+   "drawMod": 1.0,
+   "flag": {
+    "t": "v",
+    "c": [
+     "#1b3f9b",
+     "#ffffff",
+     "#d62718"
+    ]
+   },
    "teams": [
-    { "slug": "Lyon", "name": "Lyon", "rating": 9, "shirt": "white", "shorts": "white", "socks": "white", "sleeves": "blue" },
-    { "slug": "Monaco", "name": "Monaco", "rating": 8, "shirt": "red", "shorts": "white", "socks": "white", "kits": { "h": { "p": "halves", "c1": "red", "c2": "white", "shorts": "white", "socks": "white" }, "a": { "p": "solid", "c1": "navy", "shorts": "navy", "socks": "navy" } } },
-    { "slug": "Marseille", "name": "Marseille", "rating": 7, "shirt": "white", "shorts": "white", "socks": "white", "sleeves": "skyblue" },
-    { "slug": "PSG", "name": "Paris SG", "rating": 7, "shirt": "darkblue", "shorts": "darkblue", "socks": "darkblue", "pattern": "stripes", "stripe2": "red" },
-    { "slug": "Bordeaux", "name": "Bordeaux", "rating": 7, "shirt": "navy", "shorts": "navy", "socks": "navy" },
-    { "slug": "Lens", "name": "Lens", "rating": 6, "shirt": "yellow", "shorts": "red", "socks": "yellow", "pattern": "stripes", "stripe2": "red" },
-    { "slug": "Lille", "name": "Lille", "rating": 6, "shirt": "red", "shorts": "white", "socks": "red" },
-    { "slug": "Nantes", "name": "Nantes", "rating": 5, "shirt": "yellow", "shorts": "green", "socks": "yellow" },
-    { "slug": "Auxerre", "name": "Auxerre", "rating": 5, "shirt": "white", "shorts": "blue", "socks": "white" },
-    { "slug": "Rennes", "name": "Rennes", "rating": 5, "shirt": "red", "shorts": "black", "socks": "red", "pattern": "stripes", "stripe2": "black" }
+    {
+     "slug": "Lyon",
+     "name": "Lyon",
+     "rating": 9,
+     "shirt": "white",
+     "shorts": "white",
+     "socks": "white",
+     "sleeves": "blue"
+    },
+    {
+     "slug": "Monaco",
+     "name": "Monaco",
+     "rating": 8,
+     "shirt": "red",
+     "shorts": "white",
+     "socks": "white",
+     "kits": {
+      "h": {
+       "p": "halves",
+       "c1": "red",
+       "c2": "white",
+       "shorts": "white",
+       "socks": "white"
+      },
+      "a": {
+       "p": "solid",
+       "c1": "navy",
+       "shorts": "navy",
+       "socks": "navy"
+      }
+     }
+    },
+    {
+     "slug": "Marseille",
+     "name": "Marseille",
+     "rating": 7,
+     "shirt": "white",
+     "shorts": "white",
+     "socks": "white",
+     "sleeves": "skyblue"
+    },
+    {
+     "slug": "PSG",
+     "name": "Paris SG",
+     "rating": 7,
+     "shirt": "darkblue",
+     "shorts": "darkblue",
+     "socks": "darkblue",
+     "pattern": "stripes",
+     "stripe2": "red"
+    },
+    {
+     "slug": "Bordeaux",
+     "name": "Bordeaux",
+     "rating": 7,
+     "shirt": "navy",
+     "shorts": "navy",
+     "socks": "navy"
+    },
+    {
+     "slug": "Lens",
+     "name": "Lens",
+     "rating": 6,
+     "shirt": "yellow",
+     "shorts": "red",
+     "socks": "yellow",
+     "pattern": "stripes",
+     "stripe2": "red"
+    },
+    {
+     "slug": "Lille",
+     "name": "Lille",
+     "rating": 6,
+     "shirt": "red",
+     "shorts": "white",
+     "socks": "red"
+    },
+    {
+     "slug": "Nantes",
+     "name": "Nantes",
+     "rating": 5,
+     "shirt": "yellow",
+     "shorts": "green",
+     "socks": "yellow"
+    },
+    {
+     "slug": "Auxerre",
+     "name": "Auxerre",
+     "rating": 5,
+     "shirt": "white",
+     "shorts": "blue",
+     "socks": "white"
+    },
+    {
+     "slug": "Rennes",
+     "name": "Rennes",
+     "rating": 5,
+     "shirt": "red",
+     "shorts": "black",
+     "socks": "red",
+     "pattern": "stripes",
+     "stripe2": "black"
+    },
+    {
+     "slug": "Sochaux",
+     "name": "Sochaux",
+     "rating": 5,
+     "shirt": "yellow",
+     "shorts": "blue",
+     "socks": "yellow"
+    },
+    {
+     "slug": "Strasbourg",
+     "name": "Strasbourg",
+     "rating": 4,
+     "shirt": "blue",
+     "shorts": "white",
+     "socks": "blue"
+    },
+    {
+     "slug": "Montpellier",
+     "name": "Montpellier",
+     "rating": 4,
+     "shirt": "blue",
+     "shorts": "orange",
+     "socks": "blue"
+    },
+    {
+     "slug": "Bastia",
+     "name": "Bastia",
+     "rating": 4,
+     "shirt": "blue",
+     "shorts": "white",
+     "socks": "blue"
+    },
+    {
+     "slug": "Guingamp",
+     "name": "Guingamp",
+     "rating": 4,
+     "shirt": "red",
+     "shorts": "black",
+     "socks": "red",
+     "pattern": "stripes",
+     "stripe2": "black"
+    },
+    {
+     "slug": "Toulouse",
+     "name": "Toulouse",
+     "rating": 4,
+     "shirt": "#6a2c8f",
+     "shorts": "white",
+     "socks": "#6a2c8f"
+    },
+    {
+     "slug": "Nice",
+     "name": "Nice",
+     "rating": 4,
+     "shirt": "red",
+     "shorts": "black",
+     "socks": "red"
+    },
+    {
+     "slug": "Troyes",
+     "name": "Troyes",
+     "rating": 3,
+     "shirt": "blue",
+     "shorts": "white",
+     "socks": "blue"
+    },
+    {
+     "slug": "Sedan",
+     "name": "Sedan",
+     "rating": 3,
+     "shirt": "green",
+     "shorts": "red",
+     "socks": "green"
+    },
+    {
+     "slug": "LeHavre",
+     "name": "Le Havre",
+     "rating": 3,
+     "shirt": "skyblue",
+     "shorts": "navy",
+     "socks": "skyblue"
+    }
    ]
   }
  ]
