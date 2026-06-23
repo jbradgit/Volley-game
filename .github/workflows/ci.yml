@@ -21,5 +21,5 @@ jobs:
           node-version: "20"
       - name: Smoke test (one golden season; must print SMOKE PASS)
         run: node ci/smoke.js
-      - name: Golden regression suites (physics + career + horse)
-        run: node --test ci/physics.test.js ci/career.test.js ci/horse.test.js
+      - name: Golden regression suites (physics + career + horse + leagues)
+        run: node --test ci/physics.test.js ci/career.test.js ci/horse.test.js ci/leagues.test.js

@@ -166,12 +166,14 @@
   }
   // Team roster (kits + ratings) for career mode.
   let TEAMS = [], TEAMBY = {}, PAL = {};
+  let LEAGUES = {}, LEAGUE_META = {}, LG_DIFF = 1.0;   // leagueId -> sorted teams array / meta; LG_DIFF = active league AI strength (England 1.0 hardest)
   let rosterStatus = "loading";   // loading | ok | error  (surfaced on the menu so failures aren't silent)
   fetch("assets/teams.json")
     .then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
     .then(j=>{
-      TEAMS=j.teams.slice().sort((a,b)=>a.name.localeCompare(b.name));   // club-select listed A–Z
-      PAL=j.palette; for (const t of TEAMS) TEAMBY[t.slug]=t; rosterStatus="ok"; })
+      const eng=j.teams.slice().sort((a,b)=>a.name.localeCompare(b.name));   // club-select listed A–Z
+      LEAGUES.ENG=eng; LEAGUE_META.ENG={id:"ENG",name:"Premier League",country:"England",targetMod:1.0,drawMod:1.0,flag:{t:"cross",c:["#ffffff","#d62718"]}};
+      TEAMS=eng; PAL=j.palette; for (const t of eng) TEAMBY[t.slug]=t; rosterStatus="ok"; })
     .catch(e=>{ rosterStatus="error"; try{ console.error("teams.json failed to load:", e); }catch(_){} });
   // Keeper sprite-atlas manifest (per-frame rects + offsets, all 371-frame anims packed).
   let KMAN = null;
@@ -208,6 +210,21 @@
       for (const t of [].concat(j.euro||[], j.nations||[], j.minnows||[]))
         if (!TEAMBY[t.slug]) TEAMBY[t.slug]=t; })        // kits/ratings join the live-recolour lookup
     .catch(e=>{ worldStatus="error"; try{ console.error("world.json failed to load:", e); }catch(_){} });
+  // ---- foreign leagues (career mode E3): elite leagues you can start a career in ----
+  let leaguesStatus="loading";
+  fetch("assets/world/leagues.json?v=1")
+    .then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
+    .then(j=>{ for (const lg of (j.leagues||[])){
+        LEAGUES[lg.id]=lg.teams.slice().sort((a,b)=>a.name.localeCompare(b.name));
+        LEAGUE_META[lg.id]={id:lg.id, name:lg.name, country:lg.country, targetMod:lg.targetMod||1, drawMod:lg.drawMod||1, flag:lg.flag};
+        for (const t of lg.teams) if(!TEAMBY[t.slug]) TEAMBY[t.slug]=t; }
+      leaguesStatus="ok";
+      if (CAR && CAR.leagueId) setActiveLeague(CAR.leagueId); })   // re-apply if a foreign career was already loaded
+    .catch(e=>{ leaguesStatus="error"; try{ console.error("leagues.json failed to load:", e); }catch(_){} });
+  function setActiveLeague(id){ if (LEAGUES[id]) TEAMS = LEAGUES[id]; else if (LEAGUES.ENG) TEAMS = LEAGUES.ENG;
+    LG_DIFF = (LEAGUE_META[id] && LEAGUE_META[id].targetMod) || 1.0; }   // scales the league-sim AI strength only (sacred physics untouched)
+  function leagueList(){ return ["ENG","ESP","ITA","GER","FRA"].filter(id=>LEAGUE_META[id]); }
+  function activeLeagueMeta(){ return LEAGUE_META[(CAR&&CAR.leagueId)||"ENG"] || LEAGUE_META.ENG || {name:"League",targetMod:1,drawMod:1}; }
   function nationOf(slug){ return ((WORLD&&WORLD.nations)||[]).find(n=>n.slug===slug)||null; }
 
   // Keeper labelled animation ranges actually used by the original (frame_10 / frame_9):
@@ -268,7 +285,7 @@
   };
 
   // ---- Game state ----
-  const ST = { MENU:"menu", NAME:"name", CLUBSEL:"clubsel", TABLE:"table", SEASONEND:"seasonend",
+  const ST = { MENU:"menu", NAME:"name", CLUBSEL:"clubsel", LEAGUESEL:"leaguesel", TABLE:"table", SEASONEND:"seasonend",
                INBOX:"inbox", EMAIL:"email", TROPHY:"trophy", NATSEL:"natsel", TRNHUB:"trnhub",
                TITLE:"title", COUNTDOWN:"countdown", SERVE:"serve", FLIGHT:"flight", RESULT:"result",
                MATCHEND:"matchend", OVER:"over",
@@ -302,6 +319,7 @@
         c.nation = c.nation || "England"; c.caps = c.caps||0; c.intlGoals = c.intlGoals||0;
         c.trn = null; c.trnDone = false;
       }
+      if (c && !c.leagueId) c.leagueId = "ENG";                            // migrate pre-foreign-league saves
       return c;
     } catch(e){ return null; }
   }
@@ -321,19 +339,25 @@
   // ---- season calendar: league matchdays with cup / European fixtures slotted between ----
   const CUP_AFTER=[6,12,19,26,33], EURO_G_AFTER=[4,9,14,18,23,27], EURO_SF_AFTER=30, EURO_F_AFTER=35;
   const CUP_ROUNDS=["ROUND OF 32","ROUND OF 16","QUARTER-FINAL","SEMI-FINAL","FINAL"];
-  function buildCalendar(hasEuro){
+  function buildCalendar(hasEuro, mds){
+    // mds = league matchdays (=(teams-1)*2). England=38; foreign leagues scale the cup/Euro
+    // slots proportionally so any league size keeps the same competition shape.
+    const N = mds || 38, scale = x => N===38 ? x : Math.max(1, Math.round(x/38*N));
+    const cupAfter = CUP_AFTER.map(scale), euroGAfter = EURO_G_AFTER.map(scale);
+    const euroSF = scale(EURO_SF_AFTER), euroF = scale(EURO_F_AFTER);
     const cal=[];
-    for (let md=0; md<38; md++){
+    for (let md=0; md<N; md++){
       cal.push({t:'L'});
-      const after=md+1, ci=CUP_AFTER.indexOf(after);
+      const after=md+1, ci=cupAfter.indexOf(after);
       if (ci>=0) cal.push({t:'C', r:ci});
-      if (hasEuro){ const ei=EURO_G_AFTER.indexOf(after);
+      if (hasEuro){ const ei=euroGAfter.indexOf(after);
         if (ei>=0) cal.push({t:'E', k:ei});
-        if (after===EURO_SF_AFTER) cal.push({t:'E', k:6});
-        if (after===EURO_F_AFTER)  cal.push({t:'E', k:7}); }
+        if (after===euroSF) cal.push({t:'E', k:6});
+        if (after===euroF)  cal.push({t:'E', k:7}); }
     }
     return cal;
   }
+  function leagueMatchdays(){ return Math.max(2, (TEAMS.length-1)*2); }   // double round-robin
   function initCup(){ return { round:0, out:false, won:false, opp:null, home:true, results:[] }; }
   function initEuro(comp, mySlug){
     if (!comp || !WORLD) return null;
@@ -357,11 +381,12 @@
     while (CAR.calIdx < CAR.cal.length && evDead(CAR.cal[CAR.calIdx])) CAR.calIdx++;
     return CAR.calIdx < CAR.cal.length ? CAR.cal[CAR.calIdx] : null;
   }
-  function newCareer(name, slug, nation){
-    CAR = { name:name||"You", slug, season:1, idx:0, fixtures:makeFixtures(slug),
+  function newCareer(name, slug, nation, leagueId){
+    setActiveLeague(leagueId||"ENG");
+    CAR = { name:name||"You", slug, season:1, idx:0, leagueId:leagueId||"ENG", fixtures:makeFixtures(slug),
             table:freshTable(), news:[], titles:0, form:[], titleOdds:null,
             nation:nation||"England", caps:0, intlGoals:0, trophies:[],
-            cup:initCup(), euro:null, nextEuro:null, cal:buildCalendar(false), calIdx:0,
+            cup:initCup(), euro:null, nextEuro:null, cal:buildCalendar(false, leagueMatchdays()), calIdx:0,
             trn:null, trnDone:false };
     CAR.news.unshift(name+" signs for "+TEAMBY[slug].name+"!");
     saveCareer();
@@ -380,7 +405,7 @@
   // ODDS_EXP makes the strength curve convex so elite clubs stay elite while mid-table
   // drops to realistic totals; the observed-ppg blend is capped so leaders don't regress.
   const ODDS_W0 = 0.16, ODDS_WS = 0.52, ODDS_EXP = 1.4, ODDS_DRAW = 0.24, ODDS_FORM = 0.14;
-  const winProb = (s)=> clamp(ODDS_W0 + ODDS_WS*Math.pow(s, ODDS_EXP), 0.10, 0.78);
+  const winProb = (s)=> clamp(ODDS_W0 + ODDS_WS*Math.pow(s, ODDS_EXP)*LG_DIFF, 0.10, 0.78);
   function teamStrength(slug){
     const t=TEAMBY[slug], r=CAR.table[slug]; let s=(t.rating-1)/9;
     if (r.p>=3){ const ppg=r.pts/r.p, sImp=ppg/3, w=Math.min(0.35, r.p/24); s=(1-w)*s + w*sImp; }
@@ -2168,7 +2193,7 @@
     }
   }
   // ---- nationality select (career start) ----
-  let pendingNation="England";
+  let pendingNation="England", pendingLeague="ENG";
   function drawNatSelect(){
     if (!WORLD || !WORLD.nations){ ctx.textAlign="center";
       ttPrint(worldStatus==="error"?"⚠ COULD NOT LOAD assets/world/world.json":"LOADING NATIONS…",0,200,worldStatus==="error"?TTX.red:TTX.cyan,0,{size:16,center:true});
@@ -2197,6 +2222,40 @@
       const col=Math.floor(i/rows), row=i%rows, cx=x0+col*cw, cy=y0+row*ch;
       if (mx>=cx && mx<=cx+cw-6 && my>=cy && my<=cy+ch-3) return i;
     }
+    return -1;
+  }
+
+  // ---- league select (career start): pick the elite league to play your career in ----
+  const LGSEL_CH=64, LGSEL_Y0=78, LGSEL_CW=CLUB_CW*2-20;
+  function drawLeagueSelect(){
+    const ids=leagueList();
+    if (!ids.length){ ctx.textAlign="center";
+      ttPrint(leaguesStatus==="error"?"⚠ COULD NOT LOAD assets/world/leagues.json":"LOADING LEAGUES…",0,200,leaguesStatus==="error"?TTX.red:TTX.cyan,0,{size:16,center:true});
+      ctx.textAlign="left"; return; }
+    ttBar("SCORDAGOL   CHOOSE YOUR LEAGUE", 0, 12, VW, 30, TTX.blue, TTX.white, {size:17});
+    ctx.textAlign="right"; ctx.font=ttFont(12); ctx.fillStyle=TTX.yellow;
+    ctx.fillText("CAREER · "+(nameBuf||"YOU"), VW-10, 33); ctx.textAlign="left";
+    menuSel = clamp(menuSel, 0, ids.length-1);
+    ids.forEach((id,i)=>{
+      const m=LEAGUE_META[id], cx=CLUB_X0, cy=LGSEL_Y0+i*LGSEL_CH, sel=i===menuSel, mid=cy+(LGSEL_CH-8)/2;
+      if (sel){ ctx.fillStyle="rgba(255,255,255,0.10)"; ctx.fillRect(cx,cy,LGSEL_CW,LGSEL_CH-8);
+        ctx.strokeStyle="rgba(255,255,255,0.8)"; ctx.lineWidth=1.5; ctx.strokeRect(cx+0.75,cy+0.75,LGSEL_CW-1.5,LGSEL_CH-9.5); }
+      drawFlag(cx+12, mid-18, 54, 36, m.flag);
+      ctx.font=ttFont(22); ctx.textAlign="left"; ctx.textBaseline="middle"; ctx.fillStyle=TTX.cyan;
+      ctx.fillText(m.name, cx+82, mid-8);
+      ctx.font=ttFont(13); ctx.fillStyle=TTX.grey;
+      const teams=(LEAGUES[id]||[]).length, diff=Math.round((m.targetMod||1)*100);
+      ctx.fillText(m.country+"   ·   "+teams+" clubs   ·   difficulty "+diff+"%", cx+82, mid+13);
+      ctx.textBaseline="alphabetic";
+    });
+    ctx.textAlign="center"; ctx.font=ttFont(13); ctx.fillStyle=TTX.grey;
+    ctx.fillText(TOUCH?"TAP YOUR LEAGUE":"↑ ↓  CHOOSE    SPACE  CONFIRM    ESC  BACK", VW/2, SH-14);
+    ctx.textAlign="left";
+  }
+  function leagueHit(mx,my){
+    const ids=leagueList();
+    for (let i=0;i<ids.length;i++){ const cy=LGSEL_Y0+i*LGSEL_CH;
+      if (mx>=CLUB_X0 && mx<=CLUB_X0+LGSEL_CW && my>=cy && my<=cy+LGSEL_CH-8) return i; }
     return -1;
   }
 
@@ -2303,7 +2362,7 @@
     CAR.offers=null; CAR.lastResults=null;
     CAR.cup = initCup();
     CAR.euro = initEuro(CAR.nextEuro, CAR.slug); CAR.nextEuro=null;
-    CAR.cal = buildCalendar(!!CAR.euro); CAR.calIdx=0;
+    CAR.cal = buildCalendar(!!CAR.euro, leagueMatchdays()); CAR.calIdx=0;
     CAR.trn=null; CAR.trnDone=false;
     saveCareer(); state=ST.TABLE;
   }
@@ -2652,6 +2711,7 @@
       if(!TOUCH) drawTouchBack("← MENU"); }
     else if (state===ST.TRNHUB) { ttClear(); drawTrnHub(); touchBackBtn=null; }
     else if (state===ST.NATSEL) { ttClear(); drawNatSelect(); drawTouchBack("← BACK"); }
+    else if (state===ST.LEAGUESEL) { ttClear(); drawLeagueSelect(); drawTouchBack("← BACK"); }
     else if (state===ST.SEASONEND) { ttClear(); drawSeasonEnd(); drawTouchBack("← MENU"); }
     else if (state===ST.INBOX) { ttClear(); drawInbox(); drawTouchBack("← BACK"); }
     else if (state===ST.TROPHY) { ttClear(); drawTrophyRoom(); drawTouchBack("← BACK"); }
@@ -2675,7 +2735,7 @@
     if(!nameBuf.trim()) return; menuSel=0; kbdClose();
     if (pendingMode==="daily"){ localStorage.setItem("vc_name", nameBuf.trim().toUpperCase()); startDaily(); }
     else if (WORLD && WORLD.nations){ state=ST.NATSEL; stateEnterAt=performance.now(); menuSel=0; }
-    else { pendingNation="England"; state=ST.CLUBSEL; stateEnterAt=performance.now(); menuSel=0; }
+    else { pendingNation="England"; state=ST.LEAGUESEL; stateEnterAt=performance.now(); menuSel=0; }
   }
   function togglePause(){ if(state===ST.SERVE||state===ST.FLIGHT||state===ST.RESULT) paused=!paused; }
   function forfeit(){            // give up the current match -> career home (counts as a loss) / menu
@@ -2690,7 +2750,8 @@
   function goBack(){             // ESC = back / forfeit
     if (state===ST.NAME){ kbdClose(); state=ST.MENU; menuSel=0; }
     else if (state===ST.NATSEL){ state=ST.NAME; kbdOpen(nameBuf); menuSel=0; }
-    else if (state===ST.CLUBSEL){ if(pendingMode==="career"){ state=WORLD&&WORLD.nations?ST.NATSEL:ST.NAME; if(state===ST.NAME) kbdOpen(nameBuf); } else state=ST.MENU; menuSel=0; }
+    else if (state===ST.LEAGUESEL){ state=WORLD&&WORLD.nations?ST.NATSEL:ST.NAME; if(state===ST.NAME) kbdOpen(nameBuf); menuSel=0; }
+    else if (state===ST.CLUBSEL){ if(pendingMode==="career"){ state=ST.LEAGUESEL; } else state=ST.MENU; menuSel=0; }
     else if (state===ST.TRNHUB){ GMODE="career"; state=ST.MENU; menuSel=0; }
     else if (state===ST.EMAIL){ state=ST.INBOX; }
     else if (state===ST.INBOX){ state=ST.SEASONEND; }
@@ -2714,15 +2775,17 @@
       if (!TEAMS.length) return;                          // wait for roster
       if (o==="DAILY CHALLENGE"){ if(localStorage.getItem("vc_name")){ startDaily(); } else { pendingMode="daily"; nameBuf=""; state=ST.NAME; kbdOpen(""); } }
       else if (o==="HORSE"){ hCount=2; hNames=["","","","","",""]; hWord="HORSE"; hField=0; state=ST.HORSESETUP; }
-      else if (o==="CONTINUE CAREER"){ CAR=loadCareer(); if(CAR){ GMODE="career"; CAR.titleOdds=null; menuSel=0;
+      else if (o==="CONTINUE CAREER"){ CAR=loadCareer(); if(CAR){ GMODE="career"; setActiveLeague(CAR.leagueId); CAR.titleOdds=null; menuSel=0;
         if (!peekEvent()) seasonOver(); else state=ST.TABLE; } }
       else { GMODE="career"; pendingMode="career"; nameBuf=""; state=ST.NAME; kbdOpen(""); }   // NEW CAREER
     }
     else if (state===ST.NAME){ confirmName(); }
     else if (state===ST.NATSEL){ if(WORLD && WORLD.nations){
-      pendingNation=WORLD.nations[menuSel].slug; state=ST.CLUBSEL; stateEnterAt=performance.now(); menuSel=0; } }
+      pendingNation=WORLD.nations[menuSel].slug; state=ST.LEAGUESEL; stateEnterAt=performance.now(); menuSel=0; } }
+    else if (state===ST.LEAGUESEL){ const ids=leagueList(); if(ids.length){
+      pendingLeague=ids[clamp(menuSel,0,ids.length-1)]; setActiveLeague(pendingLeague); state=ST.CLUBSEL; stateEnterAt=performance.now(); menuSel=0; } }
     else if (state===ST.CLUBSEL){ if(TEAMS.length){
-      const slug=TEAMS[menuSel].slug; GMODE="career"; newCareer(nameBuf.trim()||"You", slug, pendingNation); state=ST.TABLE;
+      const slug=TEAMS[menuSel].slug; GMODE="career"; newCareer(nameBuf.trim()||"You", slug, pendingNation, pendingLeague); state=ST.TABLE;
     } }
     else if (state===ST.TRNHUB){
       const T=CAR&&CAR.trn; if(!T) { state=ST.MENU; }
@@ -2742,7 +2805,7 @@
   }
   function pressEnter(){
     if (state===ST.NAME){ confirmName(); }
-    else if (state===ST.MENU||state===ST.TABLE||state===ST.SEASONEND||state===ST.INBOX||state===ST.CLUBSEL||state===ST.NATSEL||state===ST.TRNHUB||state===ST.OVER||
+    else if (state===ST.MENU||state===ST.TABLE||state===ST.SEASONEND||state===ST.INBOX||state===ST.CLUBSEL||state===ST.NATSEL||state===ST.LEAGUESEL||state===ST.TRNHUB||state===ST.OVER||
              state===ST.MATCHEND||state===ST.DAILYBOARD||state===ST.HORSEPASS||state===ST.HORSEEND) pressSelect();
     else togglePause();                                   // in-match: ENTER = pause
   }
@@ -2753,6 +2816,7 @@
       let i=menuSel + dy + dx*rows; menuSel=((i%n)+n)%n; }
     else if (state===ST.NATSEL){ const rows=8, n=(WORLD&&WORLD.nations)?WORLD.nations.length:16;
       let i=menuSel + dy + dx*rows; menuSel=((i%n)+n)%n; }
+    else if (state===ST.LEAGUESEL){ const n=Math.max(1,leagueList().length); menuSel=((menuSel+dy)%n+n)%n; }
     else { if(dx<0) input.left=true; if(dx>0) input.right=true; mouseTargetX=null; }   // in-match: arrows move man (override mouse)
   }
   window.addEventListener("keydown",(e)=>{
@@ -2849,6 +2913,7 @@
     if(state===ST.MENU){ const i=menuHit(p.x,p.y); if(i>=0) menuSel=i; }
     else if(state===ST.CLUBSEL){ const i=clubHit(p.x,p.y); if(i>=0) menuSel=i; }
     else if(state===ST.NATSEL){ const i=natHit(p.x,p.y); if(i>=0) menuSel=i; }
+    else if(state===ST.LEAGUESEL){ const i=leagueHit(p.x,p.y); if(i>=0) menuSel=i; }
     else if(TOUCH && state===ST.TABLE && tableSwipeAnchorY!==null){
       e.preventDefault();
       const rowH=TBL_ROWH, clipH=TBL_CLIPH, maxScroll=Math.max(0, 20*rowH-clipH);
@@ -2888,6 +2953,7 @@
       const i=clubHit(p.x,p.y); if(i>=0){ menuSel=i; pressSelect(); }
     }
     else if(state===ST.NATSEL){ const i=natHit(p.x,p.y); if(i>=0){ menuSel=i; pressSelect(); } }
+    else if(state===ST.LEAGUESEL){ const i=leagueHit(p.x,p.y); if(i>=0){ menuSel=i; pressSelect(); } }
     else if(state===ST.HORSESETUP){
       if(horseStartBtn && p.x>=horseStartBtn.x && p.x<=horseStartBtn.x+horseStartBtn.w && p.y>=horseStartBtn.y && p.y<=horseStartBtn.y+horseStartBtn.h){ kbdClose(); beginHorse(); return; }
       const f=horseFieldHit(p);
@@ -2999,7 +3065,8 @@
         M.score = win?M.winTarget:0; M.goals=win?2:0; commitMatch();
         return {ev:ev.t, state};
       },
-      newCareerSim: function(nation){ GMODE="career"; newCareer("TEST","Liverpool",nation||"Brazil"); return {cal:CAR.cal.length, state}; },
+      newCareerSim: function(nation, league, slug){ GMODE="career"; setActiveLeague(league||"ENG"); newCareer("TEST", slug||(TEAMS[0]&&TEAMS[0].slug)||"Liverpool", nation||"Brazil", league||"ENG"); return {cal:CAR.cal.length, leagueId:CAR.leagueId, teams:TEAMS.length, slug:CAR.slug, state}; },
+      leaguesSim: function(){ return leagueList().map(id=>({id, name:LEAGUE_META[id].name, teams:(LEAGUES[id]||[]).length})); },
       // HORSE harness: drive the state machine without playing real shots (made = scored the delivery)
       horseStart: function(names, word){ hCount=Math.max(HORSE_MIN,Math.min(HORSE_MAX,(names&&names.length)||2)); hNames=(names||[]).slice(0,6); while(hNames.length<6) hNames.push(""); hWord=word||"HORSE"; beginHorse(); return horseSnap(); },
       horsePlay: function(scored){ horseResolve(!!scored); return horseSnap(); },
