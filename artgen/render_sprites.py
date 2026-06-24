@@ -332,17 +332,6 @@ def encode(tag_png, lit_png, out_png, out_size, beauty_png=None, orco_png=None, 
     r, g, b, al = tag[...,0], tag[...,1], tag[...,2], tag[...,3]
     vis = al > 120
     out = np.zeros(tag.shape, np.uint8)
-    # OUTPUT silhouette eroded `erode` px (+ a slightly higher alpha cut) -> drops the fuzzy halo
-    # ring, esp. the hair light-fuzz from the skin-tone backing / AA fringe. Owner: finer hair
-    # edges aren't detectable at game size, so crop closer (erode=2 for striker/defender). Keeper
-    # stays erode=1 to preserve the binding save extents. Region classification still uses full vis.
-    visE = al > 150
-    for _ in range(max(1, erode)):
-        visE = visE & np.roll(visE,1,0) & np.roll(visE,-1,0) & np.roll(visE,1,1) & np.roll(visE,-1,1)
-    # SKIN-AS-REGION rework: alpha is the top-level tag. 0=transparent, 254=DETAIL (skin/boot/hair/
-    # glove -> real RGB, left as-is), 255=KIT pixel (set below). Because skin is identified by alpha
-    # (not by a low RGB range), the kit channels are freed to carry FULL-RANGE u/v -> sharp stripes.
-    out[...,3] = np.where(visE, 254, 0)
     # Label every visible pixel, then MAJORITY-FILTER the labels to kill the
     # salt-and-pepper speckle at garment/skin boundaries (z-fight + AA fringe).
     SKIN, NLAB = 7, 11    # +8 collar, 9 cuff, 10 sock_top (owner's extra solid kit regions)
@@ -357,6 +346,18 @@ def encode(tag_png, lit_png, out_png, out_size, beauty_png=None, orco_png=None, 
     L[vis & (r>180) & (g>70) & (g<215) & (b<70)] = 9             # cuff     orange (linear 0.5 -> sRGB 188, so <215 not <180)
     L[vis & (r>70) & (r<215) & (g<70) & (b>180)] = 10            # sock_top purple (linear 0.5 -> sRGB 188)
     L = _smooth_labels(L, NLAB); L[~vis] = 0
+    # OUTPUT silhouette: gentle 1px erode EVERYWHERE (keeps hands/fingers intact), PLUS an extra crop
+    # of the HAIR edge only (`erode`+1 px). Hair AA over the skin-tone backing leaves a warm halo at
+    # the hair silhouette; cropping just the hair edge removes it WITHOUT eating the hands (the round-5
+    # global 2px erode clipped the fingers -> owner: hands looked masked/clipped). Internal hairline
+    # (hair touching skin) is untouched, so no gap appears there. SKIN-AS-REGION: alpha 254=detail,
+    # 255=kit (set below), 0=transparent.
+    g1 = vis & np.roll(vis,1,0) & np.roll(vis,-1,0) & np.roll(vis,1,1) & np.roll(vis,-1,1)
+    interior = vis
+    for _ in range(max(1, erode) + 1):
+        interior = interior & np.roll(interior,1,0) & np.roll(interior,-1,0) & np.roll(interior,1,1) & np.roll(interior,-1,1)
+    visE = g1 & ~((L == 5) & ~interior)         # crop hair pixels within (erode+1)px of the silhouette
+    out[...,3] = np.where(visE, 254, 0)
     masks = {"shirt": L==1, "shorts": L==2, "socks": L==3, "sleeve": L==4,
              "collar": L==8, "cuff": L==9, "sock_top": L==10}
     glove = L==6

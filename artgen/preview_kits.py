@@ -35,7 +35,7 @@ def build_kit(im, kit, hair=(60, 44, 34), skinMul=1.10):
           "shorts": col(kit.get("shorts", "white")), "socks": col(kit.get("socks", kit["c1"])),
           "collar": col(kit.get("collar", kit["c1"])), "cuff": col(kit.get("cuff", kit["c1"])),
           "sockTop": col(kit.get("sockTop", kit.get("socks", kit["c1"]))) }
-    sN = kit.get("stripeN", 7); slN = kit.get("sleeveN", 5)
+    sN = kit.get("stripeN", 7); slN = kit.get("sleeveN", 10)
     kit_px = al == 255; detail = (al >= 8) & (al < 255)
     region = b >> 5; u = g / 255.0; v = (b & 31) / 31.0; shade = r.astype(np.float32)
     skin = detail & (r > 90) & (r >= g) & (g >= b - 6) & ((r - b) > 10)

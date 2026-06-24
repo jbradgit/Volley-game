@@ -23,11 +23,9 @@ async function forced(x0, dbx, z){
 test("realShot is deterministic for identical inputs", async () => {
   const { dbg: a } = await loadGame();
   const { dbg: b } = await loadGame();
-  // kt=29: contact resolves at frame kt+KICK_FRAMES-1, and KICK_FRAMES is now 5 (owner 2026-06-24,
-  // "contact one frame earlier", was 6), so kt bumps 28->29 to land the SAME connecting ball
-  // position (contactX=316, z=37) the golden shot has always used.
-  const ra = a.realShot(300, 29, 20, 37, true);
-  const rb = b.realShot(300, 29, 20, 37, true);
+  // kt=28 connects under KICK_FRAMES=6 (the original; owner reverted the brief KICK_FRAMES=5 trial).
+  const ra = a.realShot(300, 28, 20, 37, true);
+  const rb = b.realShot(300, 28, 20, 37, true);
   assert.equal(JSON.stringify(rb), JSON.stringify(ra), "same inputs must yield identical physics");
   assert.equal(ra.connected, true, "the swept timing connects");
 });
