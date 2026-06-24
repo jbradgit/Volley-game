@@ -214,11 +214,11 @@ def render(bpy, px_w, px_h, path, samples=16, denoise=False, hard=True):
     sc.render.filepath = path
     bpy.ops.render.render(write_still=True)
 
-def add_lights(bpy, cam=None, energy=3.8, ambient=0.7):
+def add_lights(bpy, cam=None, energy=3.2, ambient=0.6):
     """CAMERA-RELATIVE key light + neutral ambient fill (used for BOTH the beauty and the
     lit/shade pass). Owner round 1: too low -> dark/grey skin (lifted to 4.6/0.95). Round 2:
-    that was too HOT -> skin overexposed/shiny, so dialled back to sun 3.8 / ambient 0.7.
-    Idempotent: skips if a sun already exists."""
+    too HOT (4.6/0.95) -> overexposed. Round 3 (3.8/0.7) STILL too shiny/overexposed -> 3.2/0.6
+    + fully-matte skin (see _tame_specular). Idempotent: skips if a sun already exists."""
     from mathutils import Matrix
     if any(o.type == "LIGHT" for o in bpy.context.scene.objects):
         return
@@ -237,11 +237,11 @@ def add_lights(bpy, cam=None, energy=3.8, ambient=0.7):
     bg.inputs[1].default_value = ambient
     bpy.context.scene.world = amb
 
-def _tame_specular(meshes, spec=0.12):
-    """Lower the Principled specular hotspot on the imported BEAUTY materials so skin/boots
-    don't read shiny/blown under the key light (owner: skin overexposed). Beauty pass only —
-    runs before assign_regions swaps in the flat tag materials. Handles both the 4.x+
-    'Specular IOR Level' input and the legacy 'Specular' name."""
+def _tame_specular(meshes, spec=0.0, rough_floor=0.85):
+    """Make the imported BEAUTY materials FULLY MATTE so skin/boots don't read shiny/blown under
+    the key light (owner round 3: still too shiny + overexposed). Kills the Principled specular
+    hotspot (spec=0) and floors roughness high. Beauty pass only — runs before assign_regions
+    swaps in the flat tag materials. Handles both the 4.x+ 'Specular IOR Level' and legacy names."""
     for me in meshes:
         for m in me.data.materials:
             if not (m and m.use_nodes): continue
@@ -250,6 +250,9 @@ def _tame_specular(meshes, spec=0.12):
                 for key in ("Specular IOR Level", "Specular"):
                     if key in nd.inputs:
                         nd.inputs[key].default_value = spec; break
+                if "Roughness" in nd.inputs:
+                    try: nd.inputs["Roughness"].default_value = max(float(nd.inputs["Roughness"].default_value), rough_floor)
+                    except Exception: nd.inputs["Roughness"].default_value = rough_floor
 
 def to_lit(bpy, meshes, cam=None):
     """Swap meshes to a white diffuse for the shade pass; ensure lights exist."""
@@ -310,7 +313,7 @@ def _smooth_labels(L, n):
                 counts[k] += (s == k)
     return np.argmax(counts, axis=0).astype(np.uint8)
 
-def encode(tag_png, lit_png, out_png, out_size, beauty_png=None, orco_png=None):
+def encode(tag_png, lit_png, out_png, out_size, beauty_png=None, orco_png=None, erode=1):
     """Tag+lit renders -> engine tag/UV format. When a BEAUTY render (original Mixamo
     materials) is supplied, the non-kit regions (skin/face/hair/boots/gloves) take the
     real detailed pixels; only the kit regions stay flat-tagged for recolouring.
@@ -324,9 +327,13 @@ def encode(tag_png, lit_png, out_png, out_size, beauty_png=None, orco_png=None):
     r, g, b, al = tag[...,0], tag[...,1], tag[...,2], tag[...,3]
     vis = al > 120
     out = np.zeros(tag.shape, np.uint8)
-    # OUTPUT silhouette eroded 1px -> drops the fuzzy halo edge ring (hair light-fuzz from the
-    # skin-tone backing / AA fringe). Region classification still uses the full `vis`.
-    visE = vis & np.roll(vis,1,0) & np.roll(vis,-1,0) & np.roll(vis,1,1) & np.roll(vis,-1,1)
+    # OUTPUT silhouette eroded `erode` px (+ a slightly higher alpha cut) -> drops the fuzzy halo
+    # ring, esp. the hair light-fuzz from the skin-tone backing / AA fringe. Owner: finer hair
+    # edges aren't detectable at game size, so crop closer (erode=2 for striker/defender). Keeper
+    # stays erode=1 to preserve the binding save extents. Region classification still uses full vis.
+    visE = al > 150
+    for _ in range(max(1, erode)):
+        visE = visE & np.roll(visE,1,0) & np.roll(visE,-1,0) & np.roll(visE,1,1) & np.roll(visE,-1,1)
     out[...,3] = np.where(visE, 255, 0)
     # Label every visible pixel, then MAJORITY-FILTER the labels to kill the
     # salt-and-pepper speckle at garment/skin boundaries (z-fight + AA fringe).
@@ -388,7 +395,9 @@ def encode(tag_png, lit_png, out_png, out_size, beauty_png=None, orco_png=None):
             if kind == "shirt" and orco is not None:            # PLANAR torso coord -> parallel stripes/hoops
                 U = np.clip((orco[...,0] - TORSO_X0) / TORSO_XR, 0, 1)
                 V = np.clip((orco[...,1] - TORSO_Y0) / TORSO_YR, 0, 1)
-            elif kind == "sleeve" and orco is not None:         # cylindrical Kit_UV.x -> lengthwise stripes
+            elif kind == "sleeve" and orco is not None:         # cylindrical Kit_UV.x -> LENGTHWISE stripes
+                # NB planar Generated-X gives HOOPS on the arm (orco runs along the rest-pose arm),
+                # so lengthwise sleeve stripes MUST use the owner's cylindrical Kit_UV unwrap.
                 U = np.clip((orco[...,2] - SLEEVE_U0) / SLEEVE_UR, 0, 1)
                 V = np.clip((orco[...,1] - TORSO_Y0) / TORSO_YR, 0, 1)
             else:
@@ -661,14 +670,14 @@ def cmd_striker_sheet(idle_fbx, shot_fbx):
     st2 = cam_state(cam2, emp2)
     # render the 20 kick frames (with detail pass)
     kick_imgs = _render_clip_frames(bpy, arm2, meshes2, cam2, STRIKER_KICK_CLIP, "sh", 32,
-                                    keeper=False, detail=True, res=R)
+                                    keeper=False, detail=True, res=R, erode=2)
     # render the idle (frame 0) with the SAME camera (with detail pass)
     arm3, meshes3 = _import_clean(bpy, idle_fbx)
     idle_fr = frame_range(arm3)[0]
     cam3, emp3 = make_ortho_cam(bpy, (0, 0, 0), STRIKER_AZ, STRIKER_EL, 1.8)
     apply_cam_state(cam3, emp3, st2)
     idle_img = _render_clip_frames(bpy, arm3, meshes3, cam3, [idle_fr], "shidle", 32,
-                                   keeper=False, detail=True, res=R)[0]
+                                   keeper=False, detail=True, res=R, erode=2)[0]
     # pack idle + kicks L->R
     frames = [idle_img] + kick_imgs
     sheet = Image.new("RGBA", (R[0] * len(frames), R[1]), (0, 0, 0, 0))
@@ -697,7 +706,7 @@ def cmd_defender_sheet(model_fbx):
     cam, emp = make_ortho_cam(bpy, (mn + mx) / 2, DEF_AZ, DEF_EL, mx.z - mn.z)
     fit_camera(bpy, cam, emp, DEF_RES, DEF_VARIANTS[0], DEF_TGT)
     imgs = _render_clip_frames(bpy, arm, meshes, cam, DEF_VARIANTS, "defv", 24,
-                               keeper=False, detail=True, res=DEF_RES)
+                               keeper=False, detail=True, res=DEF_RES, erode=2)
     sheet = Image.new("RGBA", (DEF_RES[0] * len(imgs), DEF_RES[1]), (0, 0, 0, 0))
     for i, im in enumerate(imgs): sheet.paste(im, (i * DEF_RES[0], 0))
     sheet.save(os.path.join(OUT, "defender_sheet.png"), optimize=True)
@@ -722,7 +731,7 @@ def cmd_defender(model_fbx, frame=None):
     bpy.context.scene.frame_set(fr); render(bpy, *DEF_RES, t, samples=1, hard=True)
     to_lit(bpy, meshes, cam)
     bpy.context.scene.frame_set(fr); render(bpy, *DEF_RES, l, samples=24, denoise=True, hard=False)
-    encode(t, l, os.path.join(OUT, "defender.png"), None, beauty_png=bp)
+    encode(t, l, os.path.join(OUT, "defender.png"), None, beauty_png=bp, erode=2)
     print("DEFENDER frame", fr, _measure(os.path.join(OUT, "defender.png")))
 
 # ---------------- ball (rotating Tango sphere, no logo) ----------------
@@ -805,9 +814,9 @@ KEEPER_IDLE_TGT = dict(top=69*KS, feet=197*KS, cx=300*KS)     # idle silhouette 
 KEEPER_AZ, KEEPER_EL = 0, 6                            # keeper faces the camera (front)
 KEEPER_DIVE_FRAMES = (7, 40)                           # Diving Save f7->f40 (f40 = full horizontal stretch; f57 was the prone collapse, reached short)
 
-def _encode_open(tag, lit, tmpname, beauty=None, orco=None):
+def _encode_open(tag, lit, tmpname, beauty=None, orco=None, erode=1):
     p = os.path.join(TMP, tmpname)
-    encode(tag, lit, p, None, beauty_png=beauty, orco_png=orco)
+    encode(tag, lit, p, None, beauty_png=beauty, orco_png=orco, erode=erode)
     from PIL import Image
     return Image.open(p).convert("RGBA").copy()
 
@@ -843,7 +852,7 @@ def _pack_keeper(frames):
     print("  dv99", ext(99), "target(5,178,153,211)")
     print("  dv50", ext(50), "  high354", ext(354), "target(263,330,53,196)")
 
-def _render_clip_frames(bpy, arm, meshes, cam, clip_frames, prefix, lit_samples, keeper=True, detail=False, res=None):
+def _render_clip_frames(bpy, arm, meshes, cam, clip_frames, prefix, lit_samples, keeper=True, detail=False, res=None, erode=1):
     """Render a set of frames -> encoded PIL images. detail=True adds the beauty
     (real materials) pass for face/hair/skin; flat (detail=False) for fast motion."""
     res = res or KEEPER_RES
@@ -867,7 +876,7 @@ def _render_clip_frames(bpy, arm, meshes, cam, clip_frames, prefix, lit_samples,
     lits = [os.path.join(TMP, f"{prefix}_{i}_l.png") for i in range(n)]
     for fr, lp in zip(clip_frames, lits):
         bpy.context.scene.frame_set(fr); render(bpy, *res, lp, samples=lit_samples, denoise=True, hard=False)
-    return [_encode_open(tags[i], lits[i], f"{prefix}_{i}_e.png", beauties[i], orcos[i]) for i in range(n)]
+    return [_encode_open(tags[i], lits[i], f"{prefix}_{i}_e.png", beauties[i], orcos[i], erode=erode) for i in range(n)]
 
 # central catch poses: (filename in source3d, frame) -> low / mid / high
 KEEPER_CATCH = {323: ("Goalkeeper Catch Low.fbx", 19),    # low  (ground gather) - owner pick
