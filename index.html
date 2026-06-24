@@ -78,10 +78,10 @@
                     logo:"assets/ui/logo.png?v=2",
                     trophyL:"assets/ui/trophy_league.png?v=1", trophyC:"assets/ui/trophy_cup.png?v=1",
                     trophyE:"assets/ui/trophy_euro.png?v=1",   trophyI:"assets/ui/trophy_intl.png?v=1",
-                    katlas:"assets/sprites/keeper_atlas.png?v=m11",
+                    katlas:"assets/sprites/keeper_atlas.png?v=m12",
                     ball:"assets/sprites/ball_sheet.png?v=m2", shadow:"assets/sprites/shadow.png?v=s1",
-                    strikersheet:"assets/sprites/striker_sheet.png?v=m14",
-                    defbase:"assets/sprites/defender_sheet.png?v=m11" };
+                    strikersheet:"assets/sprites/striker_sheet.png?v=m15",
+                    defbase:"assets/sprites/defender_sheet.png?v=m12" };
   let loaded = 0, total = Object.keys(sources).length, assetsReady = false;
   for (const k in sources) {
     const im = new Image();
@@ -97,16 +97,11 @@
   //   red=shirt  green=shorts  blue=socks  yellow=sleeves  magenta=hair
   // Patterns (stripes/hoops/halves/quarters/sash) are computed inside the shirt bbox.
   const SPRITES = { striker:[], defender:null, keeper:null };   // per-match recoloured canvases
-  function tagOf(r,g,b){
-    if (r>140 && g<100 && b<100) return 1;                          // shirt:    R=shade, G=u, B=v
-    if (g>140 && r<100 && b<100) return 2;                          // shorts:   G=shade, R=u, B=v
-    if (b>140 && r<95  && g<100) return 3;                          // socks:    B=shade, R=u(<88), G=v
-    if (r>140 && g>140 && b<100 && Math.abs(r-g)<30) return 4;      // sleeves:  RG=shade, B=u
-    if (g>140 && b>140 && r<100 && Math.abs(g-b)<30) return 8;      // collar:   GB=shade (solid)
-    if (r>140 && b>140 && g<100 && Math.abs(r-b)<30) return 9;      // cuff:     RB=shade (solid)
-    if (b>140 && r>=95 && r<140 && g<100) return 10;               // sock_top: B=shade, R=marker
-    return 0;
-  }
+  // SKIN-AS-REGION sprite format (artgen/render_sprites.py encode must match): ALPHA tags the pixel
+  // -> 255 = kit region, 254 = detail (skin/boot/hair/glove, real RGB left as-is), 0 = transparent.
+  // Because skin is identified by alpha (not by a cramped RGB range), kit pixels carry FULL-RANGE
+  // u/v -> razor stripes. Kit pixel: R=shade, G=u (0-255), B=(regionId<<5)|v5  (v = low 5 bits).
+  const KREGION = { 1:"shirt", 2:"shorts", 3:"socks", 4:"sleeve", 5:"collar", 6:"cuff", 7:"sock_top" };
   // patterns evaluated in PER-PART UV space (baked into the base sprite channels):
   // stripes run parallel to the part and mirror symmetrically from its centre line.
   function patVal(p,u,v,n){
@@ -120,13 +115,11 @@
   }
   const SLEEVE_STRIPE_N = 5;   // sleeve stripe count (the arm cylinder is narrower than the torso -> fewer stripes match the torso width)
   // Anti-aliased stripe colour: blend c1<->c2 with a SOFT but TIGHT transition at each boundary.
-  // aa was 0.16 (too soft -> "fuzzy") -> 0.08 = crisper edge while still hiding the source UV
-  // stair-step. This is the cheap lever; the hard floor is the ~88-level baked UV (channels must
-  // stay <100 so warm skin isn't mistaken for a kit region) — a razor edge needs the skin-region
-  // rework so the UV channels can use the full range. The in-game ~3x downscale adds its own AA.
+  // The skin-as-region rework freed the baked u to FULL 256 levels (was ~88), so stripe edges are
+  // now razor at source; aa=0.06 is a thin softening that the in-game ~3x downscale finishes off.
   function stripeMix(u, n, c1, c2){
     const x=Math.min(0.999,Math.max(0,u))*n, fl=Math.floor(x), fr=x-fl, band=fl&1;
-    const d=Math.min(fr,1-fr), aa=0.08;       // distance to nearest stripe edge (tighter = crisper)
+    const d=Math.min(fr,1-fr), aa=0.06;       // distance to nearest stripe edge (tighter = crisper; full-precision u now)
     let t = band;
     if (d<aa){ const k=(aa-d)/aa*0.5; t = band ? 1-k : k; }   // soften toward the neighbour near the edge
     return [c1[0]+(c2[0]-c1[0])*t, c1[1]+(c2[1]-c1[1])*t, c1[2]+(c2[2]-c1[2])*t];
@@ -144,24 +137,27 @@
     const id=g.getImageData(0,0,c.width,c.height), d=id.data, K=kitCols(kit);
     const sN = kit.stripeN||7, slN = kit.sleeveN||SLEEVE_STRIPE_N;   // sleeve count (cylindrical Kit_UV -> independent of torso)
     for (let i=0;i<d.length;i+=4){
-      if (d[i+3]<8) continue;
-      const r=d[i],gg=d[i+1],b=d[i+2], tg=tagOf(r,gg,b);
-      if(!tg){
-        // detail (skin/boots/hair): lighten warm SKIN per-sprite (boots/hair are dark/cool -> left alone)
+      const a=d[i+3];
+      if (a<8) continue;
+      if (a<255){
+        // DETAIL (skin/boots/hair/glove): real pixels. Lighten warm SKIN per-sprite (boots/hair dark/cool -> left alone)
+        const r=d[i],gg=d[i+1],b=d[i+2];
         if (skinMul!==1 && r>90 && r>=gg && gg>=b-6 && (r-b)>10){
           d[i]=Math.min(255,r*skinMul); d[i+1]=Math.min(255,gg*skinMul); d[i+2]=Math.min(255,b*skinMul);
         }
         continue;
       }
-      let shade, col;
-      if (tg===1){ shade=r; col = (kit.p==="stripes") ? stripeMix(gg/88, sN, K.c1, K.c2) : (patVal(kit.p, gg/88, b/88, sN) ? K.c2 : K.c1); }
-      else if (tg===2){ shade=gg; col=K.shorts; }
-      else if (tg===3){ shade=b;  col=K.socks; }
-      else if (tg===4){ shade=(r+gg)/2; col = (kit.sleeveP==="stripes") ? stripeMix(b/88, slN, K.sleeves, K.c2) : ((kit.sleeveP && patVal(kit.sleeveP, b/88, b/88, slN)) ? K.c2 : K.sleeves); }
-      else if (tg===8){ shade=(gg+b)/2; col=K.collar; }
-      else if (tg===9){ shade=(r+b)/2;  col=K.cuff; }
-      else if (tg===10){ shade=b;       col=K.sockTop; }
-      else { shade=(r+b)/2; col=hairRGB||[60,44,34]; }
+      // KIT pixel: R=shade, G=u (0-255), B=(regionId<<5)|v5
+      const shade=d[i], u=d[i+1]/255, bb=d[i+2], region=bb>>5, v=(bb&31)/31;
+      let col;
+      if (region===1){ col = (kit.p==="stripes") ? stripeMix(u, sN, K.c1, K.c2) : (patVal(kit.p, u, v, sN) ? K.c2 : K.c1); }
+      else if (region===2){ col=K.shorts; }
+      else if (region===3){ col=K.socks; }
+      else if (region===4){ col = (kit.sleeveP==="stripes") ? stripeMix(u, slN, K.sleeves, K.c2) : ((kit.sleeveP && patVal(kit.sleeveP, u, v, slN)) ? K.c2 : K.sleeves); }
+      else if (region===5){ col=K.collar; }
+      else if (region===6){ col=K.cuff; }
+      else if (region===7){ col=K.sockTop; }
+      else continue;
       const f=shade/255*1.04;                       // cel bands survive any kit colour
       d[i]=Math.min(255,col[0]*f); d[i+1]=Math.min(255,col[1]*f); d[i+2]=Math.min(255,col[2]*f);
     }
@@ -204,7 +200,7 @@
     .catch(e=>{ rosterStatus="error"; try{ console.error("teams.json failed to load:", e); }catch(_){} });
   // Keeper sprite-atlas manifest (per-frame rects + offsets, all 371-frame anims packed).
   let KMAN = null, KSCALE = 2;   // KSCALE = atlas export scale (render px per unified px); read from the manifest
-  fetch("assets/sprites/keeper_atlas.json?v=m11").then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
+  fetch("assets/sprites/keeper_atlas.json?v=m12").then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
     .then(j=>{ KMAN = j.frames; KSCALE = j.scale || 2; })
     .catch(e=>{ try{ console.error("keeper_atlas.json failed to load:", e); }catch(_){} });
   // ---- L1 perimeter ad boards: manifest + images (sold sponsor boards just replace files in

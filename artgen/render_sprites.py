@@ -44,6 +44,11 @@ TAGCOL = { "shirt": (1,0,0), "shorts": (0,1,0), "socks": (0,0,1), "sleeve": (1,1
            "collar": (0,1,1), "cuff": (1,0.5,0), "sock_top": (0.5,0,1) }   # owner's 3 extra kit regions
 TAGID = {k: i for i, k in enumerate(TAGCOL)}                   # id+1 in the id render
 
+# ENGINE CONTRACT (skin-as-region format): in the final sprite, alpha 255 = kit pixel, 254 = detail
+# (skin/boot/hair/glove), 0 = transparent. For kit pixels: R=shade, G=u(0-255), B=(REGION_ID<<5)|v5.
+# index.html buildKit() must decode with the SAME ids. Keep these in sync.
+REGION_ID = {"shirt":1, "shorts":2, "socks":3, "sleeve":4, "collar":5, "cuff":6, "sock_top":7}
+
 # owner's resolved polygon->region map (from striker_base_v01.blend material slots),
 # transferred onto the same-topology FBX meshes so the sprite uses the EXACT regions.
 _REGIONMAP_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kit_regions.json")
@@ -334,7 +339,10 @@ def encode(tag_png, lit_png, out_png, out_size, beauty_png=None, orco_png=None, 
     visE = al > 150
     for _ in range(max(1, erode)):
         visE = visE & np.roll(visE,1,0) & np.roll(visE,-1,0) & np.roll(visE,1,1) & np.roll(visE,-1,1)
-    out[...,3] = np.where(visE, 255, 0)
+    # SKIN-AS-REGION rework: alpha is the top-level tag. 0=transparent, 254=DETAIL (skin/boot/hair/
+    # glove -> real RGB, left as-is), 255=KIT pixel (set below). Because skin is identified by alpha
+    # (not by a low RGB range), the kit channels are freed to carry FULL-RANGE u/v -> sharp stripes.
+    out[...,3] = np.where(visE, 254, 0)
     # Label every visible pixel, then MAJORITY-FILTER the labels to kill the
     # salt-and-pepper speckle at garment/skin boundaries (z-fight + AA fringe).
     SKIN, NLAB = 7, 11    # +8 collar, 9 cuff, 10 sock_top (owner's extra solid kit regions)
@@ -351,8 +359,6 @@ def encode(tag_png, lit_png, out_png, out_size, beauty_png=None, orco_png=None, 
     L = _smooth_labels(L, NLAB); L[~vis] = 0
     masks = {"shirt": L==1, "shorts": L==2, "socks": L==3, "sleeve": L==4,
              "collar": L==8, "cuff": L==9, "sock_top": L==10}
-    if beauty_png is None:
-        masks["hair"] = L==5
     glove = L==6
     finals = vis & ~np.isin(L, (1, 2, 3, 4, 8, 9, 10))
     if beauty_png is not None:                                  # detail pass: real skin/face/hair/boots
@@ -382,16 +388,19 @@ def encode(tag_png, lit_png, out_png, out_size, beauty_png=None, orco_png=None, 
             for c in range(3):
                 out[..., c] = np.where(glove, np.clip(238 * lf, 0, 255), out[..., c])
     else:
-        finals = finals & (L!=5)                                # hair is a recolour region here
-        out[finals] = tag[finals].astype(np.uint8)              # skin/boot/glove pass through (flat)
+        out[finals] = tag[finals].astype(np.uint8)              # skin/boot/glove/hair pass through (flat detail)
         lf = np.clip(0.55 + 0.55 * lit / 255.0, 0, 1.05)
         for c in range(3):
             out[..., c] = np.where(finals, np.clip(out[..., c] * lf, 0, 255), out[..., c])
+    # NEW UNIFORM KIT PACKING (skin-as-region): every kit pixel = alpha 255, R=shade (full 8-bit),
+    # G=u (full 256 levels -> razor stripes), B=(regionId<<5)|v5 (region in the top 3 bits, v in the
+    # low 5 = 32 levels, plenty for hoops/quarters/sash). Solid regions store u=0,v=0.
     for kind, m in masks.items():
-        if not m.any(): continue
-        sh = np.zeros(m.shape, np.uint8)
-        sh[m] = shade_of(lit[m])
-        if kind in ("shirt", "shorts", "socks", "sleeve"):     # patterned: carry UV
+        mk = m & visE                                          # only the (eroded) visible kit pixels
+        if not mk.any(): continue
+        rid = REGION_ID[kind]
+        out[mk,0] = shade_of(lit[mk])                          # R = shade
+        if kind in ("shirt", "shorts", "socks", "sleeve"):     # patterned: carry u (+ v)
             if kind == "shirt" and orco is not None:            # PLANAR torso coord -> parallel stripes/hoops
                 U = np.clip((orco[...,0] - TORSO_X0) / TORSO_XR, 0, 1)
                 V = np.clip((orco[...,1] - TORSO_Y0) / TORSO_YR, 0, 1)
@@ -402,20 +411,13 @@ def encode(tag_png, lit_png, out_png, out_size, beauty_png=None, orco_png=None, 
                 V = np.clip((orco[...,1] - TORSO_Y0) / TORSO_YR, 0, 1)
             else:
                 U, V = uv_of(m)
-            uu = (np.clip(U,0,1)*88).astype(np.uint8); vv = (np.clip(V,0,1)*88).astype(np.uint8)
-            if kind in ("shirt","shorts","socks"):
-                ch = {"shirt":(0,1,2), "shorts":(1,0,2), "socks":(2,0,1)}[kind]
-                out[m, ch[0]] = sh[m]; out[m, ch[1]] = uu[m]; out[m, ch[2]] = vv[m]
-            else:                                              # sleeve: RG=shade, B=u
-                out[m,0] = out[m,1] = sh[m]; out[m,2] = uu[m]
-        elif kind == "collar":                                 # solid: GB=shade, R=0
-            out[m,1] = out[m,2] = sh[m]; out[m,0] = 0
-        elif kind == "cuff":                                   # solid: RB=shade, G=0
-            out[m,0] = out[m,2] = sh[m]; out[m,1] = 0
-        elif kind == "sock_top":                               # solid: B=shade, R=110 marker, G=0
-            out[m,2] = sh[m]; out[m,0] = 110; out[m,1] = 0
-        else:                                                  # hair (procedural path only)
-            out[m,0] = out[m,2] = sh[m]; out[m,1] = 0
+            uu = (np.clip(U,0,1)*255).astype(np.uint8); vv5 = (np.clip(V,0,1)*31).astype(np.uint8)
+            out[mk,1] = uu[mk]
+            out[mk,2] = ((rid<<5) | vv5[mk]).astype(np.uint8)
+        else:                                                  # solid (collar/cuff/sock_top): no u/v
+            out[mk,1] = 0
+            out[mk,2] = (rid<<5)
+        out[mk,3] = 255                                        # flag: kit pixel (detail stays 254)
     img = Image.fromarray(out)
     if out_size: img = img.resize(out_size, Image.NEAREST)
     img.save(out_png, optimize=True)
