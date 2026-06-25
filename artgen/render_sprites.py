@@ -831,23 +831,37 @@ def _mirror_canvas(im):
     return out
 
 def _pack_keeper(frames):
+    """Pack the 104 keeper frame-keys into the atlas, DEDUPLICATED by pixel content: the dive maps
+    ~50 keys/direction onto only ~14 distinct poses, so most frames are byte-identical duplicates.
+    Unique images are packed ONCE and every frame-key points at the shared rect -> the atlas PNG
+    (and the recoloured in-engine canvas) shrink ~3x with NO change to what's drawn or the save
+    extents (the manifest still carries all 104 keys, some sharing an x/y/w/h)."""
     from PIL import Image
-    packed = []
+    import hashlib
+    cropped = {}                                       # fn -> (cropImg, bb)
     for fn, im in frames.items():
         bb = im.getbbox()
         if bb is None: continue
-        packed.append((fn, im.crop(bb), bb))
-    packed.sort(key=lambda x: -x[1].height)
-    SHEET_W = 2048; x = y = rowh = 0; places = []
-    for fn, im, bb in packed:
+        cropped[fn] = (im.crop(bb), bb)
+    uniq = {}; fnHash = {}                             # content hash -> (cropImg, bb); fn -> hash
+    for fn, (im, bb) in cropped.items():
+        h = hashlib.md5(im.tobytes()).hexdigest() + "x" + str(im.size)
+        fnHash[fn] = h
+        if h not in uniq: uniq[h] = (im, bb)
+    items = sorted(uniq.items(), key=lambda kv: -kv[1][0].height)   # tall-first shelf packing
+    SHEET_W = 2048; x = y = rowh = 0; place = {}       # hash -> (px, py)
+    for h, (im, bb) in items:
         if x + im.width > SHEET_W: x = 0; y += rowh + 2; rowh = 0
-        places.append((fn, im, bb, x, y)); x += im.width + 2; rowh = max(rowh, im.height)
+        place[h] = (x, y); x += im.width + 2; rowh = max(rowh, im.height)
     sheet = Image.new("RGBA", (SHEET_W, y + rowh + 2), (0, 0, 0, 0)); man = {}
-    for fn, im, bb, px_, py_ in places:
-        sheet.paste(im, (px_, py_))
+    for h, (im, bb) in uniq.items():
+        px_, py_ = place[h]; sheet.paste(im, (px_, py_))
+    for fn, (im, bb) in cropped.items():               # every key -> its (shared) rect
+        px_, py_ = place[fnHash[fn]]
         man[str(fn)] = dict(sheet=0, x=px_, y=py_, w=im.width, h=im.height, ox=bb[0]/KS, oy=bb[1]/KS)
     sheet.save(os.path.join(OUT, "keeper_atlas.png"), optimize=True)
     json.dump(dict(scale=KS, frames=man), open(os.path.join(OUT, "keeper_atlas.json"), "w"))
+    print("  unique images:", len(uniq), "of", len(cropped), "frame-keys")
     def ext(fr):
         m = man[str(fr)]; return (round(m["ox"]), round(m["ox"]+m["w"]/KS), round(m["oy"]), round(m["oy"]+m["h"]/KS))
     print("KEEPER atlas", sheet.size, len(man), "frames")
