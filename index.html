@@ -74,7 +74,7 @@
 
   // ---- Static assets (kits are loaded dynamically per club, see loadKits) ----
   const IMG = {};
-  const sources = { backdrop:"assets/stadium/backdrop.png?v=1",
+  const sources = { backdrop:"assets/stadium/backdrop.png?v=2",
                     logo:"assets/ui/logo.png?v=2",
                     trophyL:"assets/ui/trophy_league.png?v=1", trophyC:"assets/ui/trophy_cup.png?v=1",
                     trophyE:"assets/ui/trophy_euro.png?v=1",   trophyI:"assets/ui/trophy_intl.png?v=1",
@@ -637,6 +637,10 @@
   // physics vars (mirror original names)
   let velocity, angle, cangle, sangle, t, bounce, bounced, booted, innet;
   let xball, yball, z, dbx, dby, ybit, yscale, ay;   // ay = original serve "y" (xball lags it by 1 step)
+  // Ball RENDER interpolation: the physics steps at 28Hz but we render at ~60Hz, so the ball "skips".
+  // We lerp the DRAWN position between the last two physics steps (render-only — the sacred volley
+  // timing, contact and keeper save all still read the live 28Hz xball/z, never these).
+  let pXball=0, pYball=0, pZ=0, ballAlpha=0; const BALL_SMOOTH=true;
   let checked, dive, no_dive, divedirn, destination, keeperX;
   let manX, kicked, cchecked, kickTick, manFinished, complete_miss, end, sc;
   let hitkeeper, held, hitbar, lposthit, rposthit, leftcorner, rightcorner, topnet, znet;
@@ -1131,19 +1135,28 @@
   const SHADOW_W = 28, SHADOW_H = 11, SHADOW_OX = 13.0, SHADOW_OY = 0.0;
   function drawBall() {
     if (state===ST.COUNTDOWN) return;     // when held, keep drawing the ball (frozen in the keeper's hands)
-    const ss = yscale/100;                          // shadow + in-net ball use full yscale
-    const bs = (innet ? yscale : yscale*0.8)/100;   // /ball uses yscale*0.8, /ball2 (in net) uses yscale (frame_9 :276/:285)
+    // smooth the 28Hz physics position to the render rate (render-only; never feeds physics/save).
+    let bx=xball, by=yball, bz=z;
+    if (BALL_SMOOTH && (state===ST.SERVE||state===ST.FLIGHT) && !held){
+      const dx=xball-pXball, dy=yball-pYball, dz=z-pZ;
+      if (Math.abs(dx)<80 && Math.abs(dy)<120){          // small step -> lerp; large -> a reset/teleport, snap
+        bx=pXball+dx*ballAlpha; by=pYball+dy*ballAlpha; bz=pZ+dz*ballAlpha;
+      }
+    }
+    const ysc = 10 + 90*by/325;                          // ball size follows the interpolated height
+    const ss = ysc/100;                                  // shadow + in-net ball use full yscale
+    const bs = (innet ? ysc : ysc*0.8)/100;              // /ball uses yscale*0.8, /ball2 (in net) uses yscale (frame_9 :276/:285)
     // shadow: origin (13.0, 0.0) maps to (xball, yball); alpha ~0.25 (original CXFORM alphaMult 64/256)
-    if (yball>=130 && IMG.shadow.naturalWidth) {
+    if (by>=130 && IMG.shadow.naturalWidth) {
       ctx.globalAlpha=0.25;
-      ctx.drawImage(IMG.shadow, xball-SHADOW_OX*ss, yball-SHADOW_OY*ss, SHADOW_W*ss, SHADOW_H*ss);
+      ctx.drawImage(IMG.shadow, bx-SHADOW_OX*ss, by-SHADOW_OY*ss, SHADOW_W*ss, SHADOW_H*ss);
       ctx.globalAlpha=1;
     }
     // ball: origin (19.6, 34.1) maps to (xball, yball-z); cycle the rotating Tango sheet
     if (IMG.ball.naturalWidth) {
       const bf = ((ballSpin % BALL_FRAMES) + BALL_FRAMES) % BALL_FRAMES;
       ctx.drawImage(IMG.ball, bf*BALL_FW, 0, BALL_FW, BALL_FH,
-                    xball-BALL_OX*bs, (yball-z)-BALL_OY*bs, BALL_W*bs, BALL_H*bs);
+                    bx-BALL_OX*bs, (by-bz)-BALL_OY*bs, BALL_W*bs, BALL_H*bs);
     }
   }
 
@@ -1413,90 +1426,26 @@
   function _cellHash(c){ return (((Math.abs(c.x)|0)*73856093)^((Math.abs(c.y)|0)*19349663))%1000/1000; }
   function drawMatchEndBurst() {
     ctx.fillStyle="rgba(4,6,10,0.72)"; ctx.fillRect(-OX,0,VW,SH);
-    const cas=_buildCascade(matchEndText), elapsed=1.6-matchEndTimer;
-    const cx=SW/2, cy=SH/2-20, cl=cas.cell;
-    ctx.save(); ctx.translate(cx,cy);
-    // italic shear helper (reapplied per phase)
-    const SHEAR = matchEndText==="LOSS" ? -0.14 : 0.14;
-
-    if (matchEndText==="VICTORY") {
-      const SLAM=0.14, HOLD=0.36, BURST_START=SLAM+HOLD;
-      if (elapsed<SLAM) {
-        // slam: drop from above very fast
-        const p=elapsed/SLAM, yOff=-(1-p)*(1-p)*300;
-        ctx.globalAlpha=Math.min(1,p*4); ctx.translate(0,yOff);
-        ctx.transform(1,0,SHEAR,1,0,0);
-        ctx.fillStyle="#000"; for(const c of cas.cells) ctx.fillRect(Math.round(c.x)+3,Math.round(c.y)+3,cl,cl);
-        ctx.fillStyle=matchEndColor; for(const c of cas.cells) ctx.fillRect(Math.round(c.x),Math.round(c.y),cl,cl);
-      } else if (elapsed<BURST_START) {
-        // hold solid with slight flash
-        const flash=Math.sin((elapsed-SLAM)*28)*0.12;
-        ctx.globalAlpha=1; ctx.transform(1,0,SHEAR,1,0,0);
-        ctx.fillStyle="#000"; for(const c of cas.cells) ctx.fillRect(Math.round(c.x)+3,Math.round(c.y)+3,cl,cl);
-        ctx.fillStyle=matchEndColor; for(const c of cas.cells) ctx.fillRect(Math.round(c.x),Math.round(c.y),cl,cl);
-        ctx.fillStyle="#fff"; ctx.globalAlpha=Math.max(0,flash);
-        for(const c of cas.cells) ctx.fillRect(Math.round(c.x),Math.round(c.y),cl,cl);
-      } else {
-        // burst: cells fly outward like confetti
-        const ct=elapsed-BURST_START;
-        for(const c of cas.cells){
-          const h=_cellHash(c);
-          const ang=Math.atan2(c.y,c.x)+(h-0.5)*1.2;
-          const spd=100+h*220;
-          const vx=Math.cos(ang)*spd*ct + c.x*0.6*ct;
-          const vy=Math.sin(ang)*spd*ct + 180*ct*ct;
-          const al=Math.max(0,1-ct*0.87);
-          if(al<=0) continue;
-          ctx.globalAlpha=al; ctx.fillStyle=matchEndColor;
-          ctx.fillRect(Math.round(c.x+vx),Math.round(c.y+vy),cl,cl);
-          // add a few white "sparkle" copies
-          if(h>0.7){ ctx.fillStyle="#fff"; ctx.globalAlpha=al*0.6;
-            ctx.fillRect(Math.round(c.x+vx+cl+1),Math.round(c.y+vy-2),cl-2,cl-2); }
-        }
-      }
-
-    } else if (matchEndText==="DRAW") {
-      const APPEAR=0.20, SQUASH_DUR=1.40;
-      if (elapsed<APPEAR) {
-        const p=elapsed/APPEAR;
-        ctx.globalAlpha=p; ctx.transform(1,0,SHEAR,1,0,0);
-        ctx.fillStyle="#000"; for(const c of cas.cells) ctx.fillRect(Math.round(c.x)+2,Math.round(c.y)+2,cl,cl);
-        ctx.fillStyle=matchEndColor; for(const c of cas.cells) ctx.fillRect(Math.round(c.x),Math.round(c.y),cl,cl);
-      } else {
-        // slowly squash to zero vertically
-        const t=Math.min(1,(elapsed-APPEAR)/SQUASH_DUR);
-        const sy=Math.max(0,1-t*t*1.05), sx=1+t*0.35;
-        ctx.globalAlpha=Math.max(0,1-t);
-        ctx.transform(sx,0,SHEAR*(1-t),sy,0,0);
-        ctx.fillStyle=matchEndColor;
-        for(const c of cas.cells) ctx.fillRect(Math.round(c.x/sx),Math.round(c.y/sy),cl,cl);
-      }
-
-    } else { // LOSS
-      const APPEAR=0.18, FALL_START=APPEAR;
-      if (elapsed<APPEAR) {
-        const p=elapsed/APPEAR;
-        ctx.globalAlpha=p; ctx.transform(1,0,SHEAR,1,0,0);
-        ctx.fillStyle="#000"; for(const c of cas.cells) ctx.fillRect(Math.round(c.x)+2,Math.round(c.y)+2,cl,cl);
-        ctx.fillStyle=matchEndColor; for(const c of cas.cells) ctx.fillRect(Math.round(c.x),Math.round(c.y),cl,cl);
-      } else {
-        const ct=elapsed-FALL_START;
-        ctx.transform(1,0,SHEAR,1,0,0);
-        for(const c of cas.cells){
-          // cells near the top of the word fall first
-          const delay=(_cellHash(c)*0.2) + Math.max(0,c.y+cas.h/2)/cas.h*0.25;
-          const t=Math.max(0,ct-delay);
-          const fall=220*t*t;
-          const al=Math.max(0,1-t*1.05);
-          if(al<=0) continue;
-          ctx.globalAlpha=al; ctx.fillStyle=matchEndColor;
-          ctx.fillRect(Math.round(c.x),Math.round(c.y+fall),cl,cl);
-        }
-      }
-    }
-
-    ctx.globalAlpha=1; ctx.restore();
-    ctx.textBaseline="alphabetic"; ctx.textAlign="left";
+    const word=matchEndText, elapsed=1.6-matchEndTimer;
+    const fs = word.length>5 ? 100 : 138;                 // big, clean — solid text, no cell grid
+    ctx.save();
+    ctx.translate(SW/2, SH/2-6);
+    // entrance: slam down -> small settle bounce -> hold -> fade out
+    let yOff=0, scale=1, alpha=1;
+    if (elapsed<0.18){ const p=elapsed/0.18; yOff=-(1-p)*(1-p)*360; scale=0.88+0.12*p; alpha=Math.min(1,p*6); }
+    else if (elapsed<0.36){ const p=(elapsed-0.18)/0.18; scale=1+0.07*Math.sin(p*Math.PI); }
+    else if (elapsed>1.25){ alpha=Math.max(0,(1.6-elapsed)/0.35); }
+    ctx.globalAlpha=alpha;
+    ctx.translate(0,yOff); ctx.scale(scale,scale);
+    ctx.transform(1,0,-0.17,1,0,0);                       // italic shear (even, no gridlines)
+    ctx.font="900 "+fs+"px 'Arial Black','Arial',sans-serif";
+    ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillStyle="rgba(0,0,0,0.5)"; ctx.fillText(word, 7, 8);                         // drop shadow (depth)
+    ctx.lineJoin="round"; ctx.lineWidth=Math.max(4,fs*0.06); ctx.strokeStyle="#0a0c12"; ctx.strokeText(word,0,0);  // crisp even outline
+    ctx.fillStyle=matchEndColor; ctx.fillText(word,0,0);                               // solid colour fill
+    if (elapsed>0.06 && elapsed<0.30){ ctx.globalAlpha=alpha*Math.max(0,0.55-(elapsed-0.06)*2.6); ctx.fillStyle="#fff"; ctx.fillText(word,0,0); }  // slam flash
+    ctx.restore();
+    ctx.globalAlpha=1; ctx.textBaseline="alphabetic"; ctx.textAlign="left";
   }
   function drawResultText() {
     if (state===ST.RESULT && resultText) {
@@ -1627,8 +1576,8 @@
     ctx.textAlign="center"; ctx.textBaseline="middle";
     const off=Math.max(2,Math.round(s*0.08));
     ctx.fillStyle="rgba(0,0,0,0.55)"; ctx.fillText(txt, cx+off, cy+off);   // drop shadow for depth
-    ctx.fillStyle="#0a2e18";          ctx.fillText(txt, cx+1,   cy+1);     // dark green underlayer
-    ctx.fillStyle=LOGO_ACCENT;        ctx.fillText(txt, cx,     cy);       // SCORDAGOL green
+    if (!opts.color){ ctx.fillStyle="#0a2e18"; ctx.fillText(txt, cx+1, cy+1); }   // green-specific underlayer
+    ctx.fillStyle=opts.color||LOGO_ACCENT;  ctx.fillText(txt, cx, cy);       // SCORDAGOL (green by default; career screen passes the header colour)
     ctx.textAlign="left"; ctx.textBaseline="alphabetic";
   }
 
@@ -1832,7 +1781,7 @@
     ctx.fillStyle="#06070b"; ctx.fillRect(0,HBY,VW,HBH);
     // outline box colour-matched to the logo (no white panel)
     ctx.strokeStyle=LOGO_ACCENT; ctx.lineWidth=2; ctx.strokeRect(1.5,HBY+1.5,LOGOW-3,HBH-3);
-    drawLogo(LOGOW/2, 0, LOGOW-28, {cy:HBY+HBH/2, maxH:HBH-10});
+    drawLogo(LOGOW/2, 0, LOGOW-28, {cy:HBY+HBH/2, maxH:HBH-10, color:TTX.yellow});   // match the CAREER MODE header
     // header row: [logo][CAREER MODE .................. SEASON N] — one shared vertical centre
     ttBar("CAREER MODE", LOGOW, HBY, VW-LOGOW, HBH, TTX.blue, TTX.yellow, {size:TOUCH?26:20});
     pxText("SEASON "+CAR.season, VW-14, HBY+HBH/2+1, TOUCH?16:14, TTX.white, 'r', 'm');
@@ -1985,7 +1934,7 @@
     const HBY=4, LOGOW=220, HBH=TOUCH?40:32;
     ctx.fillStyle="#06070b"; ctx.fillRect(0,HBY,VW,HBH);
     ctx.strokeStyle=LOGO_ACCENT; ctx.lineWidth=2; ctx.strokeRect(1.5,HBY+1.5,LOGOW-3,HBH-3);
-    drawLogo(LOGOW/2, 0, LOGOW-28, {cy:HBY+HBH/2, maxH:HBH-10});
+    drawLogo(LOGOW/2, 0, LOGOW-28, {cy:HBY+HBH/2, maxH:HBH-10, color:TTX.yellow});   // match the CAREER MODE header
     ttBar("SEASON "+CAR.season+" REVIEW", LOGOW, HBY, VW-LOGOW, HBH, TTX.blue, TTX.yellow, {size:TOUCH?26:20});
     pxText("FULL TIME", VW-14, HBY+HBH/2+1, TOUCH?16:14, TTX.white, 'r', 'm');
     const ht=HBY+HBH;
@@ -2099,7 +2048,7 @@
     const HBY=4, LOGOW=220, HBH=TOUCH?40:32;
     ctx.fillStyle="#06070b"; ctx.fillRect(0,HBY,VW,HBH);
     ctx.strokeStyle=LOGO_ACCENT; ctx.lineWidth=2; ctx.strokeRect(1.5,HBY+1.5,LOGOW-3,HBH-3);
-    drawLogo(LOGOW/2, 0, LOGOW-28, {cy:HBY+HBH/2, maxH:HBH-10});
+    drawLogo(LOGOW/2, 0, LOGOW-28, {cy:HBY+HBH/2, maxH:HBH-10, color:TTX.yellow});   // match the CAREER MODE header
     ttBar(barText, LOGOW, HBY, VW-LOGOW, HBH, TTX.blue, TTX.yellow, {size:TOUCH?26:20});
     pxText(rightText, VW-14, HBY+HBH/2+1, TOUCH?16:14, TTX.white, 'r', 'm');
     return HBY+HBH;
@@ -2449,19 +2398,19 @@
     const word=(hWord.trim().toUpperCase().replace(/[^A-Z]/g,"")).slice(0,8) || "HORSE";
     const players=[];
     for (let i=0;i<hCount;i++) players.push({ name:(hNames[i]||"").trim()||("PLAYER "+(i+1)), letters:0, out:false });
-    H={ players, word, L:word.length, leader:0, phase:'lead', current:0, followQ:[], seed:null, setShots:0, winner:null };
+    const lp=TEAMBY["Liverpool"]||TEAMS[0];                           // teams fixed for the whole game (no change between shots)
+    let opp=TEAMS[(Math.random()*TEAMS.length)|0]; if(!opp||opp.slug===lp.slug) opp=TEAMS[(TEAMS.indexOf(opp)+1)%TEAMS.length]||lp;
+    H={ players, word, L:word.length, leader:0, phase:'lead', current:0, followQ:[], seed:null, setShots:0, winner:null, event:null,
+        myClub:{slug:lp.slug,name:lp.name,rating:lp.rating}, opp:{slug:opp.slug,name:opp.name,rating:opp.rating} };
     state=ST.HORSEPASS;
   }
   function horseActiveCount(){ return H.players.filter(p=>!p.out).length; }
   function horseNextActive(i){ let j=i; for(let k=0;k<H.players.length;k++){ j=(j+1)%H.players.length; if(!H.players[j].out) return j; } return i; }
   function startHorseTurn(){
-    GMODE="horse"; CAR=null;
-    const lp=TEAMBY["Liverpool"]||TEAMS[0];
-    MYCLUB={ slug:lp.slug, name:lp.name, rating:lp.rating };          // everyone plays the same club (fair)
+    GMODE="horse"; CAR=null; H.event=null;                           // clear any letter/loss overlay
+    MYCLUB=H.myClub; OPPONENT={ slug:H.opp.slug, name:H.opp.name, rating:H.opp.rating, home:true };   // fixed teams all game
     if (H.phase==='lead') H.seed=((Date.now()>>>0) ^ (H.setShots++ * 2654435761))>>>0;   // leader: a fresh delivery
-    const seed=H.seed>>>0, pr=mulberry32(seed);                       // followers replay the leader's exact seed
-    const ot=TEAMS[Math.floor(pr()*TEAMS.length)];
-    OPPONENT={ slug:ot.slug, name:ot.name, rating:ot.rating, home:true };
+    const seed=H.seed>>>0;                                            // followers replay the leader's exact seed
     loadKits(MYCLUB.slug, OPPONENT.slug, ()=>startMatch({seed:seed, balls:1}));
   }
   function horseTurnDone(){ horseResolve(M.goals>0); }                // a goal = the challenge is made
@@ -2478,8 +2427,9 @@
       }
     } else {                                                          // a follower responding to the leader's goal
       if (!made){
-        const p=H.players[H.current]; p.letters++;
-        if (p.letters>=H.L){ p.out=true;
+        const who=H.current, p=H.players[who]; p.letters++;
+        H.event={type:'letter', who, idx:p.letters-1, t:performance.now()};   // drives the letter-slam overlay
+        if (p.letters>=H.L){ p.out=true; H.event={type:'out', who, t:performance.now()};   // big "X IS A WORD" banner
           if (horseActiveCount()===1){ H.winner=H.players.findIndex(x=>!x.out); state=ST.HORSEEND; return; } }
       }
       if (H.followQ.length) H.current=H.followQ.shift();
@@ -2521,26 +2471,34 @@
     players:C.players.map(p=>({name:p.name,score:p.score})), state }; }
 
   // ---- multiplayer hub + classic screens (teletext) ----
-  const MP_OPTS=["HORSE","CLASSIC"];
-  const MP_SUB=["Trick-shot knockout — miss the leader's goal, take a letter. Last in wins.",
-                "Same 10 balls each — highest score wins. No letters."];
+  const MP_OPTS=["CLASSIC","HORSE"];                                  // CLASSIC first (owner)
+  const MP_SUB=["Same 10 balls each — highest score wins",            // classic: no 'letters' mention (it's a given)
+                "Miss the leader's shot and you take a letter — last one standing wins"];
+  const MP_COL=["#4dff7a","#ffd24a"], MP_TAG=["★ HIGH SCORE","H·O·R·S·E"];
+  let mpCardRects=[];
   function drawMPMenu(){
     ctx.strokeStyle=TTX.blue;    ctx.lineWidth=5; ctx.strokeRect(9,9,VW-18,SH-18);
     ctx.strokeStyle=TTX.magenta; ctx.lineWidth=2; ctx.strokeRect(16,16,VW-32,SH-32);
-    ttBar("SCORDAGOL   MULTIPLAYER", 0, 28, VW, 34, TTX.blue, TTX.white, {center:true, size:20});
-    ctx.textAlign="center"; ctx.font=ttFont(14); ctx.fillStyle=TTX.grey;
-    ctx.fillText("PASS-AND-PLAY ON ONE DEVICE  ·  2–6 PLAYERS", VW/2, 150);
+    ttBar("SCORDAGOL   MULTIPLAYER", 0, 18, VW, 36, TTX.magenta, TTX.white, {center:true, size:24});
+    ctx.textAlign="center"; ctx.font=ttFont(15); ctx.fillStyle=TTX.cyan;
+    ctx.fillText("PASS & PLAY   ·   ONE DEVICE   ·   2–6 PLAYERS", VW/2, 96);
     menuSel=clamp(menuSel,0,MP_OPTS.length-1);
+    mpCardRects=[];
+    const cw=640, ch=126, cx0=VW/2-cw/2, gap=30, y0=128;
+    const t=performance.now()/1000;
     for (let i=0;i<MP_OPTS.length;i++){
-      const y=MENU_Y0+i*MENU_DY, sel=i===menuSel;
-      if (sel){ ctx.strokeStyle="rgba(255,255,255,0.75)"; ctx.lineWidth=2;
-        ctx.strokeRect(VW/2-MENU_BW/2+1, y-27, MENU_BW-2, MENU_BH-2);
-        ctx.textAlign="left"; ctx.fillStyle=TTX.white; ctx.fillText("▶", VW/2-MENU_BW/2+14, y); }
-      ctx.font=ttFont(26); ctx.fillStyle=sel?TTX.yellow:TTX.white; ctx.textAlign="center"; ctx.fillText(MP_OPTS[i], VW/2, y);
-      ctx.font=ttFont(12); ctx.fillStyle=TTX.dim; ctx.fillText(MP_SUB[i], VW/2, y+19);
+      const cy=y0+i*(ch+gap), sel=i===menuSel, col=MP_COL[i];
+      ctx.fillStyle = sel ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.30)"; ctx.fillRect(cx0,cy,cw,ch);
+      ctx.lineWidth = sel?4:2; ctx.strokeStyle=col;
+      ctx.globalAlpha = sel ? 0.7+0.3*Math.sin(t*5) : 1;             // gentle pulse on the selected card
+      ctx.strokeRect(cx0+1,cy+1,cw-2,ch-2); ctx.globalAlpha=1;
+      ctx.textAlign="left"; ctx.font=pxFont(sel?28:24); ctx.fillStyle=col; ctx.fillText(MP_OPTS[i], cx0+34, cy+54);
+      ctx.font=ttFont(17); ctx.fillStyle=TTX.white; ctx.fillText(MP_SUB[i], cx0+34, cy+92);
+      ctx.textAlign="right"; ctx.font=ttFont(15); ctx.fillStyle=sel?col:TTX.dim; ctx.fillText(MP_TAG[i], cx0+cw-26, cy+34);
+      mpCardRects.push({x:cx0,y:cy,w:cw,h:ch,i});
     }
-    ctx.font=ttFont(14); ctx.fillStyle=TTX.grey;
-    ctx.fillText(TOUCH?"TAP A MODE      (← BACK)":"↑ ↓ CHOOSE    SPACE SELECT    ESC BACK", VW/2, SH-30);
+    ctx.textAlign="center"; ctx.font=ttFont(14); ctx.fillStyle=TTX.grey;
+    ctx.fillText(TOUCH?"TAP A MODE        ← BACK":"↑ ↓ CHOOSE    SPACE SELECT    ESC BACK", VW/2, SH-24);
     ctx.textAlign="left";
   }
   function drawClassicStandings(y0){
@@ -2599,16 +2557,50 @@
     ctx.textAlign="left";
   }
   function drawHorseStandings(y0){
+    // scoreboard: each player + their WORD as lit letter boxes (earned letters glow in their colour)
+    const rh=Math.min(34, (SH-y0-80)/H.players.length);
+    const bs=Math.min(24, rh-8), gap=5;
     for (let i=0;i<H.players.length;i++){
-      const p=H.players[i], y=y0+i*30;
-      ctx.textAlign="left"; ctx.font=ttFont(15);
-      ctx.fillStyle = p.out?TTX.dim:(i===H.current?TTX.yellow:HCOLS[i%HCOLS.length]);
-      ctx.fillText((i===H.leader&&!p.out?"▶ ":"  ")+p.name+(p.out?"  OUT":""), VW/2-220, y);
-      ctx.textAlign="right"; ctx.font=ttFont(17);
-      let s=""; for (let j=0;j<H.L;j++) s+=(j<p.letters?H.word[j]:"·")+(j<H.L-1?" ":"");
-      ctx.fillStyle = p.out?TTX.red:TTX.white; ctx.fillText(s, VW/2+220, y);
+      const p=H.players[i], y=y0+i*rh, col=HCOLS[i%HCOLS.length], mid=y+rh/2;
+      ctx.textAlign="left"; ctx.font=ttFont(16); ctx.textBaseline="middle";
+      ctx.fillStyle = p.out?TTX.dim:(i===H.current?TTX.yellow:col);
+      ctx.fillText((i===H.leader&&!p.out?"▶ ":"")+p.name+(p.out?"  OUT":""), 30, mid);
+      const totalW=H.L*(bs+gap)-gap, sx=VW-30-totalW;
+      for (let j=0;j<H.L;j++){ const lx=sx+j*(bs+gap), got=j<p.letters;
+        ctx.fillStyle = got ? (p.out?"#c43a3a":col) : "rgba(255,255,255,0.05)";
+        ctx.fillRect(lx, mid-bs/2, bs, bs);
+        ctx.strokeStyle="rgba(255,255,255,0.22)"; ctx.lineWidth=1; ctx.strokeRect(lx+0.5, mid-bs/2+0.5, bs-1, bs-1);
+        ctx.fillStyle = got?"#06070b":"rgba(255,255,255,0.16)"; ctx.font=ttFont(15,"bold "); ctx.textAlign="center";
+        ctx.fillText(H.word[j], lx+bs/2, mid+1);
+      }
     }
-    ctx.textAlign="left";
+    ctx.textBaseline="alphabetic"; ctx.textAlign="left";
+  }
+  // animated overlay when a follower just took a letter, or got knocked out
+  function drawHorseEvent(){
+    if (!H.event) return false;
+    const e=H.event, el=(performance.now()-e.t)/1000;
+    if (el>2.1) return false;
+    const p=H.players[e.who], col=HCOLS[e.who%HCOLS.length];
+    ctx.fillStyle="rgba(4,6,10,"+(el<1.7?0.82:0.82*(2.1-el)/0.4)+")"; ctx.fillRect(0,0,VW,SH);
+    ctx.textAlign="center";
+    if (e.type==='out'){
+      const pop=Math.min(1,el/0.25), sh=Math.sin(el*32)*Math.max(0,4-el*4);
+      ctx.save(); ctx.translate(VW/2+sh, SH/2-6); ctx.scale(0.55+0.45*pop, 0.55+0.45*pop);
+      ctx.transform(1,0,-0.16,1,0,0);
+      ctx.font=pxFont(24); ctx.fillStyle=col; ctx.fillText(p.name.toUpperCase(), 0, -34);
+      ctx.font=pxFont(40); ctx.fillStyle=TTX.red; ctx.fillText("IS A "+H.word, 0, 30);
+      ctx.restore();
+    } else {
+      const drop=el<0.3?-(1-el/0.3)*(1-el/0.3)*170:0, k=Math.max(0,1-el/0.3);
+      ctx.font=ttFont(26); ctx.fillStyle=col; ctx.fillText(p.name.toUpperCase()+"  —  THAT'S A LETTER!", VW/2, SH/2-52);
+      ctx.save(); ctx.translate(VW/2, SH/2+14+drop); ctx.scale(1.3+1.0*k, 1.3+1.0*k);
+      ctx.font=pxFont(60); ctx.fillStyle="#fff"; ctx.fillText(H.word[e.idx]||"?", 0, 0); ctx.restore();
+      let s=""; for (let j=0;j<H.L;j++) s+=(j<p.letters?H.word[j]:"·")+" ";
+      ctx.font=ttFont(22); ctx.fillStyle=TTX.dim; ctx.fillText(s.trim(), VW/2, SH/2+78);
+    }
+    ctx.textAlign="left"; ctx.textBaseline="alphabetic";
+    return true;
   }
   function drawHorseSetup(){
     const classic=mpMode==="classic";
@@ -2638,7 +2630,8 @@
   }
   function drawHorsePass(){
     ttBar("SCORDAGOL   HORSE", 0,12,VW,30,TTX.blue,TTX.white,{size:16});
-    drawHorseStandings(72);
+    drawHorseStandings(64);
+    if (drawHorseEvent()) return;        // a letter/loss just happened: play the animated overlay first
     const cur=H.players[H.current];
     ctx.textAlign="center"; ctx.font=ttFont(24); ctx.fillStyle=HCOLS[H.current%HCOLS.length];
     ctx.fillText("PASS TO  "+cur.name, VW/2, 300);
@@ -2898,7 +2891,7 @@
     else if (state===ST.INBOX){ state=ST.SEASONEND; }
     else if (state===ST.TROPHY){ state=ST.TABLE; }
     else if (state===ST.TABLE || state===ST.SEASONEND){ GMODE="career"; state=ST.MENU; menuSel=0; }
-    else if (state===ST.HORSESETUP){ kbdClose(); state=ST.MPMENU; menuSel=(mpMode==="classic"?1:0); }
+    else if (state===ST.HORSESETUP){ kbdClose(); state=ST.MPMENU; menuSel=(mpMode==="classic"?0:1); }
     else if (state===ST.MPMENU){ state=ST.MENU; menuSel=0; }
     else if (state===ST.DAILYBOARD || state===ST.HORSEEND || state===ST.HORSEPASS){ GMODE="career"; H=null; state=ST.MENU; menuSel=0; }
     else if (state===ST.CLASSICEND || state===ST.CLASSICPASS){ GMODE="career"; C=null; state=ST.MENU; menuSel=0; }
@@ -3043,7 +3036,7 @@
     return { x:(e.clientX-r.left)/r.width*VW, y:(e.clientY-r.top)/r.height*SH };
   }
   function menuHit(mx,my){            // mirrors drawMenu / drawMPMenu geometry (view space, centred on VW/2)
-    const opts = state===ST.MPMENU ? MP_OPTS : menuOptions();
+    const opts = menuOptions();
     for(let i=0;i<opts.length;i++){ const y=MENU_Y0+i*MENU_DY;
       if(mx>=VW/2-MENU_BW/2 && mx<=VW/2+MENU_BW/2 && my>=y-30 && my<=y+15) return i; }
     return -1;
@@ -3060,7 +3053,8 @@
   const inPlay = (s)=> s===ST.SERVE||s===ST.FLIGHT||s===ST.COUNTDOWN;
   canvas.addEventListener("pointermove",(e)=>{
     const p=evToLogical(e);
-    if(state===ST.MENU||state===ST.MPMENU){ const i=menuHit(p.x,p.y); if(i>=0) menuSel=i; }
+    if(state===ST.MENU){ const i=menuHit(p.x,p.y); if(i>=0) menuSel=i; }
+    else if(state===ST.MPMENU){ for(const r of mpCardRects){ if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h) menuSel=r.i; } }
     else if(state===ST.CLUBSEL){ const i=clubHit(p.x,p.y); if(i>=0) menuSel=i; }
     else if(state===ST.NATSEL){ const i=natHit(p.x,p.y); if(i>=0) menuSel=i; }
     else if(state===ST.LEAGUESEL){ const i=leagueHit(p.x,p.y); if(i>=0) menuSel=i; }
@@ -3098,7 +3092,8 @@
       return;
     }
     if(TOUCH && touchBackBtn){ const r=touchBackBtn; if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h){ goBack(); return; } }
-    if(state===ST.MENU||state===ST.MPMENU){ const i=menuHit(p.x,p.y); if(i>=0){ menuSel=i; pressSelect(); } }
+    if(state===ST.MENU){ const i=menuHit(p.x,p.y); if(i>=0){ menuSel=i; pressSelect(); } }
+    else if(state===ST.MPMENU){ for(const r of mpCardRects){ if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h){ menuSel=r.i; pressSelect(); break; } } }
     else if(state===ST.CLUBSEL){
       const i=clubHit(p.x,p.y); if(i>=0){ menuSel=i; pressSelect(); }
     }
@@ -3159,7 +3154,8 @@
     let frame=(now-last)/1000; last=now; if(frame>0.25) frame=0.25; acc+=frame;
     flash=Math.max(0,flash-frame*1.6);
     netBulgeT=Math.max(0,netBulgeT-frame); barShakeT=Math.max(0,barShakeT-frame);   // goal-net / woodwork animation decay
-    while(acc>=DT){ if(assetsReady) swfFrame(); acc-=DT; }
+    while(acc>=DT){ if(assetsReady){ pXball=xball; pYball=yball; pZ=z; swfFrame(); } acc-=DT; }
+    ballAlpha = acc/DT;        // 0..1 fraction toward the next physics step (for ball render-interp)
     render();
   }
   const CAP = /[?&]cap=1/.test(location.search);

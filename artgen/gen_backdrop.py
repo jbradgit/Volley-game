@@ -46,57 +46,39 @@ img[yl(ROOF_B) - 5: yl(ROOF_B), :] = np.array([228, 230, 233])       # fascia bo
 for sx_ in range(0, W, 60 * S):                                       # fascia support stubs
     img[yl(ROOF_B) - 9: yl(ROOF_B) - 5, sx_: sx_ + 2 * S] = np.array([180, 183, 188])
 
-# ---------- crowd: row-aligned 16-bit heads with colour sections ----------
-PAL = np.array([
-    [38, 42, 58], [30, 30, 36], [72, 74, 82], [92, 90, 98],       # 0-3 coats
-    [168, 42, 46], [186, 54, 54],                                  # 4-5 red shirts/scarves
-    [48, 66, 138], [70, 92, 170],                                  # 6-7 blue
-    [208, 208, 214], [235, 235, 240],                              # 8-9 white
-    [198, 160, 126], [180, 140, 110],                              # 10-11 faces
-    [52, 40, 32], [112, 92, 66], [228, 204, 130],                  # 12-14 hair
-], dtype=np.float32)
-BASE_W = np.array([2.6, 2.6, 2.0, 1.4, 1.2, 1.0, 1.0, 0.8, 1.0, 0.7, 2.6, 1.6, 1.5, 0.9, 0.4])
-
-def sections(seed_n=6):
-    """Random crowd colour sections (home red end, away blue block, white...)"""
-    out, x = [], 0
-    while x < W:
-        wseg = int(rng.uniform(90, 220) * S)
-        bias = rng.choice([4, 4, 6, 8, -1], p=[0.30, 0.15, 0.20, 0.15, 0.20])  # -1 = no bias
-        out.append((x, min(W, x + wseg), bias))
-        x += wseg
-    return out
-
-def section_of(secs, x):
-    for x0, x1, b in secs:
-        if x0 <= x < x1: return b
-    return -1
+# ---------- crowd: row-aligned heads, NEUTRAL wide-mix colours (no team-colour blocks) ----------
+# Owner: fans were too small/far and clumped into odd coloured blocks. Now bigger heads + each fan
+# an independent colour from a wide mixed palette -> a generic, neutral, varied crowd.
+COAT  = np.array([[38,42,58],[30,30,36],[72,74,82],[92,90,98],[54,56,66]], np.float32)   # dark coats (common)
+SHIRT = np.array([                                                                         # wide mix of shirts
+    [176,52,52],[52,72,150],[214,214,220],[44,128,70],[226,182,52],[120,64,156],
+    [44,148,156],[222,118,46],[206,86,124],[96,102,110],[78,150,98],[150,150,160],
+    [196,196,202],[64,96,178],[210,140,60],[176,176,40]], np.float32)
+FACE  = np.array([[198,160,126],[180,140,110],[150,112,86]], np.float32)
+HAIR  = np.array([[52,40,32],[112,92,66],[228,204,130],[22,22,26],[160,120,80]], np.float32)
+def _pick(arr): return arr[int(rng.integers(len(arr)))]
 
 def crowd(y0, y1, head, dark):
     r0, r1 = yl(y0), yl(y1)
     img[r0:r1, :] = np.array([24, 25, 31])
-    secs = sections()
-    row_h = head + 1
+    row_h = head + 1; dk = 0.78 if dark else 1.0
     for ry in range(r0, r1 - head, row_h):                # terraced rows of heads
         rl = 0.84 + 0.32 * rng.random()                   # per-row lighting
         x = int(rng.integers(0, head))
         while x < W - head:
-            bias = section_of(secs, x)
-            if bias >= 0 and rng.random() < 0.5:
-                ci = bias + int(rng.integers(0, 2))
-            else:
-                ci = int(rng.choice(len(PAL), p=BASE_W / BASE_W.sum()))
-            c = PAL[ci] * rl * rng.uniform(0.82, 1.12) * (0.78 if dark else 1.0)
+            body = _pick(COAT) if rng.random() < 0.42 else _pick(SHIRT)   # each fan independent (no blocks)
+            c = body * rl * rng.uniform(0.82, 1.12) * dk
             img[ry + 1: ry + head, x: x + head] = c                       # body/shirt block
-            hc = PAL[10 + int(rng.integers(0, 2))] * rl * (0.78 if dark else 1.0)
-            img[ry: ry + max(1, head // 2), x + 1: x + head - 1] = hc      # head above
+            img[ry: ry + max(1, head // 2), x + 1: x + head - 1] = _pick(FACE) * rl * dk         # face
+            if rng.random() < 0.6:
+                img[ry: ry + max(1, head // 3), x + 1: x + head - 1] = _pick(HAIR) * rl * dk     # hair on top
             x += head + int(rng.integers(0, 2))
         img[ry + row_h - 1: ry + row_h, :] *= 0.72                         # row shadow line
 
-crowd(ROOF_B, TIER2_B, 3 * S // 2 + 1, dark=True)         # upper tier, smaller heads
+crowd(ROOF_B, TIER2_B, 3 * S, dark=True)                  # upper tier — bigger heads (was 3*S//2+1)
 img[yl(TIER2_B):yl(DIV_B), :] = np.array([60, 64, 72])    # balcony divider
 img[yl(TIER2_B):yl(TIER2_B) + S, :] = np.array([100, 105, 112])
-crowd(DIV_B, TIER1_B, 2 * S, dark=False)                  # lower tier, bigger heads
+crowd(DIV_B, TIER1_B, 5 * S, dark=False)                  # lower tier — bigger/closer (was 2*S)
 # stairwell aisles
 for ax in np.linspace(W * 0.08, W * 0.92, 7):
     a0, a1 = int(ax - 3 * S), int(ax + 3 * S)
