@@ -12,16 +12,14 @@ art/career/multiplayer/UI work shipped. **Live site:** https://jbradgit.github.i
 (GitHub Pages serves `main`).
 
 **Git state right now:**
-- Work branch: **`claude/3d-character-sprites`** (pushed to origin).
-- `main` (= live Pages) is at **`5df880b`**.
-- The branch is **1 commit ahead** at **`8062200`** — a big multiplayer/menu/HUD/font batch
-  that is **CI-green + layout-audit-clean but NOT yet deployed to `main`**, because it includes
-  a **new SCORDAGOL logo + headline font (v1, owner hasn't visually signed off)**.
-- **To deploy it:** review the new logo/font in a browser; if good →
-  `git push origin claude/3d-character-sprites:main` (fast-forward; Pages republishes in ~1–2 min).
-  If the logo/font needs changes, iterate on the branch first.
+- Work branch **`claude/3d-character-sprites`** and `main` (= live Pages) are **in sync at
+  `133b1cc`** — the big multiplayer/menu/HUD/font batch is **DEPLOYED (2026-06-26), CI-green,
+  layout-audit-clean**.
+- This includes a **new SCORDAGOL logo + headline font (v1)** — owner asked for it (Sport-76 ref)
+  and authorised the deploy, but hasn't yet seen it in a live browser. **If the logo/font needs
+  tweaks, iterate on the branch and re-deploy** (`git push origin claude/3d-character-sprites:main`).
 
-**What's in `8062200` (this session):**
+**What this session shipped (commit `8062200`, deployed):**
 - **In-match HUDs reworked** (neutral dark blue, no team names/opponent score):
   HORSE shows the current player's letter tiles + the setter's name with "SET ✓";
   CLASSIC shows the current player + live score (left) and the points leader + score (right).
@@ -47,8 +45,9 @@ art/career/multiplayer/UI work shipped. **Live site:** https://jbradgit.github.i
   screenshots (the in-match HUDs aren't auto-audited — drive a real match like the skill does).
 
 **Open / next (priority):**
-1. **Owner review of the new logo + headline font** (v1) → then deploy to `main`. Reference was a
-   "Sport 76" rainbow-italic font; current impl is VT323 + skew + rainbow streak.
+1. **Owner to eyeball the new logo + headline font live** (it's deployed). Reference was a
+   "Sport 76" rainbow-italic font; current impl is VT323 + italic skew + rainbow speed-streak.
+   Tweak on the branch + re-deploy if it needs adjusting.
 2. **Commercial-readiness Q (owner asked):** with placeholder SFX sourced, the remaining
    launch blockers are IP — **real club/league/competition names** (trademark) and **any
    source-game-derived assets/sounds**. The 3D-rendered characters, generated stadium/crowd/ball,
