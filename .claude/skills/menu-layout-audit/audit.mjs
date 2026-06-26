@@ -31,7 +31,8 @@ if (!CHROME) { console.error('No Chrome/Edge found — set CHROME=<path to chrom
 // Screens to audit. `setup` runs in-page before the (instrumented) render; `state` is the
 // ST.* render target. `framed` enables the FRAMECOVER check (decorative-border screens).
 const SCREENS = [
-  { name: 'menu',            state: 'MENU',        framed: true },
+  // worst-case home menu: a career save (4 options incl. CONTINUE CAREER) + a best score (full footer)
+  { name: 'menu',            state: 'MENU',        framed: true, setup: "__dbg.newCareerSim('Brazil','ENG','Liverpool');__dbg.setBest(34700)" },
   { name: 'mpmenu',          state: 'MPMENU',      framed: true },
   { name: 'horsesetup_2p',   state: 'HORSESETUP',  setup: "__dbg.horseStart(['ALICE','BOB'],'HORSE')" },
   { name: 'horsesetup_6p',   state: 'HORSESETUP',  setup: "__dbg.horseStart(['ALICE','BOB','CARLA','DAN','EVE','FRANK'],'PIG')" },
@@ -141,10 +142,24 @@ for (const s of SCREENS) {
     if (Math.abs(off) > 2.5)
       findings.push(`VCENTER    "${inside[0].t}"  ${off > 0 ? 'low' : 'high'} by ${Math.abs(off).toFixed(1)}px in box y[${r0(bx.y)}..${r0(bx.y + bx.h)}]`);
   }
-  if (s.framed) for (const o of ops.filter(o => o.kind === 'fill')) {   // tall full-width bar over the 9/16px frame
-    const r = rectLogical(o);
-    if (r.w >= VW * 0.85 && r.x <= 20 && r.y < 90 && r.h >= 14 && r.h < 80)
-      findings.push(`FRAMECOVER fill bar x${r0(r.x)} w${r0(r.w)} y${r0(r.y)} h${r0(r.h)} crosses the decorative frame`);
+  // text-vs-text overlap (e.g. the footer controls hint colliding with a menu option)
+  for (let i = 0; i < texts.length; i++) for (let j = i + 1; j < texts.length; j++) {
+    if (texts[i].t === texts[j].t) continue;            // identical strings = intentional shadow/outline layering
+    const a = texts[i].box, b = texts[j].box;
+    const ox = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0), oy = Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0);
+    if (ox > 3 && oy > 3) findings.push(`OVERLAP    "${texts[i].t}" x "${texts[j].t}"  (${ox.toFixed(0)}x${oy.toFixed(0)}px)`);
+  }
+  if (s.framed) {
+    for (const o of ops.filter(o => o.kind === 'fill')) {            // tall full-width bar over the 9/16px frame
+      const r = rectLogical(o);
+      if (r.w >= VW * 0.85 && r.x <= 20 && r.y < 90 && r.h >= 14 && r.h < 80)
+        findings.push(`FRAMECOVER fill bar x${r0(r.x)} w${r0(r.w)} y${r0(r.y)} h${r0(r.h)} crosses the decorative frame`);
+    }
+    for (const t of texts) {                                         // text intruding the decorative frame border
+      const b = t.box;
+      if (b.y1 > SH - 20 || b.y0 < 22 || b.x0 < 18 || b.x1 > VW - 18)
+        findings.push(`FRAMEIN    "${t.t}" intrudes the frame  y[${r0(b.y0)}..${r0(b.y1)}] x[${r0(b.x0)}..${r0(b.x1)}]`);
+    }
   }
 
   total += findings.length;
