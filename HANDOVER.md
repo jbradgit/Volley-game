@@ -1,7 +1,67 @@
 # SCORDAGOL — Handover / State of Play
 
 **Read this first.** Single source of truth for picking the project up on a new
-device or a fresh session. Last updated: 2026-06-20.
+device or a fresh session. Last updated: 2026-06-26.
+
+---
+
+## 0. CURRENT STATE (2026-06-26) — READ THIS FIRST (supersedes §3 below)
+
+The 3D-sprite pipeline (old §3) is **long DONE and deployed**. Since then many rounds of
+art/career/multiplayer/UI work shipped. **Live site:** https://jbradgit.github.io/Volley-game/
+(GitHub Pages serves `main`).
+
+**Git state right now:**
+- Work branch: **`claude/3d-character-sprites`** (pushed to origin).
+- `main` (= live Pages) is at **`5df880b`**.
+- The branch is **1 commit ahead** at **`8062200`** — a big multiplayer/menu/HUD/font batch
+  that is **CI-green + layout-audit-clean but NOT yet deployed to `main`**, because it includes
+  a **new SCORDAGOL logo + headline font (v1, owner hasn't visually signed off)**.
+- **To deploy it:** review the new logo/font in a browser; if good →
+  `git push origin claude/3d-character-sprites:main` (fast-forward; Pages republishes in ~1–2 min).
+  If the logo/font needs changes, iterate on the branch first.
+
+**What's in `8062200` (this session):**
+- **In-match HUDs reworked** (neutral dark blue, no team names/opponent score):
+  HORSE shows the current player's letter tiles + the setter's name with "SET ✓";
+  CLASSIC shows the current player + live score (left) and the points leader + score (right).
+  Both via `drawHorseHUD()` / `drawClassicHUD()` branched at the top of `drawHUD()`.
+- **Standard headers:** every sub-screen uses `ttHeader(centre, right)` =
+  **SCORDAGOL (left) · status (centre) · mode (right)**, vertically centred.
+- **New headline font** `drawHeadline()` (fine-pixel italic VT323 + rainbow speed-streak,
+  Sport-76 inspired) **replaces Press Start 2P everywhere** — new logo, MULTIPLAYER title,
+  mode card titles, START, player/champion names. `pxFont` is retired (`pxText`/`ttFont` =
+  VT323 stay; they're the "fine pixel" font the owner is fine with).
+- **`centredText()`** is the single source of truth for centring text in a box (uses real glyph
+  metrics; `align` arg for vertical-only centring of left-aligned rows). Use it — don't hand-nudge
+  baselines (alignment was a recurring complaint; this is the fix).
+- **Home menu** footer/spacing fixed so 4 options + best score fit without overlap.
+
+**Verification — the preview MCP server is UNRELIABLE here (dies). Use the audit skill:**
+- **`menu-layout-audit` skill** (committed, `.claude/skills/menu-layout-audit/`): headless Chrome
+  linter that instruments the canvas and flags text overflow / off-screen / edge / over-centre /
+  text-overlap / frame-cover across all 19 menu+career screens. Run after ANY `draw*` menu/HUD edit:
+  `python -m http.server 5577` (background) then `node .claude/skills/menu-layout-audit/audit.mjs`
+  (needs `npm install puppeteer-core --no-save` + system Chrome; writes PNGs to `%TEMP%/volley_audit`
+  to Read). `audit.mjs` also shows the full puppeteer+`?cap=1`+`window.__dbg` pattern for ad-hoc
+  screenshots (the in-match HUDs aren't auto-audited — drive a real match like the skill does).
+
+**Open / next (priority):**
+1. **Owner review of the new logo + headline font** (v1) → then deploy to `main`. Reference was a
+   "Sport 76" rainbow-italic font; current impl is VT323 + skew + rainbow streak.
+2. **Commercial-readiness Q (owner asked):** with placeholder SFX sourced, the remaining
+   launch blockers are IP — **real club/league/competition names** (trademark) and **any
+   source-game-derived assets/sounds**. The 3D-rendered characters, generated stadium/crowd/ball,
+   and the transcribed-but-clean-room physics are OK; fonts (VT323/Press-Start) are SIL-OFL
+   (self-host for prod — see the `<link>` comment in `index.html`). See ROADMAP Track C.
+3. **Per-player team SELECT in HORSE** (deferred) — owner wants players to pick teams in HORSE setup.
+4. Foreign-league per-team kits (ESP/ITA/GER/FRA still use compact derive-field kits).
+5. PWA real-phone test (install / offline).
+
+**CI is the FULL suite — run ALL before pushing** (a subset once spammed the owner CI emails):
+`node ci/smoke.js && node --test ci/physics.test.js ci/career.test.js ci/horse.test.js ci/leagues.test.js`.
+Deploy = commit on the branch → push branch → `git push origin claude/3d-character-sprites:main`.
+Don't commit `node_modules/`, the scratch `tools/`, or `striker_base_v01.blend` (pre-existing, not ours).
 
 ---
 
