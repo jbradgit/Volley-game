@@ -1117,7 +1117,7 @@
     const shotOver = (end===1) || (!booted && xball>=600);
     if (shotOver) {
       if (!booted) flagResult(complete_miss ? "MISSED IT!" : "NO CONTACT", "#9aa7b4", 0);
-      if (!sc) M.attempts--;     // goals (sc=1) are free shots
+      if (!sc || GMODE==="horse") M.attempts--;     // goals (sc=1) are free shots — except HORSE: exactly one delivery per go
       resultTimer = 1.0;
       state = ST.RESULT;
     }
@@ -1270,8 +1270,57 @@
     let fs=16; ctx.font=ttFont(fs,"bold "); while (ctx.measureText(name).width>w-18 && fs>9){ fs--; ctx.font=ttFont(fs,"bold "); }
     ctx.fillText(name, x+w/2, y+h/2+1); ctx.textBaseline="alphabetic";
   }
+  // HORSE in-match HUD: neutral dark-blue scoreboard (no team colours). Shows the CURRENT player's
+  // name + their letter tiles, and the player who SET the challenge (the leader) with a SET ✓.
+  // score/target/draw/balls don't apply to HORSE. Keeps the advert board (commercial).
+  function drawHorseHUD(){
+    const cur=H.players[H.current], curCol=HCOLS[H.current%HCOLS.length];
+    const lead=H.players[H.leader], leadCol=HCOLS[H.leader%HCOLS.length], chasing=(H.phase==='follow');
+    const HL=-OX, HR=SW+OX, cxv=VW/2-OX;
+    const NAVY="#0b1834", BEZEL="#3f63d8", LEDBG="#070f22", LBL="#9fb0d0";
+    const fitName=(s,x,y,c)=>{ let fs=16; ctx.font=ttFont(fs); while(ctx.measureText(s).width>184&&fs>10){fs--;ctx.font=ttFont(fs);} ctx.fillStyle=c; centredText(s,x,y); };
+    // ---- challenge banner over the grass ----
+    const sx=70, sw=SW-140, sy=348, sh=48;
+    ctx.fillStyle="rgba(6,10,22,0.85)"; ctx.fillRect(sx,sy,sw,sh);
+    ctx.strokeStyle=BEZEL; ctx.lineWidth=1.5; ctx.strokeRect(sx+0.5,sy+0.5,sw-1,sh-1);
+    ctx.font=ttFont(15); ctx.fillStyle=curCol; centredText("▶ "+cur.name.toUpperCase(), SW/2, sy+16);
+    ctx.font=ttFont(12); ctx.fillStyle=TTX.white;
+    centredText(chasing ? "MATCH "+lead.name.toUpperCase()+"'S GOAL  ·  OR TAKE A LETTER"
+                        : "SCORE TO SET THE CHALLENGE  ·  1 BALL", SW/2, sy+34);
+    // ---- bottom chassis (neutral dark blue) ----
+    ctx.fillStyle=NAVY; ctx.fillRect(HL,400,VW,SH-400);
+    ctx.fillStyle="rgba(0,0,0,0.22)"; for(let yy=402;yy<SH;yy+=3) ctx.fillRect(HL,yy,VW,1);
+    ctx.fillStyle=BEZEL; ctx.fillRect(HL,400,VW,3); ctx.fillRect(HL,SH-3,VW,3); ctx.fillRect(HL,400,3,SH-400); ctx.fillRect(HR-3,400,3,SH-400);
+    // ---- LEFT: current player — name + their letter tiles ----
+    fitName(cur.name.toUpperCase(), HL+120, 416, curCol);
+    bevel(HL+22,426,196,54,LEDBG,true,3,BEZEL); ctx.strokeStyle=BEZEL; ctx.lineWidth=1.5; ctx.strokeRect(HL+22.75,426.75,194.5,53.5);
+    { const L=H.L, g=4, tw=Math.min(28,(184-(L-1)*g)/L), th=30, totW=L*tw+(L-1)*g, t0=HL+120-totW/2, cyT=453, ty=cyT-th/2;
+      ctx.font=ttFont(16,"bold ");
+      for (let j=0;j<L;j++){ const tx=t0+j*(tw+g), got=j<cur.letters;
+        ctx.fillStyle=got?curCol:"rgba(255,255,255,0.08)"; ctx.fillRect(tx,ty,tw,th);
+        ctx.strokeStyle="rgba(255,255,255,0.25)"; ctx.lineWidth=1; ctx.strokeRect(tx+0.5,ty+0.5,tw-1,th-1);
+        ctx.fillStyle=got?"#06070b":"rgba(255,255,255,0.30)"; centredText(H.word[j], tx+tw/2, cyT); } }
+    ctx.font=ttFont(11); ctx.fillStyle=LBL; centredText(chasing?"YOUR LETTERS":"YOU LEAD", HL+120, 494);
+    // ---- RIGHT: the player who SET the challenge (the leader) ----
+    if (chasing){ fitName(lead.name.toUpperCase(), HR-120, 416, leadCol); }
+    else { ctx.font=ttFont(16); ctx.fillStyle=TTX.cyan; centredText("CHALLENGE", HR-120, 416); }
+    bevel(HR-218,426,196,54,LEDBG,true,3,BEZEL); ctx.strokeStyle=BEZEL; ctx.lineWidth=1.5; ctx.strokeRect(HR-217.25,426.75,194.5,53.5);
+    if (chasing){ ctx.font=ttFont(26); ctx.fillStyle=TTX.green; centredText("SET ✓", HR-120, 453); }
+    else { ctx.font=ttFont(24); ctx.fillStyle=TTX.cyan; centredText("TO SET", HR-120, 453); }
+    ctx.font=ttFont(11); ctx.fillStyle=LBL; centredText(chasing?"CHALLENGE SET":"SET THE PACE", HR-120, 494);
+    // ---- CENTRE: advert board (commercial) ----
+    const adW=Math.min(356,VW*0.38), adX=cxv-adW/2;
+    bevel(adX,426,adW,54,LEDBG,true,3,BEZEL); ctx.strokeStyle=BEZEL; ctx.lineWidth=1.5; ctx.strokeRect(adX+0.75,426.75,adW-1.5,52.5);
+    ctx.fillStyle="rgba(150,160,190,0.07)"; for (let yy=432;yy<476;yy+=5) for (let xx=adX+6;xx<adX+adW-4;xx+=5) ctx.fillRect(xx,yy,2,2);
+    ctx.font=ttFont(16); ctx.fillStyle="#ffc23d"; centredText("ADVERTISE HERE", cxv, 446);
+    ctx.font=ttFont(10); ctx.fillStyle="#8a9bc0"; centredText("YOUR MESSAGE IN LIGHTS", cxv, 463);
+    ctx.font=ttFont(10); ctx.fillStyle="rgba(255,255,255,0.6)"; centredText(TOUCH?"SWIPE TO MOVE · LIFT TO SHOOT":"◄ ► MOVE   SPACE = SHOOT", cxv, 494);
+    ctx.textAlign="left";
+    drawMuteButton(HR); drawPauseButton(HR);
+  }
   function drawHUD() {
     const P=teamHud.primary, S=teamHud.secondary;
+    if (GMODE==="horse"){ drawHorseHUD(); return; }   // HORSE: neutral-blue letter HUD, not score/target/balls
     // ===== progress strip over the grass =====
     const sx=70, sw=SW-140, sy=348, sh=48;
     ctx.fillStyle="rgba(6,7,11,0.76)"; ctx.fillRect(sx,sy,sw,sh);
@@ -1479,6 +1528,17 @@
   const TT_SCALE=1.3;   // VT323 renders small per-em; gentle global scale (1.5 was too chunky/overlapping)
   function ttFont(px, w){ return (w||"")+Math.round(px*TT_SCALE)+"px 'VT323','Courier New','Lucida Console',monospace"; }
   function pxFont(px){ return px+"px 'Press Start 2P','Courier New',monospace"; }   // chunky 8-bit (countdown, big headings)
+  // Pixel-precise centred text: places the glyph's VISUAL centre at (cx,cy) using real font
+  // metrics, so a box drawn symmetrically around (cx,cy) lines up on BOTH axes. The single
+  // source of truth for "centre text in a box" — use it instead of guessing baseline offsets.
+  // (Real browsers expose actualBoundingBox*; the Node CI stub doesn't, so it falls back.)
+  function centredText(text, cx, cy, align){
+    const m=ctx.measureText(text), a=m.actualBoundingBoxAscent, d=m.actualBoundingBoxDescent;
+    const dy=(typeof a==="number" && !isNaN(a)) ? (a-d)/2 : (parseInt(ctx.font,10)||14)*0.34;   // baseline offset to centre glyph on cy
+    const pa=ctx.textAlign, pb=ctx.textBaseline;
+    ctx.textAlign=align||"center"; ctx.textBaseline="alphabetic"; ctx.fillText(text, cx, cy+dy);   // align="left" => vertical-only centring
+    ctx.textAlign=pa; ctx.textBaseline=pb;
+  }
   // nudge the canvas to use the web fonts as soon as they load (rAF redraws, so text just pops in)
   if (document.fonts && document.fonts.load){ document.fonts.load("32px VT323"); document.fonts.load("32px 'Press Start 2P'"); }
 
@@ -1680,18 +1740,21 @@
       const y=MENU_Y0+i*MENU_DY, sel=i===menuSel;
       const sub=ttSub(opts[i], 2+i); if (sub===null) continue;           // print options one by one (centered text only)
       ctx.font=ttFont(26);
-      if (sel){                                                            // white outline selection box
-        ctx.strokeStyle="rgba(255,255,255,0.75)"; ctx.lineWidth=2;
-        ctx.strokeRect(VW/2-MENU_BW/2+1, y-27, MENU_BW-2, MENU_BH-2);
-        ctx.textAlign="left"; ctx.fillStyle=TTX.white;
-        ctx.fillText("▶", VW/2-MENU_BW/2+14, y);                         // arrow pinned to left edge of box
-      }
+      const cy=y;                                                          // treat the row anchor as its visual centre
       ctx.fillStyle = sel ? TTX.yellow : TTX.white;                       // predominantly white menu text, yellow highlight on selection
-      ctx.textAlign="center"; ctx.fillText(sub, VW/2, y);                 // option text perfectly centred
+      centredText(sub, VW/2, cy);                                         // metrics-centred (both axes)
+      if (sel){                                                            // box hugs text + chevrons as one unit, centred on cy
+        const tw=ctx.measureText(sub).width, chevGap=20, chevW=ctx.measureText("◀").width, half=tw/2+chevGap+chevW+16, BH=MENU_BH-2;
+        ctx.strokeStyle="rgba(255,255,255,0.78)"; ctx.lineWidth=2;
+        ctx.strokeRect(Math.round(VW/2-half), Math.round(cy-BH/2), Math.round(half*2), BH);
+        ctx.fillStyle=TTX.white;
+        centredText("▶", VW/2-tw/2-chevGap-chevW/2, cy);
+        centredText("◀", VW/2+tw/2+chevGap+chevW/2, cy);
+      }
     }
     ctx.textAlign="center";
     if (ttDone(2+opts.length) && !TOUCH){ ctx.font=ttFont(14); ctx.fillStyle=TTX.grey;
-      ctx.fillText("↑ ↓ CHOOSE    SPACE / CLICK SELECT    F FULLSCREEN", VW/2, 458); }
+      ctx.fillText("↑ ↓ CHOOSE    SPACE / CLICK SELECT    F FULLSCREEN", VW/2, 444); }
     // roster status — so a failed deploy isn't a silent dead-end (options need the roster)
     if (!TEAMS.length){
       ctx.font=ttFont(12);
@@ -1705,10 +1768,10 @@
         if (M.best>0){ ctx.font=ttFont(11); ctx.fillStyle=TTX.cyan; ctx.fillText("BEST  "+M.best, VW/2, 480); }
       }
     } else {
-      ctx.font=ttFont(14); ctx.fillStyle=TTX.green; ctx.fillText("A WIMP STUDIO CREATION", VW/2, 474);
+      ctx.font=ttFont(14); ctx.fillStyle=TTX.green; ctx.fillText("A WIMP STUDIO CREATION", VW/2, 478);
       ctx.font=ttFont(10,""); ctx.fillStyle=TTX.dim;
-      ctx.fillText("SCORDAGOL ™   © 2026 WIMP STUDIO · ALL RIGHTS RESERVED", VW/2, 491);
-      if (M.best>0){ ctx.font=ttFont(11); ctx.fillStyle=TTX.cyan; ctx.fillText("BEST SCORE  "+M.best, VW/2, 505); }
+      ctx.fillText("SCORDAGOL ™   © 2026 WIMP STUDIO · ALL RIGHTS RESERVED", VW/2, 495);
+      if (M.best>0){ ctx.font=ttFont(11); ctx.fillStyle=TTX.cyan; ctx.fillText("BEST SCORE  "+M.best, VW/2, 510); }
     }
     ctx.textAlign="left";
   }
@@ -1745,7 +1808,7 @@
     TEAMS.forEach((t,i)=>{
       if (ttSub(t.name, i)===null) return;                         // print clubs in order
       const col=Math.floor(i/rows), row=i%rows, cx=x0+col*cw, cy=y0+row*ch, sel=i===menuSel, mid=cy+ch/2;
-      if (sel){ ctx.strokeStyle="rgba(255,255,255,0.75)"; ctx.lineWidth=1.5; ctx.strokeRect(cx+0.75,cy+0.75,cw-7.5,ch-4.5); }
+      if (sel){ ctx.strokeStyle="rgba(255,255,255,0.75)"; ctx.lineWidth=1.5; ctx.strokeRect(cx+0.75, mid-(ch-4.5)/2, cw-7.5, ch-4.5); }
       // kit swatch: striped -> vertical bars; contrasting sleeves -> side bars; accent -> half-and-half; else solid
       const sw=20, sx=cx+7, sy=mid-sw/2;
       ctx.fillStyle=PAL[t.shirt]||"#888"; ctx.fillRect(sx,sy,sw,sw);
@@ -1761,9 +1824,8 @@
         ctx.fillRect(sx+sw/2, sy, sw/2, sw);
       }
       ctx.strokeStyle="rgba(0,0,0,0.6)"; ctx.lineWidth=1; ctx.strokeRect(sx,sy,sw,sw);
-      ctx.font=ttFont(14); ctx.textAlign="left"; ctx.textBaseline="middle";
-      ctx.fillStyle = sel ? TTX.yellow : TTX.white;
-      ctx.fillText(t.name, sx+sw+8, mid+1); ctx.textBaseline="alphabetic";
+      ctx.font=ttFont(14); ctx.fillStyle = sel ? TTX.yellow : TTX.white;
+      centredText(t.name, sx+sw+8, mid, "left");
     });
     ctx.textAlign="center"; ctx.font=ttFont(13); ctx.fillStyle=TTX.grey;
     ctx.fillText(TOUCH?"TAP A CLUB TO START":"← ↑ ↓ →  CHOOSE    SPACE  CONFIRM    ESC  BACK", VW/2, SH-14);
@@ -2199,10 +2261,10 @@
     N.forEach((n,i)=>{
       if (ttSub(n.name, i)===null) return;
       const col=Math.floor(i/rows), row=i%rows, cx=x0+col*cw, cy=y0+row*ch, sel=i===menuSel, mid=cy+ch/2;
-      if (sel){ ctx.strokeStyle="rgba(255,255,255,0.75)"; ctx.lineWidth=1.5; ctx.strokeRect(cx+0.75,cy+0.75,cw-7.5,ch-4.5); }
+      if (sel){ ctx.strokeStyle="rgba(255,255,255,0.75)"; ctx.lineWidth=1.5; ctx.strokeRect(cx+0.75, mid-(ch-4.5)/2, cw-7.5, ch-4.5); }
       drawFlag(cx+7, mid-11, 34, 22, n.flag);
-      ctx.font=ttFont(15); ctx.textAlign="left"; ctx.textBaseline="middle"; ctx.fillStyle = sel ? TTX.yellow : TTX.white;
-      ctx.fillText(n.name, cx+50, mid+1); ctx.textBaseline="alphabetic";
+      ctx.font=ttFont(15); ctx.fillStyle = sel ? TTX.yellow : TTX.white;
+      centredText(n.name, cx+50, mid, "left");
     });
     ctx.textAlign="center"; ctx.font=ttFont(13); ctx.fillStyle=TTX.grey;
     ctx.fillText(TOUCH?"TAP YOUR NATION":"← ↑ ↓ →  CHOOSE    SPACE  CONFIRM    ESC  BACK", VW/2, SH-14);
@@ -2391,9 +2453,9 @@
   // The leader keeps setting challenges until they miss, then leadership passes to the next player.
   // Spell the word and you're out; last player standing wins. 2-6 players, pass-and-play.
   let H=null;
-  let hCount=2, hNames=["","","","","",""], hWord="HORSE", hField=0, horseStartBtn=null;   // setup state
+  let hCount=2, hNames=["","","","","",""], hWord="HORSE", hField=0, horseStartBtn=null, hRowGeo=[];   // setup state (hRowGeo: per-draw row boxes, keeps touch hit-test in sync with the adaptive layout)
   const HCOLS=["#5bd0ff","#ff8a5b","#7dff8a","#ffd24a","#c78bff","#ff7ab0"];   // per-player colours
-  const HORSE_MIN=2, HORSE_MAX=6, HSETUP_Y0=92, HSETUP_RH=40;
+  const HORSE_MIN=2, HORSE_MAX=6;
   function beginHorse(){
     const word=(hWord.trim().toUpperCase().replace(/[^A-Z]/g,"")).slice(0,8) || "HORSE";
     const players=[];
@@ -2420,7 +2482,7 @@
       if (made){                                                      // challenge set: queue the other active players
         H.followQ=[]; let j=H.leader;
         for (let k=0;k<H.players.length;k++){ j=(j+1)%H.players.length; if(j!==H.leader && !H.players[j].out) H.followQ.push(j); }
-        if (!H.followQ.length){ H.winner=H.leader; state=ST.HORSEEND; return; }   // leader is the only one left
+        if (!H.followQ.length){ H.winner=H.leader; H.winAt=performance.now(); state=ST.HORSEEND; return; }   // leader is the only one left
         H.phase='follow'; H.current=H.followQ.shift();
       } else {                                                        // leader missed: pass leadership, no letters
         H.leader=horseNextActive(H.leader); H.phase='lead'; H.current=H.leader;
@@ -2430,7 +2492,7 @@
         const who=H.current, p=H.players[who]; p.letters++;
         H.event={type:'letter', who, idx:p.letters-1, t:performance.now()};   // drives the letter-slam overlay
         if (p.letters>=H.L){ p.out=true; H.event={type:'out', who, t:performance.now()};   // big "X IS A WORD" banner
-          if (horseActiveCount()===1){ H.winner=H.players.findIndex(x=>!x.out); state=ST.HORSEEND; return; } }
+          if (horseActiveCount()===1){ H.winner=H.players.findIndex(x=>!x.out); H.winAt=performance.now(); state=ST.HORSEEND; return; } }
       }
       if (H.followQ.length) H.current=H.followQ.shift();
       else { H.phase='lead'; H.current=H.leader; }                    // challenge done: same leader sets again
@@ -2465,41 +2527,51 @@
     C.players[C.current].score = M.score;
     if (C.current < C.players.length-1){ C.current++; state=ST.CLASSICPASS; }
     else { let bi=0; for (let i=1;i<C.players.length;i++) if((C.players[i].score||0)>(C.players[bi].score||0)) bi=i;
-           C.winner=bi; state=ST.CLASSICEND; }
+           C.winner=bi; C.winAt=performance.now(); state=ST.CLASSICEND; }
   }
   function classicSnap(){ return { current:C.current, winner:C.winner,
     players:C.players.map(p=>({name:p.name,score:p.score})), state }; }
 
   // ---- multiplayer hub + classic screens (teletext) ----
   const MP_OPTS=["CLASSIC","HORSE"];                                  // CLASSIC first (owner)
-  const MP_SUB=["Same 10 balls each — highest score wins",            // classic: no 'letters' mention (it's a given)
-                "Miss the leader's shot and you take a letter — last one standing wins"];
+  const MP_SUB=["Same 10 balls each  ·  highest total score wins",    // classic: no 'letters' mention (it's a given)
+                "Match the leader's goal or take a letter  ·  last one in wins"];
   const MP_COL=["#4dff7a","#ffd24a"], MP_TAG=["★ HIGH SCORE","H·O·R·S·E"];
   let mpCardRects=[];
   function drawMPMenu(){
     ctx.strokeStyle=TTX.blue;    ctx.lineWidth=5; ctx.strokeRect(9,9,VW-18,SH-18);
     ctx.strokeStyle=TTX.magenta; ctx.lineWidth=2; ctx.strokeRect(16,16,VW-32,SH-32);
-    ttBar("SCORDAGOL   MULTIPLAYER", 0, 18, VW, 36, TTX.magenta, TTX.white, {center:true, size:24});
-    ctx.textAlign="center"; ctx.font=ttFont(15); ctx.fillStyle=TTX.cyan;
-    ctx.fillText("PASS & PLAY   ·   ONE DEVICE   ·   2–6 PLAYERS", VW/2, 96);
+    // inset title (no full-width banner — that overran the decorative frame)
+    ctx.textAlign="center"; ctx.font=pxFont(24); ctx.fillStyle=TTX.magenta; ctx.fillText("MULTIPLAYER", VW/2, 62);
+    ctx.font=ttFont(15); ctx.fillStyle=TTX.cyan; ctx.fillText("PASS & PLAY   ·   ONE DEVICE   ·   2–6 PLAYERS", VW/2, 92);
     menuSel=clamp(menuSel,0,MP_OPTS.length-1);
     mpCardRects=[];
-    const cw=640, ch=126, cx0=VW/2-cw/2, gap=30, y0=128;
+    // big mode cards, vertically centred so the screen is fully used
+    const cw=724, ch=150, gap=40, cx0=VW/2-cw/2, pad=36;
+    const blockH=MP_OPTS.length*ch+(MP_OPTS.length-1)*gap;
+    const y0=Math.round(118+((SH-44)-118-blockH)/2);
     const t=performance.now()/1000;
     for (let i=0;i<MP_OPTS.length;i++){
       const cy=y0+i*(ch+gap), sel=i===menuSel, col=MP_COL[i];
-      ctx.fillStyle = sel ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.30)"; ctx.fillRect(cx0,cy,cw,ch);
+      ctx.fillStyle = sel ? "rgba(255,255,255,0.09)" : "rgba(0,0,0,0.30)"; ctx.fillRect(cx0,cy,cw,ch);
       ctx.lineWidth = sel?4:2; ctx.strokeStyle=col;
       ctx.globalAlpha = sel ? 0.7+0.3*Math.sin(t*5) : 1;             // gentle pulse on the selected card
       ctx.strokeRect(cx0+1,cy+1,cw-2,ch-2); ctx.globalAlpha=1;
-      ctx.textAlign="left"; ctx.font=pxFont(sel?28:24); ctx.fillStyle=col; ctx.fillText(MP_OPTS[i], cx0+34, cy+54);
-      ctx.font=ttFont(17); ctx.fillStyle=TTX.white; ctx.fillText(MP_SUB[i], cx0+34, cy+92);
-      ctx.textAlign="right"; ctx.font=ttFont(15); ctx.fillStyle=sel?col:TTX.dim; ctx.fillText(MP_TAG[i], cx0+cw-26, cy+34);
+      ctx.textAlign="left"; ctx.font=pxFont(sel?30:26); ctx.fillStyle=col; ctx.fillText(MP_OPTS[i], cx0+pad, cy+62);
+      ctx.fillStyle="rgba(255,255,255,0.14)"; ctx.fillRect(cx0+pad, cy+82, cw-2*pad, 1);   // divider under the title
+      ctx.fillStyle=TTX.white; fitFill(MP_SUB[i], cx0+pad, cy+118, cw-2*pad, 18);           // subtitle, shrunk to fit the card
+      ctx.textAlign="right"; ctx.font=ttFont(16); ctx.fillStyle=sel?col:TTX.dim; ctx.fillText(MP_TAG[i], cx0+cw-pad, cy+40);
       mpCardRects.push({x:cx0,y:cy,w:cw,h:ch,i});
     }
     ctx.textAlign="center"; ctx.font=ttFont(14); ctx.fillStyle=TTX.grey;
     ctx.fillText(TOUCH?"TAP A MODE        ← BACK":"↑ ↓ CHOOSE    SPACE SELECT    ESC BACK", VW/2, SH-24);
     ctx.textAlign="left";
+  }
+  // draw left-aligned text at (x,y), shrinking the teletext font until it fits within maxW
+  function fitFill(text, x, y, maxW, baseSize){
+    let s=baseSize; ctx.font=ttFont(s);
+    while (s>11 && ctx.measureText(text).width>maxW){ s--; ctx.font=ttFont(s); }
+    ctx.fillText(text, x, y);
   }
   function drawClassicStandings(y0){
     ctx.font=ttFont(15);
@@ -2524,10 +2596,18 @@
   }
   function drawClassicEnd(){
     ttBar("SCORDAGOL   CLASSIC  -  FULL TIME", 0,12,VW,30,TTX.blue,TTX.white,{size:16});
+    const t=(performance.now()-(C.winAt||performance.now()))/1000;
+    drawConfetti(t);
     const order=C.players.map((p)=>p).sort((a,b)=>(b.score||0)-(a.score||0));
-    ctx.textAlign="center"; ctx.font=ttFont(24); ctx.fillStyle=TTX.neon;
-    ctx.fillText("★ "+C.players[C.winner].name+" WINS ★", VW/2, 96);
-    let y=150;
+    const win=C.players[C.winner], wcol=HCOLS[C.winner%HCOLS.length];
+    // glowing, popped winner banner
+    const pop=Math.min(1,t/0.4), sc=0.55+0.45*(1-Math.pow(1-pop,3));
+    ctx.textAlign="center"; ctx.font=ttFont(15,"bold "); ctx.fillStyle=TTX.yellow; ctx.fillText("★   CHAMPION   ★", VW/2, 70);
+    ctx.save(); ctx.translate(VW/2, 104); ctx.scale(sc,sc); ctx.textBaseline="middle";
+    ctx.shadowColor=wcol; ctx.shadowBlur=18; ctx.font=pxFont(24); ctx.fillStyle=wcol;
+    ctx.fillText(win.name.toUpperCase()+"  WINS", 0, 0); ctx.shadowBlur=0; ctx.textBaseline="alphabetic"; ctx.restore();
+    // final leaderboard
+    let y=168;
     for (let r=0;r<order.length;r++){ const p=order[r];
       ctx.font=ttFont(19); ctx.fillStyle = r===0?"#ffd700":TTX.white;
       ctx.textAlign="left";  ctx.fillText(ord(r+1).toUpperCase()+"   "+p.name, VW/2-170, y);
@@ -2556,18 +2636,34 @@
     if (ttCursorOn()){ ctx.fillStyle=TTX.neon; ctx.font=ttFont(18); ctx.fillText(TOUCH?"TAP  TO  RETURN  TO  MENU":"SPACE  TO  RETURN  TO  MENU", VW/2, 470); }
     ctx.textAlign="left";
   }
+  // Themed scoreboard panel: framed chassis, header, zebra rows, active-player highlight,
+  // each player's WORD as lit letter tiles (earned letters glow in their colour). Returns its bottom Y.
   function drawHorseStandings(y0){
-    // scoreboard: each player + their WORD as lit letter boxes (earned letters glow in their colour)
-    const rh=Math.min(34, (SH-y0-80)/H.players.length);
-    const bs=Math.min(24, rh-8), gap=5;
-    for (let i=0;i<H.players.length;i++){
-      const p=H.players[i], y=y0+i*rh, col=HCOLS[i%HCOLS.length], mid=y+rh/2;
-      ctx.textAlign="left"; ctx.font=ttFont(16); ctx.textBaseline="middle";
-      ctx.fillStyle = p.out?TTX.dim:(i===H.current?TTX.yellow:col);
-      ctx.fillText((i===H.leader&&!p.out?"▶ ":"")+p.name+(p.out?"  OUT":""), 30, mid);
-      const totalW=H.L*(bs+gap)-gap, sx=VW-30-totalW;
-      for (let j=0;j<H.L;j++){ const lx=sx+j*(bs+gap), got=j<p.letters;
-        ctx.fillStyle = got ? (p.out?"#c43a3a":col) : "rgba(255,255,255,0.05)";
+    const n=H.players.length;
+    const PW=Math.min(820, VW-90), PX=Math.round(VW/2-PW/2);
+    const headH=30, rowH=clamp(Math.floor(280/Math.max(n,1)), 34, 46), bodyTop=y0+headH;
+    const panelH=headH+n*rowH+8;
+    // chassis + bezel
+    ctx.fillStyle="rgba(8,12,20,0.94)"; ctx.fillRect(PX, y0, PW, panelH);
+    ctx.strokeStyle=TTX.blue; ctx.lineWidth=3; ctx.strokeRect(PX+1.5, y0+1.5, PW-3, panelH-3);
+    // header bar
+    ctx.fillStyle="rgba(91,123,255,0.20)"; ctx.fillRect(PX+3, y0+3, PW-6, headH-3);
+    ctx.textBaseline="middle"; ctx.font=ttFont(13,"bold "); ctx.fillStyle=TTX.cyan;
+    ctx.textAlign="left";  ctx.fillText("PLAYER", PX+20, y0+headH/2+2);
+    ctx.textAlign="right"; ctx.fillText("LETTERS  ( "+H.word+" )", PX+PW-20, y0+headH/2+2);
+    for (let i=0;i<n;i++){
+      const p=H.players[i], col=HCOLS[i%HCOLS.length], ry=bodyTop+i*rowH, mid=ry+rowH/2;
+      const isUp=(i===H.current && !p.out);
+      if (i%2) { ctx.fillStyle="rgba(255,255,255,0.03)"; ctx.fillRect(PX+3, ry, PW-6, rowH); }
+      if (isUp){ ctx.fillStyle="rgba(255,226,61,0.10)"; ctx.fillRect(PX+3, ry, PW-6, rowH);
+                 ctx.fillStyle=TTX.yellow; ctx.fillRect(PX+3, ry+2, 4, rowH-4); }   // active-player marker bar
+      ctx.textAlign="left"; ctx.font=ttFont(17);
+      ctx.fillStyle = p.out?TTX.dim:(isUp?TTX.yellow:col);
+      const tag=(i===H.leader && !p.out)?"★ ":"";
+      ctx.fillText(tag+p.name.toUpperCase()+(p.out?"  —  OUT":""), PX+20, mid);
+      const bs=Math.min(26, rowH-12), gp=6, totalW=H.L*(bs+gp)-gp, sx=PX+PW-20-totalW;
+      for (let j=0;j<H.L;j++){ const lx=sx+j*(bs+gp), got=j<p.letters;
+        ctx.fillStyle = got ? (p.out?"#c43a3a":col) : "rgba(255,255,255,0.06)";
         ctx.fillRect(lx, mid-bs/2, bs, bs);
         ctx.strokeStyle="rgba(255,255,255,0.22)"; ctx.lineWidth=1; ctx.strokeRect(lx+0.5, mid-bs/2+0.5, bs-1, bs-1);
         ctx.fillStyle = got?"#06070b":"rgba(255,255,255,0.16)"; ctx.font=ttFont(15,"bold "); ctx.textAlign="center";
@@ -2575,6 +2671,7 @@
       }
     }
     ctx.textBaseline="alphabetic"; ctx.textAlign="left";
+    return y0+panelH;
   }
   // animated overlay when a follower just took a letter, or got knocked out
   function drawHorseEvent(){
@@ -2593,11 +2690,12 @@
       ctx.restore();
     } else {
       const drop=el<0.3?-(1-el/0.3)*(1-el/0.3)*170:0, k=Math.max(0,1-el/0.3);
-      ctx.font=ttFont(26); ctx.fillStyle=col; ctx.fillText(p.name.toUpperCase()+"  —  THAT'S A LETTER!", VW/2, SH/2-52);
-      ctx.save(); ctx.translate(VW/2, SH/2+14+drop); ctx.scale(1.3+1.0*k, 1.3+1.0*k);
-      ctx.font=pxFont(60); ctx.fillStyle="#fff"; ctx.fillText(H.word[e.idx]||"?", 0, 0); ctx.restore();
+      ctx.font=ttFont(26); ctx.fillStyle=col; ctx.fillText(p.name.toUpperCase()+"  —  THAT'S A LETTER!", VW/2, SH/2-112);
+      ctx.save(); ctx.translate(VW/2, SH/2-2+drop); ctx.scale(1.25+0.85*k, 1.25+0.85*k);
+      ctx.textBaseline="middle"; ctx.font=pxFont(54); ctx.fillStyle="#fff"; ctx.fillText(H.word[e.idx]||"?", 0, 0); ctx.restore();
+      ctx.textBaseline="alphabetic";
       let s=""; for (let j=0;j<H.L;j++) s+=(j<p.letters?H.word[j]:"·")+" ";
-      ctx.font=ttFont(22); ctx.fillStyle=TTX.dim; ctx.fillText(s.trim(), VW/2, SH/2+78);
+      ctx.font=ttFont(22); ctx.fillStyle=TTX.dim; ctx.fillText(s.trim(), VW/2, SH/2+92);
     }
     ctx.textAlign="left"; ctx.textBaseline="alphabetic";
     return true;
@@ -2605,52 +2703,97 @@
   function drawHorseSetup(){
     const classic=mpMode==="classic";
     ttBar("SCORDAGOL   "+(classic?"CLASSIC":"HORSE")+"  -  SET UP", 0,12,VW,30,TTX.blue,TTX.white,{size:16});
-    ctx.textAlign="center"; ctx.font=ttFont(11); ctx.fillStyle=TTX.white;
-    ctx.fillText(classic ? "EVERYONE TAKES THE SAME 10 BALLS. HIGHEST TOTAL SCORE WINS. NO LETTERS."
-                         : "LEADER SETS A SHOT. FAIL TO MATCH THEIR GOAL = A LETTER. SPELL THE WORD = OUT. LAST IN WINS.", VW/2, 62);
-    const n=mpLast()+1;
-    for (let i=0;i<n;i++){
-      const y=HSETUP_Y0+i*HSETUP_RH, sel=i===hField, isCount=i===0, isWord=!classic && i===hCount+1;
-      ctx.font=ttFont(10); ctx.fillStyle=sel?TTX.yellow:TTX.cyan; ctx.textAlign="left";
-      ctx.fillText(isCount?"PLAYERS":(isWord?"WORD  (LETTERS = LIVES)":"PLAYER "+i), VW/2-200, y-10);
-      ctx.strokeStyle=sel?TTX.yellow:TTX.dim; ctx.lineWidth=2; ctx.strokeRect(VW/2-200, y-5, 400, 30);
+    ctx.textAlign="center"; ctx.font=ttFont(12); ctx.fillStyle=TTX.cyan;
+    ctx.fillText(classic ? "EVERYONE TAKES THE SAME 10 BALLS  ·  HIGHEST TOTAL SCORE WINS  ·  NO LETTERS"
+                         : "LEADER SETS A SHOT  ·  FAIL TO MATCH = A LETTER  ·  SPELL THE WORD = OUT  ·  LAST IN WINS", VW/2, 56);
+    // Boxes stay a comfortable fixed height (text always fits); players use 2 columns past 4 so 6
+    // players don't squash the rows. Field index: 0=count, 1..hCount=names, hCount+1=word (HORSE).
+    const bh=34, lblH=16, vgap=14, pitch=bh+lblH+vgap;
+    const cols = hCount>4 ? 2 : 1, colGap=24, colW = cols===2 ? 300 : 440;
+    const playerRows=Math.ceil(hCount/cols), wordRow=classic?0:1;
+    const fields=[]; let ry=0;
+    fields.push({fi:0, type:'count', label:'PLAYERS', bx:VW/2-220, by:ry, bw:440}); ry+=pitch;
+    const gridW=cols*colW+(cols-1)*colGap, gx0=VW/2-gridW/2, playerTop=ry;
+    for (let idx=0; idx<hCount; idx++){ const r=Math.floor(idx/cols), c=idx%cols;
+      fields.push({fi:idx+1, type:'name', label:'PLAYER '+(idx+1), bx:gx0+c*(colW+colGap), by:playerTop+r*pitch, bw:colW}); }
+    ry=playerTop+playerRows*pitch;
+    if (!classic){ fields.push({fi:hCount+1, type:'word', label:'WORD  (LETTERS = LIVES)', bx:VW/2-220, by:ry, bw:440}); ry+=pitch; }
+    const blockH=ry-vgap, btnGap=18, sbh=38;
+    const startY=Math.round(72 + Math.max(0, ((506-72)-(blockH+btnGap+sbh))/2));   // centre block+button as a group
+    hRowGeo=[];
+    for (const f of fields){
+      const sel=f.fi===hField, lblY=startY+f.by+11, boxTop=startY+f.by+lblH, txtY=boxTop+bh/2+6;
+      hRowGeo[f.fi]={boxTop, boxH:bh, bx:f.bx, bw:f.bw};
+      ctx.font=ttFont(11); ctx.fillStyle=sel?TTX.yellow:TTX.cyan; ctx.textAlign="left"; ctx.fillText(f.label, f.bx, lblY);
+      ctx.fillStyle = sel?"rgba(255,226,61,0.08)":"rgba(255,255,255,0.03)"; ctx.fillRect(f.bx, boxTop, f.bw, bh);
+      ctx.strokeStyle=sel?TTX.yellow:TTX.dim; ctx.lineWidth=2; ctx.strokeRect(f.bx+1, boxTop+1, f.bw-2, bh-2);
       ctx.font=ttFont(18);
-      if (isCount){ ctx.textAlign="center"; ctx.fillStyle=TTX.white; ctx.fillText("◀    "+hCount+"    ▶", VW/2, y+16); }
-      else {
-        const txt=isWord?hWord:(hNames[i-1]||""); ctx.textAlign="left";
-        ctx.fillStyle=txt?TTX.white:TTX.dim; ctx.fillText(txt||("PLAYER "+i), VW/2-190, y+16);
-        if (sel && ttCursorOn()){ const w=ctx.measureText(txt).width; ctx.fillStyle=TTX.yellow; ctx.fillRect(VW/2-190+w+3, y+3, 9, 16); }
-      }
+      if (f.type==='count'){ ctx.textAlign="center"; ctx.fillStyle=TTX.white; ctx.fillText("◀        "+hCount+"        ▶", f.bx+f.bw/2, txtY); }
+      else { const txt=f.type==='word'?hWord:(hNames[f.fi-1]||""); ctx.textAlign="left";
+        ctx.fillStyle=txt?TTX.white:TTX.dim; ctx.fillText(txt||f.label, f.bx+12, txtY);
+        if (sel && ttCursorOn()){ const w=ctx.measureText(txt).width; ctx.fillStyle=TTX.yellow; ctx.fillRect(f.bx+12+w+3, txtY-13, 9, 16); } }
     }
-    const sy=HSETUP_Y0+n*HSETUP_RH+14;
-    horseStartBtn = {x:VW/2-130, y:sy-20, w:260, h:34};
-    if (ttCursorOn()){ ctx.textAlign="center"; ctx.font=ttFont(15); ctx.fillStyle=TTX.neon;
-      ctx.fillText(TOUCH?"TAP HERE TO START":"ENTER ON LAST FIELD = START    ·    ◀ ▶ ON PLAYERS", VW/2, sy); }
+    // always-visible START button (pulses, never hidden)
+    const sbw=320, sbx=VW/2-sbw/2, sy=startY+blockH+btnGap;
+    horseStartBtn={x:sbx, y:sy, w:sbw, h:sbh};
+    const pulse=0.6+0.4*Math.sin(performance.now()/1000*5);
+    ctx.fillStyle="rgba(57,255,20,"+(0.10+0.12*pulse)+")"; ctx.fillRect(sbx, sy, sbw, sbh);
+    ctx.lineWidth=2; ctx.strokeStyle=TTX.neon; ctx.globalAlpha=pulse; ctx.strokeRect(sbx+1, sy+1, sbw-2, sbh-2); ctx.globalAlpha=1;
+    ctx.textAlign="center"; ctx.font=pxFont(15); ctx.fillStyle=TTX.neon; ctx.fillText("▶ START", VW/2, sy+sbh/2+6);
+    ctx.font=ttFont(12); ctx.fillStyle=TTX.grey;
+    ctx.fillText(TOUCH?"TAP A FIELD TO EDIT  ·  TAP START WHEN READY":"↑ ↓ FIELDS   ◀ ▶ PLAYERS   TYPE NAMES   ENTER = NEXT / START", VW/2, sy+sbh+18);
     ctx.textAlign="left";
   }
   function drawHorsePass(){
     ttBar("SCORDAGOL   HORSE", 0,12,VW,30,TTX.blue,TTX.white,{size:16});
-    drawHorseStandings(64);
+    const sbB=drawHorseStandings(58);
     if (drawHorseEvent()) return;        // a letter/loss just happened: play the animated overlay first
-    const cur=H.players[H.current];
-    ctx.textAlign="center"; ctx.font=ttFont(24); ctx.fillStyle=HCOLS[H.current%HCOLS.length];
-    ctx.fillText("PASS TO  "+cur.name, VW/2, 300);
-    ctx.font=ttFont(14); ctx.fillStyle=TTX.white;
-    ctx.fillText(H.phase==='lead' ? "YOU'RE THE LEADER — SCORE TO SET A CHALLENGE"
-                                  : ("MATCH "+H.players[H.leader].name+"'S GOAL OR TAKE A LETTER"), VW/2, 330);
+    const cur=H.players[H.current], col=HCOLS[H.current%HCOLS.length];
+    const cy=Math.round(sbB+(SH-sbB)/2)-6;   // "pass to" call-to-action centred below the scoreboard
+    ctx.textAlign="center";
+    ctx.font=ttFont(15); ctx.fillStyle=TTX.grey;
+    ctx.fillText(H.phase==='lead' ? "▶  LEADER  —  PASS THE DEVICE TO"
+                                  : ("CHASING "+H.players[H.leader].name.toUpperCase()+"'S GOAL  —  PASS TO"), VW/2, cy-42);
+    ctx.font=pxFont(22); ctx.fillStyle=col; ctx.fillText(cur.name.toUpperCase(), VW/2, cy+4);
+    ctx.font=ttFont(15); ctx.fillStyle=TTX.white;
+    ctx.fillText(H.phase==='lead' ? "SCORE TO SET A CHALLENGE" : "MATCH THE GOAL OR TAKE A LETTER", VW/2, cy+34);
     if (ttCursorOn()){ ctx.fillStyle=TTX.neon; ctx.font=ttFont(16);
-      ctx.fillText(TOUCH?"TAP TO TAKE YOUR SHOT  (1 BALL)":"SPACE TO TAKE YOUR SHOT  (1 BALL)", VW/2, 366); }
+      ctx.fillText(TOUCH?"TAP TO TAKE YOUR SHOT  ·  1 BALL":"SPACE TO TAKE YOUR SHOT  ·  1 BALL", VW/2, cy+64); }
+    ctx.textAlign="left";
+  }
+  // celebratory winner flourish: looping confetti + a popped, glowing name under a CHAMPION banner.
+  // (t = seconds since the win, so it animates in.) Used by HORSE + CLASSIC full-time screens.
+  function drawConfetti(t){                                   // looping deterministic falling confetti
+    for (let k=0;k<90;k++){
+      const seed=k*12.9898, base=Math.abs((Math.sin(seed)*43758.5453)%1);
+      const cx=base*VW, spd=55+(k%6)*20, size=4+(k%3)*2;
+      const cy=((t*spd + (k*47)%SH) % (SH+24))-12, sway=Math.sin(t*2+seed)*9;
+      ctx.save(); ctx.globalAlpha=0.85; ctx.translate(cx+sway, cy); ctx.rotate(t*3+seed);
+      ctx.fillStyle=HCOLS[k%HCOLS.length]; ctx.fillRect(-size/2,-size/2,size,size); ctx.restore();
+    }
+    ctx.globalAlpha=1;
+  }
+  function drawWinCelebration(topY, name, col, t){
+    drawConfetti(t);
+    const cy=Math.round(topY+(SH-topY)/2)-6;
+    const pop=Math.min(1,t/0.45), ease=1-Math.pow(1-pop,3), sc=(0.45+0.55*ease)*(1+0.03*Math.sin(t*4));
+    ctx.textAlign="center";
+    ctx.font=ttFont(20,"bold "); ctx.fillStyle=TTX.yellow; ctx.fillText("★   CHAMPION   ★", VW/2, cy-52);
+    ctx.save(); ctx.translate(VW/2, cy); ctx.scale(sc,sc);
+    ctx.textBaseline="middle"; ctx.shadowColor=col; ctx.shadowBlur=22;
+    ctx.font=pxFont(32); ctx.fillStyle=col; ctx.fillText(name.toUpperCase(), 0, 0);
+    ctx.shadowBlur=0; ctx.textBaseline="alphabetic"; ctx.restore();
+    ctx.font=ttFont(22); ctx.fillStyle="#fff"; ctx.fillText("WINS!", VW/2, cy+54);
     ctx.textAlign="left";
   }
   function drawHorseEnd(){
     ttBar("SCORDAGOL   HORSE  -  FULL TIME", 0,12,VW,30,TTX.blue,TTX.white,{size:16});
-    drawHorseStandings(84);
-    const w=H.players[H.winner];
-    ctx.textAlign="center"; ctx.font=ttFont(30); ctx.fillStyle=w?HCOLS[H.winner%HCOLS.length]:TTX.yellow;
-    ctx.fillText(w?(w.name+" WINS!"):"GAME OVER", VW/2, 326);
-    if (ttCursorOn()){ ctx.fillStyle=TTX.neon; ctx.font=ttFont(16);
-      ctx.fillText(TOUCH?"TAP  TO  RETURN  TO  MENU":"SPACE  TO  RETURN  TO  MENU", VW/2, 362); }
-    ctx.textAlign="left";
+    const sbB=drawHorseStandings(58);
+    const w=H.players[H.winner], col=w?HCOLS[H.winner%HCOLS.length]:TTX.yellow;
+    const t=(performance.now()-(H.winAt||performance.now()))/1000;
+    drawWinCelebration(sbB, w?w.name:"NOBODY", col, t);
+    if (ttCursorOn()){ ctx.textAlign="center"; ctx.fillStyle=TTX.neon; ctx.font=ttFont(15);
+      ctx.fillText(TOUCH?"TAP  TO  RETURN  TO  MENU":"SPACE  TO  RETURN  TO  MENU", VW/2, SH-20); ctx.textAlign="left"; }
   }
 
   // ================= STADIUM LAYERS (docs/STADIUM_ASSET_SPEC.md) =================
@@ -3038,7 +3181,7 @@
   function menuHit(mx,my){            // mirrors drawMenu / drawMPMenu geometry (view space, centred on VW/2)
     const opts = menuOptions();
     for(let i=0;i<opts.length;i++){ const y=MENU_Y0+i*MENU_DY;
-      if(mx>=VW/2-MENU_BW/2 && mx<=VW/2+MENU_BW/2 && my>=y-30 && my<=y+15) return i; }
+      if(mx>=VW/2-MENU_BW/2 && mx<=VW/2+MENU_BW/2 && my>=y-24 && my<=y+24) return i; }
     return -1;
   }
   function clubHit(mx,my){            // mirrors drawClubSelect geometry (2 cols x 10, view space)
@@ -3049,7 +3192,7 @@
   }
   // map a pointer's FIELD x to the striker's logical x (mirror when left-footed). Caller passes view.x - OX.
   function manTargetFromPointer(px){ return clamp(leftFooted ? (2*GCX - px) : px, MAN_MIN_X, MAN_MAX_X); }
-  function horseFieldHit(p){ const n=mpLast()+1; for(let i=0;i<n;i++){ const y=HSETUP_Y0+i*HSETUP_RH; if(p.x>=VW/2-200 && p.x<=VW/2+200 && p.y>=y-8 && p.y<=y+25) return i; } return -1; }
+  function horseFieldHit(p){ for(let i=0;i<hRowGeo.length;i++){ const r=hRowGeo[i]; if(p.x>=r.bx && p.x<=r.bx+r.bw && p.y>=r.boxTop-6 && p.y<=r.boxTop+r.boxH+6) return i; } return -1; }
   const inPlay = (s)=> s===ST.SERVE||s===ST.FLIGHT||s===ST.COUNTDOWN;
   canvas.addEventListener("pointermove",(e)=>{
     const p=evToLogical(e);
