@@ -64,9 +64,12 @@ Chrome; PNGs to `%TEMP%/volley_audit`). The in-match HUD isn't auto-audited — 
 
 **Open / next (priority):**
 1. **Owner: eyeball this branch live, then deploy to `main`.**
-2. **Audio (NEXT TASK, owner waiting on a shortlist):** owner wants a CC0/royalty-free shortlist to review
-   FIRST — a jazzy-chiptune *menu music loop* + SFX (whistle/kick/crowd/UI). Source candidates with
-   links+licences, then wire playback + looping menu music + volume/mute.
+2. **Audio (NEXT TASK) — shortlist is PREPPED in `docs/AUDIO_SHORTLIST.md`** (sources, links, licences,
+   wiring notes). Owner auditions + picks, then a session does: (a) **replace the 6 SWF-decompiled SFX**
+   in `assets/snd/` (whistle/goal/boos/ooh/kick/post — an IP blocker) with CC0/Pixabay ones + bump the
+   `?v=hr5` cache tag; (b) add a looping **jazzy-chiptune menu track**. The audio system
+   (`SND` / `sfx.*` / `play()` / `audio()` unlock / `muted`) is at `index.html` ~302–326 and is clean —
+   SFX swap needs NO code (same filenames). Owner offered: generate an original loop if sourcing stalls.
 3. **Pause-menu kick controls (owner asked):** a KICK-TIMING slider (±1 frame steps, default 0 = NO change
    to the sacred contact timing) PLUS a wind-up-speed control — like the existing DRAG SPEED / RELEASE GLIDE rows.
 4. **App / store:** already an installable PWA (use that for app-feel testing). A Capacitor store wrap is
