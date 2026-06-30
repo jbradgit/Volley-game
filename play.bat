@@ -1,14 +1,19 @@
 @echo off
-title Volley Challenge - local server
+title SCORDAGOL - local server
 cd /d "%~dp0"
 echo ============================================================
-echo  Volley Challenge - Anfield Edition
+echo  SCORDAGOL - local server
 echo ============================================================
-echo  Opening http://localhost:5577/index.html in your browser.
+echo  The game will open in your browser in a moment.
 echo  KEEP THIS WINDOW OPEN while you play.
 echo  Close this window (or press Ctrl+C) to stop the game.
 echo ============================================================
-REM Free port 5577 first so old servers don't pile up in Task Manager.
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":5577 " ^| findstr LISTENING') do taskkill /F /PID %%a >nul 2>&1
-start "" "http://localhost:5577/index.html?v=%RANDOM%%RANDOM%"
+REM Free the port first so old servers don't pile up.
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":5578 " ^| findstr LISTENING') do taskkill /F /PID %%a >nul 2>&1
+REM Open the browser AFTER a short delay, so the server below is listening first (avoids "refused to connect").
+start "" powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep -Seconds 2; Start-Process 'http://localhost:5578/index.html?v=%RANDOM%%RANDOM%'"
+REM Start the server (this blocks and keeps the window open while you play).
 py serve.py 2>nul || python serve.py
+echo.
+echo  Server stopped. If you saw a Python error above, install Python from python.org and run play again.
+pause

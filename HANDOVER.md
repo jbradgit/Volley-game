@@ -1,61 +1,82 @@
 # SCORDAGOL — Handover / State of Play
 
 **Read this first.** Single source of truth for picking the project up on a new
-device or a fresh session. Last updated: 2026-06-26.
+device or a fresh session. Last updated: 2026-06-30.
 
 ---
 
-## 0. CURRENT STATE (2026-06-26) — READ THIS FIRST (supersedes §3 below)
+## 0. CURRENT STATE (2026-06-30) — READ THIS FIRST (supersedes §3 below)
 
-The 3D-sprite pipeline (old §3) is **long DONE and deployed**. Since then many rounds of
-art/career/multiplayer/UI work shipped. **Live site:** https://jbradgit.github.io/Volley-game/
-(GitHub Pages serves `main`).
+The 3D-sprite pipeline (old §3) is **long DONE and deployed**. **Live site:**
+https://jbradgit.github.io/Volley-game/ (GitHub Pages serves `main`).
 
 **Git state right now:**
-- Work branch **`claude/3d-character-sprites`** and `main` (= live Pages) are **in sync at
-  `133b1cc`** — the big multiplayer/menu/HUD/font batch is **DEPLOYED (2026-06-26), CI-green,
-  layout-audit-clean**.
-- This includes a **new SCORDAGOL logo + headline font (v1)** — owner asked for it (Sport-76 ref)
-  and authorised the deploy, but hasn't yet seen it in a live browser. **If the logo/font needs
-  tweaks, iterate on the branch and re-deploy** (`git push origin claude/3d-character-sprites:main`).
+- Work branch **`claude/3d-character-sprites`** is **AHEAD of `main`** with the 2026-06-30 session
+  below — **CI-green + layout-audit-clean, but NOT yet deployed to `main`/live.** Owner should eyeball it
+  (logo, Slick Vic, HUD venue chips, agent flow) then deploy: `git push origin claude/3d-character-sprites:main`.
 
-**What this session shipped (commit `8062200`, deployed):**
-- **In-match HUDs reworked** (neutral dark blue, no team names/opponent score):
-  HORSE shows the current player's letter tiles + the setter's name with "SET ✓";
-  CLASSIC shows the current player + live score (left) and the points leader + score (right).
-  Both via `drawHorseHUD()` / `drawClassicHUD()` branched at the top of `drawHUD()`.
-- **Standard headers:** every sub-screen uses `ttHeader(centre, right)` =
-  **SCORDAGOL (left) · status (centre) · mode (right)**, vertically centred.
-- **New headline font** `drawHeadline()` (fine-pixel italic VT323 + rainbow speed-streak,
-  Sport-76 inspired) **replaces Press Start 2P everywhere** — new logo, MULTIPLAYER title,
-  mode card titles, START, player/champion names. `pxFont` is retired (`pxText`/`ttFont` =
-  VT323 stay; they're the "fine pixel" font the owner is fine with).
-- **`centredText()`** is the single source of truth for centring text in a box (uses real glyph
-  metrics; `align` arg for vertical-only centring of left-aligned rows). Use it — don't hand-nudge
-  baselines (alignment was a recurring complaint; this is the fix).
-- **Home menu** footer/spacing fixed so 4 options + best score fit without overlap.
+**What the 2026-06-30 session shipped (this branch, UNDEPLOYED):**
+- **Homescreen logo redesigned** — bold chunky italic 3D-extruded "Lardiland"-style wordmark
+  (`drawSportyLogo()`, Press Start 2P + red→gold gradient). HOMESCREEN ONLY.
+- **`drawHeadline()` REVERTED to standardised teletext** (upright VT323, solid colour — NO rainbow/italic;
+  this supersedes the old §0 "new headline font everywhere" claim). Everywhere except the homescreen logo
+  is plain teletext now. `careerBar()` makes the 3 career-screen headers plain blue bars
+  (SCORDAGOL · mode · status), replacing the old green logo box.
+- **AgentCommunicationScreen — "Slick Vic"** (new `ST.AGENT` state + `drawAgentScreen()`): pure-black
+  teletext page, 1px-framed pixel-art portrait (`assets/ui/slick_vic.png`, traced from `New Vic.png`),
+  typewriter dialogue (`AGENT_TYPING_SPEED`), action key skips/advances. East-End wheeler-dealer voice
+  (`VIC_LINES`). `showAgent(text, onComplete)` is the reusable core; `__dbg.agentSim(which)` for the audit.
+  Wired into career start: name → **Vic (asks your nation)** → nationality → **Vic (pick your league)**
+  → league → club. Season-end shows Vic's call-up check (`hasNationalCallUp()` = NEXT season is an
+  odd/World-Tournament year) → then the transfer offers.
+- **In-match HUD venue display:** the top fixture strip now shows **HOME team ALWAYS left, AWAY ALWAYS
+  right** (neutral grey HOME/AWAY chips via `venueChip()`), driven by `OPPONENT.home`
+  (`=== fx.home === "player at home"`). The arcade scoreboard BELOW is INDEPENDENT — keeps YOUR score
+  left / target right regardless of venue.
+- **TAB key** = jump to next field/option on menu/select screens + HORSE setup (web-form style; not advertised).
+- **Em dashes removed from ALL user-facing text** (Vic, transfer emails, menus, HUD, prompts) — owner dislikes them.
+- **"Only keeper / rainbow kit" bug FIXED:** `loadKits()` now waits for the sprite-base images
+  (`spriteBasesReady()`, ~6s cap) before baking kits — starting a match before the 1.3MB striker sheet
+  finished baked NULL sprites (keeper fell back to its raw rainbow tag-atlas, others vanished). Also:
+  timestep clamp 0.25→0.12 (kills the physics-burst "jitter" after a load stall) + a "LOADING…" state.
 
-**Verification — the preview MCP server is UNRELIABLE here (dies). Use the audit skill:**
-- **`menu-layout-audit` skill** (committed, `.claude/skills/menu-layout-audit/`): headless Chrome
-  linter that instruments the canvas and flags text overflow / off-screen / edge / over-centre /
-  text-overlap / frame-cover across all 19 menu+career screens. Run after ANY `draw*` menu/HUD edit:
-  `python -m http.server 5577` (background) then `node .claude/skills/menu-layout-audit/audit.mjs`
-  (needs `npm install puppeteer-core --no-save` + system Chrome; writes PNGs to `%TEMP%/volley_audit`
-  to Read). `audit.mjs` also shows the full puppeteer+`?cap=1`+`window.__dbg` pattern for ad-hoc
-  screenshots (the in-match HUDs aren't auto-audited — drive a real match like the skill does).
+**Deployed baseline (commit `8062200`, on `main`):** in-match HORSE/CLASSIC HUD modes
+(`drawHorseHUD`/`drawClassicHUD`), `centredText()` as the single source of truth for box-centred text,
+home-menu spacing. (The headline-font part of that commit is now superseded — see above.)
+
+**⚠ LOCAL-DEV GOTCHAS found this session (these caused hours of "it's still showing the old version"):**
+- **`serve.py` is now THREADED** (`ThreadingHTTPServer`). The old single-threaded `TCPServer` stalled asset
+  requests forever (Chrome idle/preconnect sockets starved the one thread) — that hung the Vic portrait in
+  "loading…". KEEP IT THREADED.
+- **Local server moved to PORT 5578** (was 5577) so a fresh origin escapes any stuck old service worker.
+  `play.bat` starts the server FIRST, then opens the browser after a 2s delay (no "refused to connect" race).
+- **`index.html` unregisters the SW + clears caches on localhost** (registers it only in production), so
+  local dev always serves fresh.
+- **NEVER put `pixel`/`ad`/`advert`/`track` in an asset filename** — ad/privacy blockers silently block them.
+  The portrait is `slick_vic.png` (was `vic_pixel.png` → blocked → procedural fallback showed instead).
+
+**Verification — use the `menu-layout-audit` skill** (`.claude/skills/menu-layout-audit/`): headless-Chrome
+linter (text overflow / off-screen / edge / overlap / frame-cover) across all menu/career/agent screens.
+Run after ANY `draw*` menu/HUD edit: `python serve.py` (NOW PORT 5578, background) then
+`node .claude/skills/menu-layout-audit/audit.mjs` (needs `npm install puppeteer-core --no-save` + system
+Chrome; PNGs to `%TEMP%/volley_audit`). The in-match HUD isn't auto-audited — drive a real match
+(`__dbg.newCareerSim` → Space → Space) and screenshot the canvas.
 
 **Open / next (priority):**
-1. **Owner to eyeball the new logo + headline font live** (it's deployed). Reference was a
-   "Sport 76" rainbow-italic font; current impl is VT323 + italic skew + rainbow speed-streak.
-   Tweak on the branch + re-deploy if it needs adjusting.
-2. **Commercial-readiness Q (owner asked):** with placeholder SFX sourced, the remaining
-   launch blockers are IP — **real club/league/competition names** (trademark) and **any
-   source-game-derived assets/sounds**. The 3D-rendered characters, generated stadium/crowd/ball,
-   and the transcribed-but-clean-room physics are OK; fonts (VT323/Press-Start) are SIL-OFL
-   (self-host for prod — see the `<link>` comment in `index.html`). See ROADMAP Track C.
-3. **Per-player team SELECT in HORSE** (deferred) — owner wants players to pick teams in HORSE setup.
-4. Foreign-league per-team kits (ESP/ITA/GER/FRA still use compact derive-field kits).
-5. PWA real-phone test (install / offline).
+1. **Owner: eyeball this branch live, then deploy to `main`.**
+2. **Audio (NEXT TASK, owner waiting on a shortlist):** owner wants a CC0/royalty-free shortlist to review
+   FIRST — a jazzy-chiptune *menu music loop* + SFX (whistle/kick/crowd/UI). Source candidates with
+   links+licences, then wire playback + looping menu music + volume/mute.
+3. **Pause-menu kick controls (owner asked):** a KICK-TIMING slider (±1 frame steps, default 0 = NO change
+   to the sacred contact timing) PLUS a wind-up-speed control — like the existing DRAG SPEED / RELEASE GLIDE rows.
+4. **App / store:** already an installable PWA (use that for app-feel testing). A Capacitor store wrap is
+   ~1 day and best done LAST, once IP/audio/content are settled — NOT an engine blocker.
+5. IP/launch blockers unchanged: real club/league names (trademark), traced striker/defender art (the 3D
+   pipeline replaces it, pending the owner's Mixamo step), self-host fonts (SIL-OFL). See ROADMAP Track C.
+6. **`assets/ui/New Vic.png`** (1.18MB) is the Vic-trace SOURCE — kept LOCAL ONLY (gitignored, NOT in the
+   repo; it bloats the push + would ship to Pages). It lives on the original dev box; re-add it there to
+   re-trace (script pattern: load → downsample ~400px with `imageSmoothingEnabled` + light posterize →
+   `slick_vic.png`). Also still open: per-player team select in HORSE; foreign per-team kits; PWA real-phone test.
 
 **CI is the FULL suite — run ALL before pushing** (a subset once spammed the owner CI emails):
 `node ci/smoke.js && node --test ci/physics.test.js ci/career.test.js ci/horse.test.js ci/leagues.test.js`.

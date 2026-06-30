@@ -16,7 +16,7 @@ import puppeteer from 'puppeteer-core';
 import fs from 'fs'; import path from 'path'; import os from 'os';
 
 const VW = 924, SH = 520, EDGE_MARGIN = 6, BOX_PAD = 4;
-const URL = process.env.AUDIT_URL || 'http://127.0.0.1:5577/?cap=1';
+const URL = process.env.AUDIT_URL || 'http://127.0.0.1:5578/?cap=1';
 const OUT = path.join(os.tmpdir(), 'volley_audit');
 fs.mkdirSync(OUT, { recursive: true });
 
@@ -51,6 +51,10 @@ const SCREENS = [
   { name: 'trophy',          state: 'TROPHY',      setup: "__dbg.newCareerSim('Brazil','ENG','Liverpool')" },
   { name: 'dailyboard',      state: 'DAILYBOARD' },
   { name: 'over',            state: 'OVER' },
+  // Slick Vic agent screen — the long intro is the worst case for text wrap/overflow on the right column
+  { name: 'agent_intro',     state: 'AGENT',       setup: "__dbg.agentSim('intro')" },
+  { name: 'agent_team',      state: 'AGENT',       setup: "__dbg.agentSim('team')" },
+  { name: 'agent_callup',    state: 'AGENT',       setup: "__dbg.agentSim('callup_no')" },
 ];
 
 const browser = await puppeteer.launch({ executablePath: CHROME, headless: 'new',

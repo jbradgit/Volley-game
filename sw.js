@@ -2,7 +2,7 @@
 // offline, WITHOUT introducing stale-content bugs: it is NETWORK-FIRST, so online players
 // always get the freshest files (the engine's ?v= cache-busting keeps working). The cache is
 // only a fallback for when the device is offline.
-const CACHE = "scordagol-v2";
+const CACHE = "scordagol-v3";   // bump to purge any stale cached sprite assets from older caches
 const CORE = [
   "./", "index.html", "manifest.webmanifest",
   "assets/ui/icon-192.png", "assets/ui/icon-512.png", "assets/ui/icon-180.png",

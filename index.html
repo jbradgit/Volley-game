@@ -12,7 +12,7 @@
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="apple-touch-icon" href="assets/ui/icon-180.png" />
 <link rel="icon" type="image/png" sizes="192x192" href="assets/ui/icon-192.png" />
-<title>SCORDAGOL — Volley Your Way To Greatness</title>
+<title>SCORDAGOL: Volley Your Way To Greatness</title>
 <!-- Retro fonts: VT323 = teletext/CRT body text · Press Start 2P = chunky 8-bit (countdown, headings).
      Falls back to monospace offline; self-host these for the production/app build. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -174,7 +174,16 @@
   }
   const kitHex=k=>PAL[k.c1]||k.c1||"#cccccc";
   const GK_COLS=["#ffe23d","#3df04f","#ff8a00","#b9c2cc"];   // era keeper kits: yellow/green/orange/grey
-  function loadKits(mySlug, oppSlug, cb){
+  // the three region-tagged sprite bases the kit renderer recolours — kits bake to null until these exist
+  function spriteBasesReady(){ return !!(IMG.strikersheet&&IMG.strikersheet.naturalWidth && IMG.defbase&&IMG.defbase.naturalWidth && IMG.katlas&&IMG.katlas.naturalWidth); }
+  function loadKits(mySlug, oppSlug, cb, _waited){
+    // CRITICAL: if a match starts before the sprite sheets finish downloading, every SPRITES.* below
+    // bakes to null — the keeper then falls back to its RAW region-tag atlas (the "rainbow kit" bug) and
+    // the striker/defender vanish. Defer the build until the bases are in (cap ~6s so a genuine asset
+    // failure still surfaces visibly instead of soft-locking). In Node the stub images are ready at once.
+    _waited = _waited||0;
+    if (!spriteBasesReady() && _waited < 6000){ matchLoading=true; setTimeout(()=>loadKits(mySlug, oppSlug, cb, _waited+50), 50); return; }
+    matchLoading=false;
     kitsReady=false;
     let myKit=kitFor(mySlug,false), oppKit=kitFor(oppSlug,false);
     if (OPPONENT.home){ if (colDist(kitHex(myKit), kitHex(oppKit))<95) myKit=kitFor(mySlug,true); }
@@ -322,7 +331,7 @@
                TITLE:"title", COUNTDOWN:"countdown", SERVE:"serve", FLIGHT:"flight", RESULT:"result",
                MATCHEND:"matchend", OVER:"over",
                DAILYBOARD:"dailyboard", HORSESETUP:"horsesetup", HORSEPASS:"horsepass", HORSEEND:"horseend",
-               MPMENU:"mpmenu", CLASSICPASS:"classicpass", CLASSICEND:"classicend" };
+               MPMENU:"mpmenu", CLASSICPASS:"classicpass", CLASSICEND:"classicend", AGENT:"agent" };
   let state = ST.MENU;
   let menuSel = 0;          // menu / club-select cursor
   let inboxSel = 0, openedOffer = 0;   // transfer-inbox cursor + opened email index
@@ -581,14 +590,14 @@
              "Come and defend the title with us. The open-top bus is practically the club car at this point."] },
     { max:4, subj:["Champions League football awaits","Big nights need big players","You belong under the lights","The big stage is calling"],
       hook:["We finished {posth} and the famous European nights are back at our place.",
-            "Midweek anthems under the floodlights — that's just a normal Tuesday for us now."],
+            "Midweek anthems under the floodlights, that's just a normal Tuesday for us now."],
       pitch:["We're a big club in every sense of the word, and we don't say that lightly. Our stadium announcer does, though.",
              "Add your volleys to this squad and, whisper it quietly, we might just go all the way."] },
     { max:8, subj:["A new challenge for you","One piece missing: you","Ready for the next step?","Ambition. Trajectory. You."],
       hook:["We finished {posth} this season and the board agrees we are exactly one marquee signing away.",
             "We've been knocking on the door all season. You, my friend, are both the key AND the knocker."],
       pitch:["We punch above our weight here. With you, we'd be punching in a different weight class altogether.",
-             "Our fans would take to you straight away — they love a player who leaves absolutely everything out there."] },
+             "Our fans would take to you straight away. They love a player who leaves absolutely everything out there."] },
     { max:13, subj:["A team built around YOU","Be our main man","The Project (it's you)","Come and be the crown jewel"],
       hook:["Cards on the table: we finished {posth}. But the new owners have a five-year plan and a laminated PowerPoint.",
             "We're calling it The Project. Phase one: sign you. Phase two: build the entire team around you. Phase three: glory."],
@@ -659,6 +668,7 @@
   const TBL_ROWH=20, TBL_CLIPH=284;   // touch career-table: row height + visible scroll height (shared by drawTable + scroll/swipe handlers so they never drift)
   let matchBalls=10;        // total balls for current match (used by ball counter)
   let matchKO=false;        // knockout tie: no draw band (cup / euro KO / intl KO)
+  let matchLoading=false;   // true while a requested match waits for its sprite bases to download (shows LOADING…)
   let firstShotShown=false; // true after first kick, hides drag-prompt on subsequent shots
   let dragSpeedMod = clamp(parseInt(localStorage.getItem("vc_speed")||"0"), -10, 10);
   let dragGlideMod = clamp(parseInt(localStorage.getItem("vc_glide")||"0"), -8, 10);   // release glide: -80%..+100% momentum
@@ -1360,6 +1370,15 @@
     ctx.textAlign="left";
     drawMuteButton(HR); drawPauseButton(HR);
   }
+  // small venue chip drawn beside a club in the fixture strip: HOME = green, AWAY = cyan
+  function venueChip(x, baselineY, label, isHome){      // neutral greys (HOME a touch brighter than AWAY)
+    ctx.font=ttFont(9);
+    const w=ctx.measureText(label).width+12, h=15, y=baselineY-12, col=isHome?TTX.grey:TTX.dim;
+    ctx.globalAlpha=0.12; ctx.fillStyle=col; ctx.fillRect(x,y,w,h); ctx.globalAlpha=1;
+    ctx.strokeStyle=col; ctx.lineWidth=1; ctx.strokeRect(x+0.5,y+0.5,w-1,h-1);
+    ctx.fillStyle=col; ctx.textAlign="left"; ctx.fillText(label, x+6, baselineY-1);
+    return w;
+  }
   function drawHUD() {
     const P=teamHud.primary, S=teamHud.secondary;
     if (GMODE==="horse"){ drawHorseHUD(); return; }   // HORSE: neutral-blue letter HUD, not score/target/balls
@@ -1368,14 +1387,26 @@
     const sx=70, sw=SW-140, sy=348, sh=48;
     ctx.fillStyle="rgba(6,7,11,0.76)"; ctx.fillRect(sx,sy,sw,sh);
     ctx.strokeStyle="rgba(255,255,255,0.18)"; ctx.lineWidth=1; ctx.strokeRect(sx+0.5,sy+0.5,sw-1,sh-1);
-    // fixture — MYCLUB always left, OPPONENT always right
-    const myName=MYCLUB.name, mySlug=MYCLUB.slug, oppName=OPPONENT.name, oppSlug=OPPONENT.slug;
-    ctx.font=ttFont(13); ctx.textBaseline="alphabetic"; ctx.textAlign="left";
-    const wMy=ctx.measureText(myName).width, wV=ctx.measureText("  v  ").width, wOpp=ctx.measureText(oppName).width;
-    let tx=SW/2-(wMy+wV+wOpp)/2, ty=sy+16;
-    ctx.fillStyle=teamTextColor(mySlug); ctx.fillText(myName, tx, ty); tx+=wMy;
-    ctx.fillStyle=TTX.white;             ctx.fillText("  v  ", tx, ty); tx+=wV;
-    ctx.fillStyle=teamTextColor(oppSlug);ctx.fillText(oppName, tx, ty);
+    // fixture — RULE: the HOME team is ALWAYS on the left, the AWAY team ALWAYS on the right (football
+    // convention). The arcade scoreboard BELOW is independent and keeps YOUR score left / target right,
+    // whichever venue it is. (No venue info — daily/quick — falls back to your club left, opponent right.)
+    const hasVenue=typeof OPPONENT.home==="boolean", myHome=!!OPPONENT.home;   // OPPONENT.home === fx.home === "player at home"
+    const myName=MYCLUB.name, oppName=OPPONENT.name;   // used by the scoreboard below (YOUR club left, opponent right)
+    const homeT=myHome?MYCLUB:OPPONENT, awayT=myHome?OPPONENT:MYCLUB;
+    const lT=hasVenue?homeT:MYCLUB, rT=hasVenue?awayT:OPPONENT;
+    const ty=sy+16;
+    ctx.textBaseline="alphabetic";
+    ctx.font=ttFont(13);
+    const wL=ctx.measureText(lT.name).width, wV=ctx.measureText("  v  ").width, wR=ctx.measureText(rT.name).width;
+    ctx.font=ttFont(9);
+    const chipGap=10, wHC=hasVenue?ctx.measureText("HOME").width+12:0, wAC=hasVenue?ctx.measureText("AWAY").width+12:0;
+    let tx=SW/2-((hasVenue?wHC+chipGap:0)+wL+wV+wR+(hasVenue?chipGap+wAC:0))/2;
+    if (hasVenue){ venueChip(tx, ty, "HOME", true); tx+=wHC+chipGap; }
+    ctx.font=ttFont(13); ctx.textAlign="left";
+    ctx.fillStyle=teamTextColor(lT.slug); ctx.fillText(lT.name, tx, ty); tx+=wL;
+    ctx.fillStyle=TTX.white;              ctx.fillText("  v  ", tx, ty); tx+=wV;
+    ctx.fillStyle=teamTextColor(rT.slug); ctx.fillText(rT.name, tx, ty); tx+=wR;
+    if (hasVenue){ tx+=chipGap; venueChip(tx, ty, "AWAY", false); }
     // EVEN-sized blocky LOSE/DRAW/WIN meter (integer cell + gap, centred)
     const by=sy+24, bh=11, gap=2, cellW=8, mw=sw-24;
     const cells=Math.floor((mw+gap)/(cellW+gap)), usedW=cells*cellW+(cells-1)*gap, bx=SW/2-usedW/2;
@@ -1640,6 +1671,15 @@
     if (center){ ctx.font=ttFont(size); ctx.fillStyle=TTX.white;             centredText(center, VW/2, cy); }
     if (right){  ctx.font=ttFont(size); ctx.fillStyle=opts.rightCol||TTX.yellow; centredText(right, VW-16, cy, "right"); }
   }
+  // Plain blue career-screen header bar (owner: drop the old green logo box). Same SCORDAGOL · centre ·
+  // right layout as ttHeader, but at the career screens' own bar geometry so the layout below is unchanged.
+  function careerBar(HBY, HBH, center, right){
+    const cy=HBY+HBH/2, size=TOUCH?20:16;
+    ctx.fillStyle=TTX.blue; ctx.fillRect(0,HBY,VW,HBH);
+    ctx.font=ttFont(size); ctx.fillStyle=TTX.white;  centredText("SCORDAGOL", 14, cy, "left");
+    if (center){ ctx.font=ttFont(size); ctx.fillStyle=TTX.white;  centredText(center, VW/2, cy); }
+    if (right){  ctx.font=ttFont(size); ctx.fillStyle=TTX.yellow; centredText(right, VW-14, cy, "right"); }
+  }
 
   // ---- crisp 8-bit football: a cached pixel bitmap (no anti-alias), blitted square-by-square ----
   // grid values 0=transparent · 1=white · 2=black. Built once per grid size: a circle silhouette,
@@ -1672,42 +1712,58 @@
       g.fillStyle = v===2 ? "#0b0b0b" : "#f4f4f4"; g.fillRect(px,py,pw,ph);
     }
   }
-  // ---- New headline style (replaces Press Start 2P everywhere): fine-pixel VT323, italic lean,
-  // and a rainbow "speed-streak" colour effect — inspired by the Sport-76 reference. All caps,
-  // uniform letter size. `drawHeadline` is the single renderer for the logo + every big heading.
-  const LOGO_ACCENT="#2fd45c";   // legacy SCORDAGOL green accent (still used by some UI tints)
-  const HEAD_RAINBOW=["#ff2e63","#ff7a18","#ffe23d","#3ddc84","#2bb8ff","#9b6bff"];
-  function headFont(px){ return "italic "+px+"px 'VT323','Courier New',monospace"; }
-  // text at (cx,cy) centred on cy, italic, with an optional diagonal rainbow streak + dark extrude.
+  // ---- Headings: STANDARDISED TELETEXT (upright VT323, solid colour, subtle depth). `drawHeadline`
+  // is the single renderer for every big in-game heading (MULTIPLAYER, START, player/champion names,
+  // HORSE letters…). The HOMESCREEN SCORDAGOL logo is the ONE exception — it uses drawSportyLogo.
+  // (Owner direction: sporty/italic look on the homescreen only; everything else = plain teletext.)
+  const LOGO_ACCENT="#2fd45c";   // legacy SCORDAGOL green accent (still used by some UI strokes)
+  function headFont(px){ return px+"px 'VT323','Courier New',monospace"; }   // upright teletext face
+  // Big heading at (cx,cy), centred on cy. opts: {color, align}. Kept call-compatible with the old
+  // rainbow-italic renderer — legacy `skew`/`streak` opts are accepted but ignored (headings are
+  // plain teletext now), so existing call sites need no changes.
   function drawHeadline(text, cx, cy, size, opts){
     opts=opts||{};
-    const skew=opts.skew!=null?opts.skew:0.20, align=opts.align||"center";
+    const align=opts.align||"center";
     ctx.save();
     ctx.font=headFont(size); ctx.textAlign=align; ctx.textBaseline="middle";
-    ctx.translate(cx, cy); ctx.transform(1,0,-skew,1,0,0);
-    const w=ctx.measureText(text).width, gx0=align==="left"?0:(align==="right"?-w:-w/2);
-    if (opts.streak){                                    // rainbow speed-streak trailing up-left
-      const n=opts.streak===true?7:5, step=size*0.05;
-      for (let k=n;k>=1;k--){ ctx.globalAlpha=0.13;
-        ctx.fillStyle=HEAD_RAINBOW[(k-1)%HEAD_RAINBOW.length];
-        ctx.fillText(text, -k*step, -k*step*0.5); }
-      ctx.globalAlpha=1;
-    }
-    ctx.fillStyle="rgba(0,0,0,0.5)"; ctx.fillText(text, Math.max(2,size*0.03), Math.max(2,size*0.05));   // depth extrude
-    if (opts.color){ ctx.fillStyle=opts.color; }
-    else { const g=ctx.createLinearGradient(gx0,0,gx0+w,0);
-      for (let i=0;i<HEAD_RAINBOW.length;i++) g.addColorStop(i/(HEAD_RAINBOW.length-1), HEAD_RAINBOW[i]);
-      ctx.fillStyle=g; }
-    ctx.fillText(text, 0, 0);
+    ctx.fillStyle="rgba(0,0,0,0.55)"; ctx.fillText(text, cx+Math.max(1,size*0.04), cy+Math.max(1,size*0.06));   // soft depth
+    ctx.fillStyle=opts.color||TTX.white;
+    ctx.fillText(text, cx, cy);
     ctx.restore();
   }
-  function drawLogo(cx, baseY, maxW, opts){
+  function drawLogo(cx, baseY, maxW, opts){            // SCORDAGOL wordmark in standard teletext (sub-screen headers)
     opts=opts||{};
     const txt="SCORDAGOL", maxH=opts.maxH||150, cy=(opts.cy!=null)?opts.cy:baseY-maxH/2;
     let s=Math.min(maxH, 132);
-    ctx.font=headFont(s); let w=ctx.measureText(txt).width*1.18;    // skew widens it a little
+    ctx.font=headFont(s); let w=ctx.measureText(txt).width;
     if (w>maxW) s=Math.max(12, s*maxW/w);
-    drawHeadline(txt, cx, cy, Math.round(s), {streak:opts.color?false:true, color:opts.color, skew:0.22});
+    drawHeadline(txt, cx, cy, Math.round(s), {color:opts.color||TTX.white});
+  }
+  // ---- HOMESCREEN logo ONLY: bold, chunky, italic 3D-extruded wordmark (Lardiland/sporty look). ----
+  // Press Start 2P slab letters, skewed for an italic lean, stacked dark copies for depth, a red→gold
+  // vertical gradient face and a dark keyline. Deliberately NOT teletext — this is the brand splash.
+  const SPORTY_SKEW=0.18;
+  function sportyFont(px){ return px+"px 'Press Start 2P','Courier New',monospace"; }
+  function drawSportyLogo(cx, cy, maxW, maxH){
+    const txt="SCORDAGOL";
+    // fit to the width budget (the skew widens it a touch); height is the secondary cap
+    let s=Math.min(maxH, 96);
+    ctx.font=sportyFont(s); let w=ctx.measureText(txt).width*(1+SPORTY_SKEW*0.5);
+    if (w>maxW) s=Math.max(12, Math.floor(s*maxW/w));
+    ctx.save();
+    ctx.font=sportyFont(s); ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.translate(cx, cy); ctx.transform(1,0,-SPORTY_SKEW,1,0,0);   // italic lean
+    const depth=Math.max(3, Math.round(s*0.13));
+    for (let k=depth;k>=1;k--){                                     // 3D extrude — dark-red copies receding down-right
+      ctx.fillStyle = k>depth*0.5 ? "#3a0608" : "#5e0c10";
+      ctx.fillText(txt, k*0.9, k*0.9);
+    }
+    const g=ctx.createLinearGradient(0,-s*0.6,0,s*0.6);             // face: bright red → gold (sporty kit colours)
+    g.addColorStop(0,   "#ff5a4d"); g.addColorStop(0.45,"#ff1f2e");
+    g.addColorStop(0.55,"#e4101d"); g.addColorStop(1,   "#ffcf3a");
+    ctx.fillStyle=g; ctx.fillText(txt, 0, 0);
+    ctx.lineWidth=Math.max(1.5,s*0.03); ctx.strokeStyle="#240305"; ctx.strokeText(txt, 0, 0);   // dark keyline
+    ctx.restore();
   }
 
   // ---- team colours for the in-game info panel (primary = shirt, secondary contrasts it) ----
@@ -1745,7 +1801,7 @@
     const lines= TOUCH ? [
       "You have 10 balls to beat the keeper.",
       "SWIPE left/right to position your player.",
-      "LIFT YOUR FINGER to volley — there's a slight wind-up,",
+      "LIFT YOUR FINGER to volley. There's a slight wind-up,",
       "so swipe just before the ball reaches you.",
       "",
       "Where you meet the ball sets its direction;",
@@ -1757,7 +1813,7 @@
     ] : [
       "You have 10 balls to beat the keeper.",
       "◄ ► position your player under the incoming cross.",
-      "Press SPACE to volley — there's a slight wind-up,",
+      "Press SPACE to volley. There's a slight wind-up,",
       "so swing just before the ball reaches you.",
       "",
       "Where you meet the ball sets its direction;",
@@ -1800,7 +1856,7 @@
     // teletext colour frame (Ceefax/Lardiland style) around the Montana-gold logo
     ctx.strokeStyle=TTX.blue;    ctx.lineWidth=5; ctx.strokeRect(9,9,VW-18,SH-18);
     ctx.strokeStyle=TTX.magenta; ctx.lineWidth=2; ctx.strokeRect(16,16,VW-32,SH-32);
-    drawLogo(VW/2, 198, Math.min(VW-120, 760), {maxH:140});              // SCORDAGOL — centred, green metal
+    drawSportyLogo(VW/2, 128, Math.min(VW-120, 760), 120);               // SCORDAGOL — sporty italic 3D brand splash (homescreen only)
     ctx.textAlign="center";
     ttPrint("VOLLEY VOLLEY VOLLEY OI OI OI", 0, 232, "#ff5fd0", 0, {size:22, center:true});
     const opts = menuOptions();
@@ -1827,7 +1883,7 @@
     // roster status — so a failed deploy isn't a silent dead-end (options need the roster)
     if (!TEAMS.length){
       ctx.font=ttFont(12);
-      if (rosterStatus==="error"){ ctx.fillStyle=TTX.red; ctx.fillText("⚠ COULD NOT LOAD assets/teams.json — CHECK DEPLOYMENT", VW/2, 408); }
+      if (rosterStatus==="error"){ ctx.fillStyle=TTX.red; ctx.fillText("⚠ COULD NOT LOAD assets/teams.json. CHECK DEPLOYMENT", VW/2, 408); }
       else { ctx.fillStyle=TTX.yellow; ctx.fillText("LOADING ROSTER…", VW/2, 408); }
     }
     // footer — condensed on touch to avoid crowding the menu options
@@ -1905,16 +1961,9 @@
     const tbl = standings(), mypos = myPosition();
     const fx=CAR.fixtures[CAR.idx], opp=TEAMBY[fx.opp], meName=TEAMBY[CAR.slug].name;
     if (CAR.titleOdds==null) CAR.titleOdds=computeTitleOdds();
-    // ---- header: white SCORDAGOL logo panel + blue CAREER MODE bar ----
-    const HBY=4, LOGOW=220;
-    const HBH=TOUCH?40:32;  // taller on touch for Ceefax-style bold heading
-    ctx.fillStyle="#06070b"; ctx.fillRect(0,HBY,VW,HBH);
-    // outline box colour-matched to the logo (no white panel)
-    ctx.strokeStyle=LOGO_ACCENT; ctx.lineWidth=2; ctx.strokeRect(1.5,HBY+1.5,LOGOW-3,HBH-3);
-    drawLogo(LOGOW/2, 0, LOGOW-28, {cy:HBY+HBH/2, maxH:HBH-10, color:TTX.yellow});   // match the CAREER MODE header
-    // header row: [logo][CAREER MODE .................. SEASON N] — one shared vertical centre
-    ttBar("CAREER MODE", LOGOW, HBY, VW-LOGOW, HBH, TTX.blue, TTX.yellow, {size:TOUCH?26:20});
-    pxText("SEASON "+CAR.season, VW-14, HBY+HBH/2+1, TOUCH?16:14, TTX.white, 'r', 'm');
+    // ---- header: plain blue bar — SCORDAGOL · CAREER · SEASON N ----
+    const HBY=4, HBH=TOUCH?40:32;
+    careerBar(HBY, HBH, "CAREER", "SEASON "+CAR.season);
 
     // ---- Ceefax-style full-height two-column league table + clean info footer ----
     // Shared by desktop and touch (identical 924x520 stage); only the call-to-action
@@ -2060,13 +2109,9 @@
   }
   function drawSeasonEnd(){
     const pos=myPosition(), champ=standings()[0], r=CAR.table[CAR.slug];
-    // header row matches the career home: logo box | review bar | FULL TIME
-    const HBY=4, LOGOW=220, HBH=TOUCH?40:32;
-    ctx.fillStyle="#06070b"; ctx.fillRect(0,HBY,VW,HBH);
-    ctx.strokeStyle=LOGO_ACCENT; ctx.lineWidth=2; ctx.strokeRect(1.5,HBY+1.5,LOGOW-3,HBH-3);
-    drawLogo(LOGOW/2, 0, LOGOW-28, {cy:HBY+HBH/2, maxH:HBH-10, color:TTX.yellow});   // match the CAREER MODE header
-    ttBar("SEASON "+CAR.season+" REVIEW", LOGOW, HBY, VW-LOGOW, HBH, TTX.blue, TTX.yellow, {size:TOUCH?26:20});
-    pxText("FULL TIME", VW-14, HBY+HBH/2+1, TOUCH?16:14, TTX.white, 'r', 'm');
+    // header row matches the career home: plain blue bar — SCORDAGOL · SEASON N REVIEW · FULL TIME
+    const HBY=4, HBH=TOUCH?40:32;
+    careerBar(HBY, HBH, "SEASON "+CAR.season+" REVIEW", "FULL TIME");
     const ht=HBY+HBH;
     const medal = pos===1?"#ffd700":(pos===2?"#cfd6dd":(pos===3?"#cd8a4b":(pos<=4?TTX.cyan:(pos>=18?TTX.red:TTX.white))));
     ctx.textAlign="center";
@@ -2103,7 +2148,7 @@
       const mw=drawSmailMark(pbX+18, pbY+pbH/2, 24);
       ctx.textAlign="left"; ctx.font=ttFont(15);
       ctx.fillStyle = n>0?TTX.yellow:TTX.grey;
-      ctx.fillText(n>0 ? ("YOU'VE GOT MAIL  —  "+n+" TRANSFER OFFER"+(n>1?"S":"")) : "NO NEW MAIL. A QUIET SUMMER.", pbX+18+mw+22, pbY+pbH/2+5);
+      ctx.fillText(n>0 ? ("YOU'VE GOT MAIL:  "+n+" TRANSFER OFFER"+(n>1?"S":"")) : "NO NEW MAIL. A QUIET SUMMER.", pbX+18+mw+22, pbY+pbH/2+5);
       ctx.textAlign="center";
       if (ttCursorOn()){ ctx.fillStyle=TTX.neon; ctx.font=ttFont(18);
         ctx.fillText(n>0 ? (TOUCH?"TAP  TO  OPEN  SMAIL":"SPACE  TO  OPEN  SMAIL")
@@ -2175,12 +2220,8 @@
   }
   // shared career-screen chrome for the competition views
   function compHeader(barText, rightText){
-    const HBY=4, LOGOW=220, HBH=TOUCH?40:32;
-    ctx.fillStyle="#06070b"; ctx.fillRect(0,HBY,VW,HBH);
-    ctx.strokeStyle=LOGO_ACCENT; ctx.lineWidth=2; ctx.strokeRect(1.5,HBY+1.5,LOGOW-3,HBH-3);
-    drawLogo(LOGOW/2, 0, LOGOW-28, {cy:HBY+HBH/2, maxH:HBH-10, color:TTX.yellow});   // match the CAREER MODE header
-    ttBar(barText, LOGOW, HBY, VW-LOGOW, HBH, TTX.blue, TTX.yellow, {size:TOUCH?26:20});
-    pxText(rightText, VW-14, HBY+HBH/2+1, TOUCH?16:14, TTX.white, 'r', 'm');
+    const HBY=4, HBH=TOUCH?40:32;
+    careerBar(HBY, HBH, barText, rightText);   // plain blue bar: SCORDAGOL · comp · status
     return HBY+HBH;
   }
   function compFooter(fixtureStr, tagLine, accent){
@@ -2253,7 +2294,7 @@
         ctx.fillText((past.res==='W'?"WON  v ":"LOST  v ")+((TEAMBY[past.opp]||{name:past.opp}).name), VW/2+286, y+23); }
       else if (cur){ ctx.fillStyle=TTX.white;
         ctx.fillText("v "+((TEAMBY[c.opp]||{name:c.opp}).name)+(c.home?"  (H)":"  (A)"), VW/2+286, y+23); }
-      else { ctx.fillStyle=TTX.dim; ctx.fillText("—", VW/2+286, y+23); }
+      else { ctx.fillStyle=TTX.dim; ctx.fillText("-", VW/2+286, y+23); }
     }
     ctx.textAlign="center"; ctx.font=ttFont(12); ctx.fillStyle=TTX.grey;
     ctx.fillText("5 BALLS · WIN OR GO HOME", VW/2, y0+5*rowH+8);
@@ -2368,7 +2409,7 @@
       const champ=leagueChampion(id);
       ctx.fillStyle=TTX.grey; ctx.fillText("Reigning champions:", cx+82, mid+13);
       const lblW=ctx.measureText("Reigning champions:  ").width;
-      ctx.fillStyle=TTX.yellow; ctx.fillText(champ?champ.name:"—", cx+82+lblW, mid+13);
+      ctx.fillStyle=TTX.yellow; ctx.fillText(champ?champ.name:"-", cx+82+lblW, mid+13);
       ctx.textBaseline="alphabetic";
     });
     ctx.textAlign="center"; ctx.font=ttFont(13); ctx.fillStyle=TTX.grey;
@@ -2432,7 +2473,7 @@
         ctx.fillText((o.from||("theboard@"+o.slug.toLowerCase()+".smail.co.uk"))+"   ·   "+o.name+" finished "+ord(o.pos), 44, y+35);
       } else {
         ctx.font=ttFont(14,"bold "); ctx.fillStyle=TTX.neon;
-        ctx.fillText("» NO THANKS — STAY AT "+(TEAMBY[CAR.slug]?TEAMBY[CAR.slug].name.toUpperCase():"YOUR CLUB")+" & START NEXT SEASON", 24, y+27);
+        ctx.fillText("» NO THANKS, STAY AT "+(TEAMBY[CAR.slug]?TEAMBY[CAR.slug].name.toUpperCase():"YOUR CLUB")+" & START NEXT SEASON", 24, y+27);
       }
       inboxRects.push({x:8, y:y, w:VW-16, h:rowH-6, i:i});
     }
@@ -2488,6 +2529,140 @@
     CAR.cal = buildCalendar(!!CAR.euro, leagueMatchdays()); CAR.calIdx=0;
     CAR.trn=null; CAR.trnDone=false;
     saveCareer(); state=ST.TABLE;
+  }
+
+  // ================= AGENT COMMUNICATION SCREEN — "Slick Vic" =================
+  // A reusable, single-message dialogue screen. `showAgent(text, onComplete)` reveals the text with a
+  // typewriter effect; the action key (Space / Enter / click / tap) finishes the reveal if it's still
+  // typing, or fires onComplete once it's done. Text + onComplete are DATA passed in by the caller, so
+  // the one screen serves every scenario. Vic is a charming East-End wheeler-dealer — he introduces
+  // himself in the intro, so the portrait needs no caption. Three career moments drive it (A / B / C).
+  const AGENT_TYPING_SPEED = 0.016;         // seconds per character (configurable), brisk but readable
+  let agentText = "", agentNext = null, agentSkip = false;
+  const VIC_LINES = {
+    intro:  "AWRIGHT, SUNSHINE! SLICK VIC'S THE NAME, BEST AGENT IN THE GAME, AND THAT'S NO WORD OF A LIE. NOW THEN, REMIND ME. WHAT COUNTRY ARE YOU FROM? STICK WITH OL' VIC AND YOU'LL BE PULLING ON THAT NATIONAL SHIRT ONE DAY. THAT'S THE SLICK VIC GUARANTEE.",
+    team:   "A TALENT LIKE YOU CAN PLAY ANYWHERE, MY SON. I'VE ALREADY HAD A QUIET WORD IN ALL THE RIGHT EARHOLES, SO LET'S GET YOU SIGNED UP. PICK YOUR LEAGUE AND WE'LL TAKE IT FROM THERE.",
+    callup: "PACK YER BAGS, SUNSHINE, YOU'RE IN THE NATIONAL SQUAD! I TOLD 'EM YOU WERE THE REAL DEAL AND THEY SNAPPED ME HAND OFF. DON'T LET YER OL' PAL VIC DOWN NOW, EH?",
+    nocall: "NO CALL-UP THIS TIME, MY SON. THEIR LOSS, NOT OURS. KEEP BANGING 'EM IN AND THEY'LL COME CRAWLIN' BACK. NOW THEN, LET'S 'AVE A BUTCHER'S AT THESE TRANSFER OFFERS, SHALL WE?"
+  };
+  function showAgent(text, onComplete){
+    agentText=(text||"").toUpperCase(); agentSkip=false;
+    agentNext = typeof onComplete==="function" ? onComplete : null;
+    state=ST.AGENT; stateEnterAt=performance.now();   // restart the typewriter reveal
+  }
+  function agentRevealed(){ return agentSkip ? agentText.length : Math.min(agentText.length, Math.floor(screenAge()/AGENT_TYPING_SPEED)); }
+  function agentAdvance(){  // the action key: finish the reveal if mid-type, else progress to the next screen
+    if (agentRevealed() < agentText.length){ agentSkip=true; return; }
+    const fn=agentNext; agentNext=null; if (fn) fn();
+  }
+  // ---- the three career scenarios (State A / B / C) ----
+  function agentIntro(){    // A — career intro → Select Nationality (or Select League when there's no nations file)
+    showAgent(VIC_LINES.intro,
+      ()=>{ if (WORLD && WORLD.nations){ state=ST.NATSEL; } else { pendingNation="England"; state=ST.LEAGUESEL; } stateEnterAt=performance.now(); menuSel=0; });
+  }
+  function agentTeamPick(){ // B — appears after nationality, BEFORE league select (owner) → League select
+    showAgent(VIC_LINES.team, ()=>{ state=ST.LEAGUESEL; stateEnterAt=performance.now(); menuSel=0; });
+  }
+  function hasNationalCallUp(){
+    // International call-up = your nation contests the World Tournament NEXT season. Mirrors
+    // seasonOver()'s odd-season tournament rule (`CAR.season % 2 === 1`), evaluated a season ahead.
+    return !!(CAR && CAR.nation && WORLD && WORLD.nations && ((CAR.season+1) % 2 === 1));
+  }
+  function agentCallUp(){   // C — end-of-season call-up check → Transfer Offers (inbox)
+    showAgent(hasNationalCallUp() ? VIC_LINES.callup : VIC_LINES.nocall, openTransferOffers);
+  }
+  function openTransferOffers(){   // the existing SEASONEND → transfer-inbox transition
+    if ((CAR.offers||[]).length>0){ inboxSel=0; state=ST.INBOX; } else nextSeason(null);
+  }
+  // ---- Slick Vic portrait. Primary: a pixel-art TRACE of the owner's reference art (assets/ui/vic_pixel.png,
+  // produced by downsampling the ref). Fallback (if the asset fails to load — constraint #5): the fully
+  // procedural bust below, so the screen is never blank. ----
+  const vicImg = (typeof Image!=="undefined") ? new Image() : null;
+  if (vicImg) vicImg.src = "assets/ui/slick_vic.png?v=5";   // NB: avoid "pixel"/"ad" in asset names — privacy/ad blockers silently block them (constraint #4)
+  let _vicCv = null;
+  function vicSprite(){
+    if (_vicCv) return _vicCv;
+    if (typeof document==="undefined" || !document.createElement) return null;
+    const W=66, H=76, cv=document.createElement("canvas"); cv.width=W; cv.height=H;
+    const g=cv.getContext("2d"); if(!g) return null;
+    const SK="#d29a67", SKH="#e8b889", SKS="#a9744a", HAIR="#241a14", HAIRH="#3b2a1d",
+          JK="#586a60", JKS="#3f4d46", JKH="#6f8278", SHIRT="#ece8dd", GOLD="#ffcf3a",
+          GOLDS="#c89a1d", MOUTH="#34120d", TEETH="#f3efe5", DK="#1b1310";
+    // suit shoulders (wide trapezoid) + lapels + open-collar shirt
+    g.fillStyle=JK; g.beginPath(); g.moveTo(0,76); g.lineTo(8,57); g.lineTo(58,57); g.lineTo(66,76); g.closePath(); g.fill();
+    g.fillStyle=JKH; g.fillRect(8,57,50,2);
+    g.fillStyle=JKS; g.beginPath(); g.moveTo(24,57); g.lineTo(33,72); g.lineTo(22,76); g.lineTo(13,61); g.closePath(); g.fill();
+    g.beginPath(); g.moveTo(42,57); g.lineTo(33,72); g.lineTo(44,76); g.lineTo(53,61); g.closePath(); g.fill();
+    g.fillStyle=SHIRT; g.beginPath(); g.moveTo(28,57); g.lineTo(38,57); g.lineTo(33,73); g.closePath(); g.fill();
+    // neck
+    g.fillStyle=SKS; g.fillRect(26,49,14,10); g.fillStyle=SK; g.fillRect(27,46,12,9);
+    // head (heavy-set: tall skull + wide jaw/jowls)
+    g.fillStyle=SK; g.beginPath(); g.ellipse(33,31,17,21,0,0,2*Math.PI); g.fill();
+    g.beginPath(); g.ellipse(33,42,16,12,0,0,2*Math.PI); g.fill();
+    g.fillStyle=SKH; g.beginPath(); g.ellipse(33,24,12,9,0,0,2*Math.PI); g.fill();         // forehead/cheek light
+    g.fillStyle=SKS; g.beginPath(); g.ellipse(33,47,12,5,0,0,2*Math.PI); g.fill();         // double-chin shadow
+    g.beginPath(); g.ellipse(17,38,4,7,0,0,2*Math.PI); g.fill(); g.beginPath(); g.ellipse(49,38,4,7,0,0,2*Math.PI); g.fill(); // jowls
+    // hair: slicked-back cap + sideburns
+    g.fillStyle=HAIR; g.beginPath(); g.ellipse(33,15,18,12,0,Math.PI,2*Math.PI); g.fill();
+    g.fillRect(15,15,4,15); g.fillRect(47,15,4,15);
+    g.fillStyle=HAIRH; g.beginPath(); g.ellipse(33,12,13,5,0,Math.PI,2*Math.PI); g.fill(); // hair sheen
+    // thick angled brows
+    g.fillStyle=DK; g.beginPath(); g.moveTo(20,24); g.lineTo(31,22); g.lineTo(31,26); g.lineTo(20,27); g.closePath(); g.fill();
+    g.beginPath(); g.moveTo(46,24); g.lineTo(35,22); g.lineTo(35,26); g.lineTo(46,27); g.closePath(); g.fill();
+    // eyes (smug squint) + glint
+    g.fillStyle="#fff"; g.fillRect(23,28,7,4); g.fillRect(37,28,7,4);
+    g.fillStyle=DK; g.fillRect(26,28,3,4); g.fillRect(39,28,3,4);
+    g.fillStyle=SKS; g.fillRect(23,32,7,1); g.fillRect(37,32,7,1);                          // lower-lid bags
+    g.fillStyle="#fff"; g.fillRect(27,28,1,1); g.fillRect(40,28,1,1);
+    // nose
+    g.fillStyle=SKS; g.beginPath(); g.moveTo(33,32); g.lineTo(37,41); g.lineTo(29,41); g.closePath(); g.fill();
+    g.fillStyle=SKH; g.fillRect(32,33,2,7);
+    // big cheeky grin: dark mouth, teeth, one gold tooth
+    g.fillStyle=MOUTH; g.beginPath(); g.moveTo(23,43); g.quadraticCurveTo(33,54,43,43); g.quadraticCurveTo(33,48,23,43); g.closePath(); g.fill();
+    g.fillStyle=TEETH; g.beginPath(); g.moveTo(25,44); g.quadraticCurveTo(33,50,41,44); g.quadraticCurveTo(33,47,25,44); g.closePath(); g.fill();
+    g.fillStyle=GOLD; g.fillRect(35,44,3,3); g.fillStyle=GOLDS; g.fillRect(35,46,3,1);      // gold tooth
+    // gold chains across the chest + pendant
+    g.lineWidth=2; g.lineCap="round"; g.strokeStyle=GOLD; g.beginPath(); g.arc(33,60,12,0.12*Math.PI,0.88*Math.PI); g.stroke();
+    g.lineWidth=1.5; g.strokeStyle=GOLDS; g.beginPath(); g.arc(33,60,8.5,0.18*Math.PI,0.82*Math.PI); g.stroke();
+    g.fillStyle=GOLD; g.beginPath(); g.arc(33,71,2.6,0,2*Math.PI); g.fill();
+    g.fillStyle=GOLDS; g.fillRect(32,70,2,2);
+    return _vicCv=cv;
+  }
+  function drawVicPortrait(x,y,w,h){
+    ctx.fillStyle="#000000"; ctx.fillRect(x,y,w,h);                       // black backing (matches the trace's pure-black bg)
+    const prev=ctx.imageSmoothingEnabled; ctx.imageSmoothingEnabled=false;
+    if (vicImg && vicImg.complete && vicImg.naturalWidth){                // primary: the traced reference portrait
+      const s=Math.min(w/vicImg.naturalWidth, h/vicImg.naturalHeight);    // contain-fit (no crop), pixel-crisp
+      const dw=vicImg.naturalWidth*s, dh=vicImg.naturalHeight*s;
+      ctx.drawImage(vicImg, Math.round(x+(w-dw)/2), Math.round(y+(h-dh)/2), Math.round(dw), Math.round(dh));
+    } else {                                                              // fallback: the procedural bust
+      const spr=vicSprite();
+      if (spr){ const pad=Math.round(Math.min(w,h)*0.05), s=Math.max(1, Math.floor(Math.min((w-2*pad)/spr.width, (h-2*pad)/spr.height)));
+        const dw=spr.width*s, dh=spr.height*s;
+        ctx.drawImage(spr, Math.round(x+(w-dw)/2), Math.round(y+(h-dh)/2), dw, dh); }
+    }
+    ctx.imageSmoothingEnabled=prev;
+  }
+  function drawAgentScreen(){
+    ctx.fillStyle="#000000"; ctx.fillRect(0,0,VW,SH);                     // pure-black page (no header — owner)
+    ctx.fillStyle="rgba(0,0,0,0.18)"; for(let yy=0;yy<SH;yy+=3) ctx.fillRect(0,yy,VW,1);   // faint CRT scanlines
+    // left: 1px-framed portrait (no caption — Vic introduces himself)
+    const boxX=80, boxY=104, boxW=324, boxH=300;
+    drawVicPortrait(boxX, boxY, boxW, boxH);
+    ctx.strokeStyle="#ffffff"; ctx.lineWidth=1; ctx.strokeRect(boxX+0.5, boxY+0.5, boxW-1, boxH-1);
+    // right: typewriter dialogue — white uppercase monospace, word-wrapped, revealed letter-by-letter
+    const tx=boxX+boxW+50, tw=VW-tx-50, font=ttFont(18), reveal=agentRevealed();
+    const lines=wrapText(agentText.slice(0,reveal), tw, font);            // greedy wrap is prefix-stable
+    ctx.font=font; ctx.fillStyle=TTX.white; ctx.textAlign="left"; ctx.textBaseline="alphabetic";
+    let ly=140; const lh=37;
+    for (let i=0;i<lines.length;i++){ ctx.fillText(lines[i], tx, ly); ly+=lh; }
+    const typing = reveal<agentText.length;
+    if (typing && ttCursorOn()){                                          // blinking cursor at the live caret
+      const last=lines.length?lines[lines.length-1]:"";
+      ctx.fillRect(tx+ctx.measureText(last).width+3, (ly-lh)-16, 12, 20);
+    }
+    if (!typing){ if (ttCursorOn()) pxText(TOUCH?"▶ TAP TO CONTINUE":"▶ PRESS SPACE TO CONTINUE", VW/2, SH-34, 18, TTX.yellow, 'c','m'); }
+    else pxText(TOUCH?"TAP TO SKIP":"SPACE TO SKIP", VW/2, SH-34, 13, TTX.dim, 'c','m');
   }
 
   // ================= DAILY CHALLENGE (seeded match + local leaderboard) =================
@@ -2608,8 +2783,8 @@
     ctx.strokeStyle=TTX.blue;    ctx.lineWidth=5; ctx.strokeRect(9,9,VW-18,SH-18);
     ctx.strokeStyle=TTX.magenta; ctx.lineWidth=2; ctx.strokeRect(16,16,VW-32,SH-32);
     // inset title (no full-width banner — that overran the decorative frame)
-    drawHeadline("MULTIPLAYER", VW/2, 52, 46, {streak:true});
-    ctx.font=ttFont(15); ctx.fillStyle=TTX.cyan; ctx.fillText("PASS & PLAY   ·   ONE DEVICE   ·   2–6 PLAYERS", VW/2, 92);
+    drawHeadline("MULTIPLAYER", VW/2, 52, 46);
+    ctx.textAlign="center"; ctx.font=ttFont(15); ctx.fillStyle=TTX.cyan; ctx.fillText("PASS & PLAY   ·   ONE DEVICE   ·   2–6 PLAYERS", VW/2, 92);
     menuSel=clamp(menuSel,0,MP_OPTS.length-1);
     mpCardRects=[];
     // big mode cards, vertically centred so the screen is fully used
@@ -2644,7 +2819,7 @@
     for (let i=0;i<C.players.length;i++){ const p=C.players[i], y=y0+i*26, up=i===C.current && p.score==null;
       ctx.fillStyle = up?TTX.yellow : (p.score!=null?TTX.white:TTX.dim);
       ctx.textAlign="left";  ctx.fillText((i+1)+".  "+p.name, VW/2-170, y);
-      ctx.textAlign="right"; ctx.fillText(p.score!=null ? (""+p.score) : (up?"— UP NEXT —":"…"), VW/2+170, y);
+      ctx.textAlign="right"; ctx.fillText(p.score!=null ? (""+p.score) : (up?"UP NEXT":"…"), VW/2+170, y);
     }
     ctx.textAlign="left";
   }
@@ -2679,7 +2854,7 @@
       ctx.textAlign="right"; ctx.fillText(""+(p.score||0), VW/2+170, y); y+=32;
     }
     ctx.textAlign="center"; ctx.font=ttFont(14); ctx.fillStyle=TTX.grey;
-    ctx.fillText(TOUCH?"TAP TO RETURN TO MENU":"SPACE / ESC — BACK TO MENU", VW/2, SH-28);
+    ctx.fillText(TOUCH?"TAP TO RETURN TO MENU":"SPACE / ESC TO GO BACK", VW/2, SH-28);
     ctx.textAlign="left";
   }
 
@@ -2725,7 +2900,7 @@
       ctx.textAlign="left"; ctx.font=ttFont(17);
       ctx.fillStyle = p.out?TTX.dim:(isUp?TTX.yellow:col);
       const tag=(i===H.leader && !p.out)?"★ ":"";
-      ctx.fillText(tag+p.name.toUpperCase()+(p.out?"  —  OUT":""), PX+20, mid);
+      ctx.fillText(tag+p.name.toUpperCase()+(p.out?"   (OUT)":""), PX+20, mid);
       const bs=Math.min(26, rowH-12), gp=6, totalW=H.L*(bs+gp)-gp, sx=PX+PW-20-totalW;
       for (let j=0;j<H.L;j++){ const lx=sx+j*(bs+gp), got=j<p.letters;
         ctx.fillStyle = got ? (p.out?"#c43a3a":col) : "rgba(255,255,255,0.06)";
@@ -2755,7 +2930,7 @@
       ctx.restore();
     } else {
       const drop=el<0.3?-(1-el/0.3)*(1-el/0.3)*170:0, k=Math.max(0,1-el/0.3);
-      ctx.font=ttFont(26); ctx.fillStyle=col; ctx.fillText(p.name.toUpperCase()+"  —  THAT'S A LETTER!", VW/2, SH/2-112);
+      ctx.font=ttFont(26); ctx.fillStyle=col; ctx.fillText(p.name.toUpperCase()+", THAT'S A LETTER!", VW/2, SH/2-112);
       ctx.save(); ctx.translate(VW/2, SH/2-2+drop); ctx.scale(1.25+0.85*k, 1.25+0.85*k);
       drawHeadline(H.word[e.idx]||"?", 0, 0, 80, {color:"#fff"}); ctx.restore();
       ctx.textBaseline="alphabetic";
@@ -2817,8 +2992,8 @@
     const cy=Math.round(sbB+(SH-sbB)/2)-6;   // "pass to" call-to-action centred below the scoreboard
     ctx.textAlign="center";
     ctx.font=ttFont(15); ctx.fillStyle=TTX.grey;
-    ctx.fillText(H.phase==='lead' ? "▶  LEADER  —  PASS THE DEVICE TO"
-                                  : ("CHASING "+H.players[H.leader].name.toUpperCase()+"'S GOAL  —  PASS TO"), VW/2, cy-42);
+    ctx.fillText(H.phase==='lead' ? "▶  LEADER  ·  PASS THE DEVICE TO"
+                                  : ("CHASING "+H.players[H.leader].name.toUpperCase()+"'S GOAL  ·  PASS TO"), VW/2, cy-42);
     drawHeadline(cur.name.toUpperCase(), VW/2, cy-4, 40, {color:col});
     ctx.font=ttFont(15); ctx.fillStyle=TTX.white;
     ctx.fillText(H.phase==='lead' ? "SCORE TO SET A CHALLENGE" : "MATCH THE GOAL OR TAKE A LETTER", VW/2, cy+34);
@@ -3012,7 +3187,7 @@
         };
         { const p=dragSpeedMod*5, r=ctlRow("DRAG SPEED", 212, dragSpeedMod, (p>0?"+":"")+p+"%");
           touchSpeedDecRect=r.dec; touchSpeedIncRect=r.inc; }
-        { const p=dragGlideMod*10, r=ctlRow("RELEASE GLIDE — SLIDE AFTER YOU LET GO", 266, dragGlideMod, (p>0?"+":"")+p+"%");
+        { const p=dragGlideMod*10, r=ctlRow("RELEASE GLIDE: SLIDE AFTER YOU LET GO", 266, dragGlideMod, (p>0?"+":"")+p+"%");
           touchGlideDecRect=r.dec; touchGlideIncRect=r.inc; }
         if (TOUCH){
           // RESUME button
@@ -3060,6 +3235,14 @@
     else if (state===ST.HORSESETUP) { ttClear(); drawHorseSetup(); drawTouchBack("← MENU"); }
     else if (state===ST.HORSEPASS) { ttClear(); drawHorsePass(); drawTouchBack("← MENU"); }
     else if (state===ST.HORSEEND) { ttClear(); drawHorseEnd(); drawTouchBack("← MENU"); }
+    else if (state===ST.AGENT) { drawAgentScreen(); touchBackBtn=null; }   // draws its own pure-black page; tap anywhere advances
+    // a match was requested but its sprite sheets are still downloading — show feedback instead of a frozen tap
+    if (matchLoading && !inMatch){
+      ctx.fillStyle="rgba(4,6,11,0.78)"; ctx.fillRect(0,0,VW,SH);
+      const pulse=0.55+0.45*Math.sin(performance.now()/260);
+      ctx.globalAlpha=pulse; pxText("LOADING…", VW/2, SH/2, 30, TTX.cyan, 'c','m'); ctx.globalAlpha=1;
+      pxText("GETTING THE PLAYERS STRIPPED AND READY", VW/2, SH/2+34, 14, TTX.grey, 'c','m');
+    }
   }
 
   // ---- input ----
@@ -3074,8 +3257,7 @@
   function confirmName(){
     if(!nameBuf.trim()) return; menuSel=0; kbdClose();
     if (pendingMode==="daily"){ localStorage.setItem("vc_name", nameBuf.trim().toUpperCase()); startDaily(); }
-    else if (WORLD && WORLD.nations){ state=ST.NATSEL; stateEnterAt=performance.now(); menuSel=0; }
-    else { pendingNation="England"; state=ST.LEAGUESEL; stateEnterAt=performance.now(); menuSel=0; }
+    else agentIntro();   // career: Slick Vic's intro (State A) → Select Nationality / League
   }
   function togglePause(){ if(state===ST.SERVE||state===ST.FLIGHT||state===ST.RESULT) paused=!paused; }
   function forfeit(){            // give up the current match -> career home (counts as a loss) / menu
@@ -3112,6 +3294,7 @@
   // SPACE / select pressed (varies by screen)
   function pressSelect(){
     audio();
+    if (state===ST.AGENT){ agentAdvance(); return; }   // Slick Vic: finish the reveal, or proceed to the next screen
     if (state===ST.MENU){
       const opts=menuOptions(), o=opts[menuSel];
       if (!TEAMS.length) return;                          // wait for roster
@@ -3126,7 +3309,7 @@
       hCount=2; hNames=["","","","","",""]; hWord="HORSE"; hField=0; state=ST.HORSESETUP; }
     else if (state===ST.NAME){ confirmName(); }
     else if (state===ST.NATSEL){ if(WORLD && WORLD.nations){
-      pendingNation=WORLD.nations[menuSel].slug; state=ST.LEAGUESEL; stateEnterAt=performance.now(); menuSel=0; } }
+      pendingNation=WORLD.nations[menuSel].slug; agentTeamPick(); } }   // State B (Vic) appears here → then league select
     else if (state===ST.LEAGUESEL){ const ids=leagueList(); if(ids.length){
       pendingLeague=ids[clamp(menuSel,0,ids.length-1)]; setActiveLeague(pendingLeague); state=ST.CLUBSEL; stateEnterAt=performance.now(); menuSel=0; } }
     else if (state===ST.CLUBSEL){ if(TEAMS.length){
@@ -3139,7 +3322,7 @@
     }
     else if (state===ST.TABLE){ startFixture(); }
     else if (state===ST.TROPHY){ state=ST.TABLE; }
-    else if (state===ST.SEASONEND){ if((CAR.offers||[]).length>0){ inboxSel=0; state=ST.INBOX; } else nextSeason(null); }
+    else if (state===ST.SEASONEND){ agentCallUp(); }   // State C: call-up check → transfer offers
     else if (state===ST.INBOX){ const n=(CAR.offers||[]).length; if(inboxSel<n) openEmail(inboxSel); else nextSeason(null); }
     else if (state===ST.COUNTDOWN){ countdownT=0; state=ST.SERVE; }   // skip the 3-2-1
     else if (state===ST.MATCHEND){ if(matchEndTimer<2.2) commitMatch(); }   // skip the burst (after a beat)
@@ -3154,7 +3337,7 @@
     if (state===ST.NAME){ confirmName(); }
     else if (state===ST.MENU||state===ST.TABLE||state===ST.SEASONEND||state===ST.INBOX||state===ST.CLUBSEL||state===ST.NATSEL||state===ST.LEAGUESEL||state===ST.TRNHUB||state===ST.OVER||
              state===ST.MATCHEND||state===ST.DAILYBOARD||state===ST.HORSEPASS||state===ST.HORSEEND||
-             state===ST.MPMENU||state===ST.CLASSICPASS||state===ST.CLASSICEND) pressSelect();
+             state===ST.MPMENU||state===ST.CLASSICPASS||state===ST.CLASSICEND||state===ST.AGENT) pressSelect();
     else togglePause();                                   // in-match: ENTER = pause
   }
   function moveSel(dx,dy){
@@ -3167,6 +3350,16 @@
       let i=menuSel + dy + dx*rows; menuSel=((i%n)+n)%n; }
     else if (state===ST.LEAGUESEL){ const n=Math.max(1,leagueList().length); menuSel=((menuSel+dy)%n+n)%n; }
     else { if(dx<0) input.left=true; if(dx>0) input.right=true; mouseTargetX=null; }   // in-match: arrows move man (override mouse)
+  }
+  // TAB / SHIFT+TAB — cycle the on-screen selection forward/back (wrapping) on any menu/select screen.
+  // A flat sequential walk through the items, which reads naturally regardless of grid layout.
+  function tabCycle(dir){
+    if (state===ST.MENU){ const n=menuOptions().length; menuSel=(menuSel+dir+n)%n; }
+    else if (state===ST.MPMENU){ const n=MP_OPTS.length; menuSel=(menuSel+dir+n)%n; }
+    else if (state===ST.INBOX){ const n=((CAR&&CAR.offers)?CAR.offers.length:0)+1; inboxSel=(inboxSel+dir+n)%n; }
+    else if (state===ST.CLUBSEL){ const n=TEAMS.length||20; menuSel=(menuSel+dir+n)%n; }
+    else if (state===ST.NATSEL){ const n=(WORLD&&WORLD.nations)?WORLD.nations.length:16; menuSel=(menuSel+dir+n)%n; }
+    else if (state===ST.LEAGUESEL){ const n=Math.max(1,leagueList().length); menuSel=(menuSel+dir+n)%n; }
   }
   window.addEventListener("keydown",(e)=>{
     if (document.activeElement===kbd) return;   // text entry handled by the hidden input's own listeners
@@ -3182,6 +3375,9 @@
     }
     if (state===ST.HORSESETUP){      // fields: [players count] [name x N] [word]
       const last=mpLast();
+      if (k==="Tab"){ e.preventDefault();   // TAB jumps to the next field (Shift+TAB previous), like a web form
+        hField = e.shiftKey ? (hField<=0?last:hField-1) : (hField>=last?0:hField+1);
+        if (hField===0) kbdClose(); else kbdOpen((mpMode!=="classic"&&hField===last)?hWord:(hNames[hField-1]||"")); return; }
       if (k==="Enter"){ e.preventDefault(); if(!enterLock){ enterLock=true; if(hField<last) hField++; else mpStart(); } return; }
       if (k==="ArrowDown"){ e.preventDefault(); hField=Math.min(last,hField+1); return; }
       if (k==="ArrowUp"){ e.preventDefault(); hField=Math.max(0,hField-1); return; }
@@ -3207,6 +3403,7 @@
       if (k==="KeyA"){ e.preventDefault(); emailAction("accept"); return; }
       if (k==="KeyD"){ e.preventDefault(); emailAction("decline"); return; }
     }
+    if(k==="Tab"){ e.preventDefault(); audio(); tabCycle(e.shiftKey?-1:1); return; }   // TAB cycles menu selection
     if(k==="ArrowLeft"){ e.preventDefault(); moveSel(-1,0); }
     else if(k==="ArrowRight"){ e.preventDefault(); moveSel(1,0); }
     else if(k==="ArrowUp"){ e.preventDefault(); moveSel(0,-1); }
@@ -3357,7 +3554,7 @@
   // ---- fixed-timestep loop at 28 Hz ----
   let last=performance.now(), acc=0;
   function tick(now){
-    let frame=(now-last)/1000; last=now; if(frame>0.25) frame=0.25; acc+=frame;
+    let frame=(now-last)/1000; last=now; if(frame>0.12) frame=0.12; acc+=frame;   // clamp tight: a long stall (asset decode / tab refocus) must NOT fast-forward a burst of physics steps (the "jitter")
     flash=Math.max(0,flash-frame*1.6);
     netBulgeT=Math.max(0,netBulgeT-frame); barShakeT=Math.max(0,barShakeT-frame);   // goal-net / woodwork animation decay
     while(acc>=DT){ if(assetsReady){ pXball=xball; pYball=yball; pZ=z; swfFrame(); } acc-=DT; }
@@ -3421,6 +3618,15 @@
       newCareerSim: function(nation, league, slug){ GMODE="career"; setActiveLeague(league||"ENG"); newCareer("TEST", slug||(TEAMS[0]&&TEAMS[0].slug)||"Liverpool", nation||"Brazil", league||"ENG"); return {cal:CAR.cal.length, leagueId:CAR.leagueId, teams:TEAMS.length, slug:CAR.slug, state}; },
       leaguesSim: function(){ return leagueList().map(id=>({id, name:LEAGUE_META[id].name, teams:(LEAGUES[id]||[]).length})); },
       renderStateSim: function(s){ const prev=state; state=ST[s]||s; try{ render(); } finally { state=prev; } return true; },
+      // dev/audit: stage a Slick Vic agent screen with the text fully revealed (which='intro'|'team'|'callup_yes'|'callup_no')
+      agentSim: function(which){
+        if (which==='team'){ agentTeamPick(); }
+        else if (which==='callup_yes'){ showAgent(VIC_LINES.callup, null); }
+        else if (which==='callup_no'){ showAgent(VIC_LINES.nocall, null); }
+        else { agentIntro(); }
+        agentSkip=true;   // reveal all text so the layout audit sees the full wrapped block
+        return {state, len:agentText.length};
+      },
       euroSim: function(){ return CAR.euro ? {comp:CAR.euro.comp, group:CAR.euro.group.slice(), sfOpp:CAR.euro.sfOpp, fOpp:CAR.euro.fOpp, mine:CAR.slug} : null; },
       // HORSE harness: drive the state machine without playing real shots (made = scored the delivery)
       horseStart: function(names, word){ hCount=Math.max(HORSE_MIN,Math.min(HORSE_MAX,(names&&names.length)||2)); hNames=(names||[]).slice(0,6); while(hNames.length<6) hNames.push(""); hWord=word||"HORSE"; beginHorse(); return horseSnap(); },
@@ -3521,9 +3727,24 @@
 // ---- PWA: register the service worker (installable / "Add to Home Screen" + offline). Guarded
 // with typeof so the Node smoke harness (no `navigator`) skips it; http(s) only (not file://).
 if (typeof navigator !== "undefined" && navigator.serviceWorker && location.protocol.indexOf("http") === 0) {
-  window.addEventListener("load", function () {
-    navigator.serviceWorker.register("sw.js").catch(function (e) { try { console.warn("SW register failed:", e); } catch (_) {} });
-  });
+  var isLocalDev = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+  if (isLocalDev) {
+    // LOCAL DEV: never let a service worker cache stale assets (it bit us twice). Unregister any existing
+    // SW + wipe its caches so a plain reload always serves the freshest files. If a SW was controlling this
+    // load (so the assets you're seeing may be cached), reload ONCE after cleanup — guarded by a session
+    // flag so it can never loop. Production (GitHub Pages) still registers the SW normally below.
+    var hadController = !!navigator.serviceWorker.controller;
+    Promise.all([
+      navigator.serviceWorker.getRegistrations().then(function (rs) { return Promise.all(rs.map(function (r) { return r.unregister(); })); }).catch(function () {}),
+      (window.caches && caches.keys) ? caches.keys().then(function (ks) { return Promise.all(ks.map(function (k) { return caches.delete(k); })); }).catch(function () {}) : null
+    ]).then(function () {
+      if (hadController && !sessionStorage.getItem("sw_cleared")) { sessionStorage.setItem("sw_cleared", "1"); location.reload(); }
+    });
+  } else {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("sw.js").catch(function (e) { try { console.warn("SW register failed:", e); } catch (_) {} });
+    });
+  }
 }
 </script>
 </body>

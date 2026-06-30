@@ -26,3 +26,9 @@ artgen/_*
 *.tmp
 *.log
 server.*.log
+
+# Node deps (reinstalled per session; puppeteer-core for the layout-audit skill)
+node_modules/
+
+# Slick Vic trace SOURCE — large, local-only (the traced assets/ui/slick_vic.png is what ships)
+assets/ui/New Vic.png
