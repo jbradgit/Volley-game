@@ -60,7 +60,7 @@ The background becomes three independent layers — exactly the split you propos
 |---|---|---|---|
 | A.1 | Code: layer plumbing — `drawBackdrop`/`drawHoardings`/`drawGoal` replacing `drawStadiumSides`+`pitchBg`; ads manifest with visible fallback; goal bulge + woodwork shake triggers (spec §5) | M–L | ✅ |
 | A.2 | Produce backdrop v1 — procedural early-2000s stadium (`artgen/gen_backdrop.py` → `assets/stadium/backdrop.png`), template-aligned | M | ✅ |
-| A.3 | House + placeholder sponsor boards (`artgen/gen_boards.py` → `assets/ads/` ×7 + `ads.json`, all fictional brands) | S | ✅ |
+| A.3 | House + placeholder sponsor boards (`artgen/gen_boards.py` → `assets/boards/` ×7 + `boards.json`, all fictional brands — never "ads" in paths, adblockers) | S | ✅ |
 | A.4 | Procedural goal + net bulge + woodwork shake (drawn inside the leftFooted mirror; `drawGoal()` in index.html) | M | ✅ |
 | A.5 | Validate: compositor mock vs template ✅ (`artgen/preview_mock.py`); headless smoke ✅ (`ci/smoke.js`). **Remaining: owner plays it in a real browser + approves, then delete `pitch_hd.png`/`pitch.jpg`/`crowd.jpg`/`kit.jpg`** | S | 🟨 |
 

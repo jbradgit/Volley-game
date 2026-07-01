@@ -18,15 +18,15 @@ The whole game is one HTML file, but it **must be served over HTTP** — opening
 directly as a `file://` URL taints the canvas and breaks the keeper's save detection.
 
 **Windows:** double-click **`play.bat`**. It serves the game on
-`http://localhost:5577/index.html` and opens your browser. Keep the window open while
+`http://localhost:5578/index.html` and opens your browser. Keep the window open while
 you play; close it (or run `stop.bat`) to stop the server.
 
 **Any OS:** you just need Python 3.
 
 ```sh
-python3 serve.py                 # no-cache dev server on http://localhost:5577
+python3 serve.py                 # no-cache dev server on http://localhost:5578
 #   ...or any static server, e.g.:
-python3 -m http.server 5577      # then open http://localhost:5577/index.html
+python3 -m http.server 5578      # then open http://localhost:5578/index.html
 ```
 
 `serve.py` disables caching (so a refresh always loads your latest edits) and binds to

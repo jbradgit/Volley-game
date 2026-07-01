@@ -54,6 +54,12 @@ home-menu spacing. (The headline-font part of that commit is now superseded — 
   local dev always serves fresh.
 - **NEVER put `pixel`/`ad`/`advert`/`track` in an asset filename** — ad/privacy blockers silently block them.
   The portrait is `slick_vic.png` (was `vic_pixel.png` → blocked → procedural fallback showed instead).
+- **"Laggy / stuttering striker and ball" on the office box = THE DISPLAY, not the code.** 2026-07-01
+  perf probe (headless + headed, real match driven via `__dbg`): frame times on this branch and `main`
+  are IDENTICAL and clean (the only stall anywhere is a one-off ~220ms kit-bake at match entry — both
+  versions). The 4K monitor was running at **29Hz over HDMI** (4K@30 cable/port limit); at 30Hz the 28Hz
+  game visibly judders. The monitor supports 4K@60 — fix is DisplayPort/HDMI-2.0, or set 1920×1080@60.
+  Before chasing any "lag" report, check `Win32_VideoController CurrentRefreshRate` first.
 
 **Verification — use the `menu-layout-audit` skill** (`.claude/skills/menu-layout-audit/`): headless-Chrome
 linter (text overflow / off-screen / edge / overlap / frame-cover) across all menu/career/agent screens.
@@ -241,6 +247,9 @@ smooth motion + one consistent style for all three characters + 100% original ar
 | `docs/SPRITE_SPEC.md` | **The sprite/region-tag contract** the engine + all generators depend on. |
 | `docs/STADIUM_ASSET_SPEC.md` | Layered-background geometry + the alignment grid. |
 | `docs/ART_SOURCING.md` | The 3D-pipeline decision + **the Mixamo shopping list** (the active task). |
+| `docs/AUDIO_SHORTLIST.md` | CC0/royalty-free SFX + menu-music shortlist for the audio swap (§0 next task). |
+| `docs/SPRITE_FRAME_SELECTION.md` | The owner's recorded frame picks from the 3D-pipeline contact sheets. |
+| `PROJECT_HEALTH_AUDIT.md` | 2026-07-01 full workspace/Git/GitHub health audit + cleanup plan (point-in-time). |
 
 ## 7. artgen/ script index
 - `render_sprites.py` — **3D → tagged sprites pipeline** (the future; tested).

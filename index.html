@@ -2574,7 +2574,7 @@
   function openTransferOffers(){   // the existing SEASONEND → transfer-inbox transition
     if ((CAR.offers||[]).length>0){ inboxSel=0; state=ST.INBOX; } else nextSeason(null);
   }
-  // ---- Slick Vic portrait. Primary: a pixel-art TRACE of the owner's reference art (assets/ui/vic_pixel.png,
+  // ---- Slick Vic portrait. Primary: a pixel-art TRACE of the owner's reference art (assets/ui/slick_vic.png,
   // produced by downsampling the ref). Fallback (if the asset fails to load — constraint #5): the fully
   // procedural bust below, so the screen is never blank. ----
   const vicImg = (typeof Image!=="undefined") ? new Image() : null;
