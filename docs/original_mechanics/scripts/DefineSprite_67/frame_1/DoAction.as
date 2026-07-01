@@ -1,0 +1,2 @@
+finished = false;
+stop();

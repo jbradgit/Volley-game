@@ -98,7 +98,7 @@ the conventions and gotchas — are in [`HANDOVER.md`](HANDOVER.md).
 | [`artgen/`](artgen) | Python art generators (sprites, kits, stadium, logo, trophies). |
 | [`ci/`](ci) | `smoke.js` headless regression test. |
 | [`docs/`](docs) | Specs: sprite/region-tag contract, stadium geometry, career design, art sourcing. |
-| `decomp/`, `ruffle/`, `original.swf` | Reference material used to study the genre's mechanics. Not part of the shipped game. |
+| [`docs/original_mechanics/`](docs/original_mechanics) | Mechanics reference for the transcribed physics. Not part of the shipped game. |
 | [`HANDOVER.md`](HANDOVER.md) | **Living state of play** — start here to pick up development. |
 | [`ROADMAP.md`](ROADMAP.md) | The phased plan to a public, monetisable release. |
 | [`AUDIT.md`](AUDIT.md) | Technical-health audit that informs the roadmap. |

@@ -23,6 +23,25 @@ and pick — then a session wires them in.** Nothing is wired yet (you wanted to
 2. **Add menu background music** — a looping **jazzy-chiptune** track for the menu/career screens
    (owner: "classic game style digital but jazz"). New; no music exists today.
 
+### 1b. Provenance record — original SWF sounds (written down before the 2026-07-02 decomp purge)
+
+The `decomp/sounds/` exports were deleted with the rest of the workshop; this table is the
+permanent record of **which original sound each shipped file came from, where it plays, and
+what triggers it** (code refs are `index.html` as of 2026-07-02):
+
+| shipped file (`assets/snd/`) | original SWF sound | plays when — exact triggers |
+|---|---|---|
+| `kick.mp3` | id 116 "shotsnd" | boot strikes the ball (`sfx.kick()`, contact +100 pts, ~line 1086) |
+| `post.mp3` | id 118 "crink" | woodwork — left post, right post, crossbar ("WOODWORK!" / "OFF THE BAR!", +150÷bounce, triggers bar-shake, ~lines 1046–1052) |
+| `whistle.mp3` | id 171 | kick-off of every match (`setTargets()`, ~line 706); drawn full-time result (~line 759); early checkout / bank-the-win (~line 1529) |
+| `goal.mp3` | id 172 (crowd cheer) | goal scored ("GOOOOAL!", +4000, screen flash, ~line 1075); match WON at full-time (~line 759) |
+| `boos.mp3` | id 173 | match LOST at full-time (~line 759) |
+| `ooh.mp3` | id 174 "near_miss" | keeper save (`sfx.save()`, "SAVED!", +300÷bounce, ~line 1060) |
+
+(`decomp/sounds/-1.wav` was a 44-byte silent stub — unused, no replacement needed.)
+Loader: `SND` block ~lines 302–326, URLs `assets/snd/<name>.mp3?v=hr5`. Replacements keep the
+same six filenames and bump the `?v=` tag — no code change.
+
 ---
 
 ## 2. Licence primer (READ — gets us in trouble if ignored)

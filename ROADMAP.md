@@ -88,7 +88,7 @@ tested (`artgen/render_sprites.py`), blocked on the Mixamo shopping list
 |---|---|---|---|---|
 | C.1 | Rebrand the 20 clubs to fictional names/kits | `teams.json` is the single source — but slugs are also asset-filename keys (`striker_<slug>_*`), so rename JSON + files together. Kit colours can stay (colours aren't protectable; names/badges are) | M | ⬜ |
 | C.2 | Self-host VT323 + Press Start 2P (OFL-licensed) in `assets/fonts/` | Removes the Google Fonts runtime dependency | S | ⬜ |
-| C.3 | Split the workshop: move `decomp/`, all SWF copies, `gamezip/`, `ruffle/`+`ruffle.html`, `page_*.html`, ref images to a **private** archive repo; `git filter-repo` the public history so the copyrighted material never existed in it | Do **after** Tracks A/B no longer need decomp reference material. Single contributor = cheap to force-push now, expensive later | L | ⬜ |
+| C.3 | Split the workshop: move `decomp/`, all SWF copies, `gamezip/`, `ruffle/`+`ruffle.html`, `page_*.html`, ref images to a **private** archive repo; `git filter-repo` the public history so the copyrighted material never existed in it | **🟨 2026-07-02: working-tree purge DONE** (owner call, D5 answered) — all Flash material deleted except the ActionScript mechanics reference (`docs/original_mechanics/`) + SFX provenance (`docs/AUDIO_SHORTLIST.md` §1b). **Remaining: the `git filter-repo` history rewrite** (take a `--mirror` backup first; also sweeps the mechanics folder private) | L | 🟨 |
 | C.4 | Licence + credits screen (font licences, sound licences, "not affiliated with any real club/league") | App stores ask | S | ⬜ |
 
 **Exit criteria:** the game contains zero ripped art/audio, zero real club names, no third-party
@@ -139,7 +139,7 @@ watermarks; public repo history is clean; CI screenshots approved.
 | D2 | Club rebrand approach | fully fictional names / parody names ("Manningham City") — fictional is safer | ⬜ open |
 | D3 | Daily leaderboard backend | none for v1 / serverless KV / third-party (e.g. a games-portal API) | ⬜ open |
 | D4 | Drop or finish HANDOVER §3.6 idle/commentary | | ⬜ open |
-| D5 | Workshop repo timing — what still needs `decomp/` before the split (C.3)? | | ⬜ open |
+| D5 | Workshop repo timing — what still needs `decomp/` before the split (C.3)? | **RESOLVED 2026-07-02 (owner):** only the grid-layout/geometry docs + the game-mechanics reference are still needed; everything else deleted from the working tree | ✅ |
 | D6 | Trademark check on "SCORDAGOL" before spending on branding | | ⬜ open |
 
 ## Working rules (carry-over from the original project culture)

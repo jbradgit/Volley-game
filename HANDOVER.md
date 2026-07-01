@@ -5,15 +5,23 @@ device or a fresh session. Last updated: 2026-06-30.
 
 ---
 
-## 0. CURRENT STATE (2026-06-30) — READ THIS FIRST (supersedes §3 below)
+## 0. CURRENT STATE (2026-07-02) — READ THIS FIRST (supersedes §3 below)
 
 The 3D-sprite pipeline (old §3) is **long DONE and deployed**. **Live site:**
 https://jbradgit.github.io/Volley-game/ (GitHub Pages serves `main`).
 
-**Git state right now:**
-- Work branch **`claude/3d-character-sprites`** is **AHEAD of `main`** with the 2026-06-30 session
-  below — **CI-green + layout-audit-clean, but NOT yet deployed to `main`/live.** Owner should eyeball it
-  (logo, Slick Vic, HUD venue chips, agent flow) then deploy: `git push origin claude/3d-character-sprites:main`.
+**Git state right now (2026-07-02):**
+- The 2026-06-30 session (logo, Slick Vic, HUD venue chips, fixes) **IS DEPLOYED** — owner played it
+  via `play.bat` and approved; landed on `main` (`6bdd36b`) along with the workspace audit
+  (`PROJECT_HEALTH_AUDIT.md`) and the port-5578 config fixes. Its branch is deleted.
+- **2026-07-02 workshop purge (owner call): all original-Flash-game material is REMOVED from the
+  working tree** — `original.swf`, `gamezip/`, `ruffle/`+`ruffle.html`, `decomp/` (exports, `swf.xml`,
+  ripped bg/sprites/sounds, one-shot py tools), `ref_gameplay.png`, `ref_logo.png`. KEPT: the decompiled
+  ActionScript mechanics reference, moved to **`docs/original_mechanics/`** (read its README — still
+  third-party IP, engineering reference only); stadium geometry (already in `docs/`); the original-SFX
+  provenance table (**`docs/AUDIO_SHORTLIST.md` §1b** — which sound goes where and does what).
+  Everything deleted is still recoverable from Git history until the ROADMAP C.3 `git filter-repo`
+  history rewrite — which is now THE remaining IP step (plus club names, fonts, the 6 SFX).
 
 **What the 2026-06-30 session shipped (this branch, UNDEPLOYED):**
 - **Homescreen logo redesigned** — bold chunky italic 3D-extruded "Lardiland"-style wordmark
@@ -249,6 +257,7 @@ smooth motion + one consistent style for all three characters + 100% original ar
 | `docs/ART_SOURCING.md` | The 3D-pipeline decision + **the Mixamo shopping list** (the active task). |
 | `docs/AUDIO_SHORTLIST.md` | CC0/royalty-free SFX + menu-music shortlist for the audio swap (§0 next task). |
 | `docs/SPRITE_FRAME_SELECTION.md` | The owner's recorded frame picks from the 3D-pipeline contact sheets. |
+| `docs/original_mechanics/` | Decompiled ActionScript of the original game — THE mechanics reference for the sacred physics (read its README; third-party IP, reference only). |
 | `PROJECT_HEALTH_AUDIT.md` | 2026-07-01 full workspace/Git/GitHub health audit + cleanup plan (point-in-time). |
 
 ## 7. artgen/ script index

@@ -1,0 +1,2 @@
+command = "update";
+stop();

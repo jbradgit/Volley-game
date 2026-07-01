@@ -1,0 +1,3 @@
+on(release){
+   paused = !paused;
+}

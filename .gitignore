@@ -1,9 +1,5 @@
-# Java runtime and tools (large binaries)
-tools/jre/
-tools/ffdec/
-tools/ffdec.zip
-tools/jre.zip
-tools/ruffle.zip
+# Local scratch tooling — never tracked (JRE, ffdec, snapshot scripts, screenshots)
+tools/
 
 # Build/distribution archives
 scordagol_web.zip

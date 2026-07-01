@@ -1,0 +1,12 @@
+on(release){
+   if(all_over)
+   {
+      gotoAndStop("all_over");
+      play();
+   }
+   else
+   {
+      gotoAndStop("backfromtables");
+      play();
+   }
+}
