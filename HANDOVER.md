@@ -26,9 +26,18 @@ https://jbradgit.github.io/Volley-game/ (GitHub Pages serves `main`).
   matches, need ≥1 item); **A WORD FROM OUR SPONSORS** fake rewarded ad (+12 M, once per
   matchday, unskippable 4s, Vic-cut-free); **comms queue** (`CAR.msgs`/`flushMsgs`): Vic
   delivers board expectations each season + mid-season on/off-track updates + promotion/benched
-  news; trainers nag/say goodbye in their own voices. New screens: THE LIFE (key L / £ button on
-  every career home incl. cup/Euro/tournament), THE GYM, ad break; pay-day line on the match-end
-  burst; monies in the career header. Design: `docs/CAREER_DESIGN.md` §11.
+  news; trainers nag/say goodbye in their own voices. New screens: £ SHOP (key L / £ button on
+  every career home incl. cup/Euro/tournament), THE GYM, FINANCES, ad break; pay-day line on the
+  match-end burst; monies in the career header. Design: `docs/CAREER_DESIGN.md` §11.
+  **Owner round 14 (third commit, same branch):** economy v2 — per-club **contracts**
+  (wage/win/goal bonuses from club size + effRep), **signing-on fees** on transfers, rollover
+  **raises**, **prize money** with the season review, and an itemised **season ledger** on the
+  new FINANCES page. "The Life" renamed **£ SHOP**; **£** currency everywhere (`money()`);
+  "NRG" wording purged (NSS terminology) → ENERGY. **Hover tooltips** on every shop/gym/finances
+  element. **Vic tutorial** at career start (bench = "3 balls to prove your worth", energy,
+  monies, shop, sponsors) and ALL agent speeches now read **one sentence per screen** (progress
+  dots). Starting XI slower to crack (trust threshold 70, gains halved, start trust 20). All
+  league AI **×1.1** ("10% harder all around"). Design: `docs/CAREER_DESIGN.md` §11b.
   What it is (owner brief: "career mode should feel like a journey", NSS-style):
   new **second tier `ENG2`** ("The Championship", 20 clubs, tier 2, no Europe) where every new
   career now STARTS; elite leagues/big clubs **LOCKED** on the select screens until earned

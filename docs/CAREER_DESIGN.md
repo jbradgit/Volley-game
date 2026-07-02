@@ -277,3 +277,25 @@ Saves migrate with savings (`100 + 150/season`); `vc_career` gains `monies/earne
 trainer/sponsor/msgs/adSeen`. UI: £ THE LIFE button on every career home (key L), monies
 in the header, THE LIFE + THE GYM + ad-break screens, pay-day line on the match-end burst.
 
+### 11b. Owner round 14 (same session)
+
+- **Economy v2:** per-club **contracts** (`CAR.contract`: wage / win bonus / goal bonus,
+  negotiated from club size + effective rep); transfers bring a **signing-on fee** (6x wage)
+  and a new contract; a grown rep earns a **raise** at the rollover (Vic announces both).
+  **Prize money** at the season review (league finish + cup run + Europe, tier-scaled).
+  **`CAR.ledger`** books every pound in/out per season, shown on the new **FINANCES** page
+  (contract terms, Vic's %, sponsor terms, itemised income/outgoings, net).
+- **"The Life" renamed £ SHOP**; currency symbol is **£** everywhere (`money()` formatter);
+  all "NRG" wording (NSS terminology) replaced with **ENERGY**.
+- **Hover help:** every shop/gym/finances element registers a tooltip (`tipRegions` +
+  `drawTooltip`) explaining what it is and how it works (desktop hover; touch users get the
+  same from the tutorial).
+- **Vic's tutorial** at career start (comms queue): the bench ("3 balls off the bench to
+  prove your worth"), energy/shakes, monies + his cut, the shop/trainer, sponsors.
+- **One sentence at a time:** the agent screen paginates every speech into sentences
+  (typewriter per sentence, progress dots, action key advances).
+- **Slower road to the XI:** starter threshold 60→70, trust gains roughly halved, career
+  start trust 27→20, off-season drift +10→+6 (a decent run now takes ~10 matches to crack
+  the eleven; a poor one 20+).
+- **Difficulty:** all league AI strength ×1.1 (owner: "10% harder all around").
+

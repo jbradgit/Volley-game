@@ -329,6 +329,60 @@ test("life: the sponsored ad pays once per matchday, tax-free (Vic doesn't know)
   assert.equal(dbg.watchAdSim(), true, "a new matchday brings a new ad");
 });
 
+// ================= E8.2 (owner round 14): contracts, prize money, ledger, tutorial, slower XI =================
+
+test("life v2: a contract sets the pay; every pound lands in the season ledger", async () => {
+  const { dbg } = await loadGame();
+  dbg.newCareerSim("England", "ENG2", "Millwall");
+  const c = dbg.lifeInfo().contract;
+  assert.ok(c && c.wage > 0 && c.winB > 0 && c.goalB > 0, "a contract is negotiated at signing: " + JSON.stringify(c));
+  dbg.playNext(true);   // a win with 2 goals (the autoplay standard)
+  const l = dbg.lifeInfo();
+  assert.equal(l.lastEarn.gross, c.wage + c.winB + 2*c.goalB, "gross = wage + win bonus + 2 goal bonuses");
+  assert.equal(l.ledger.wages, c.wage, "the ledger books the wage");
+  assert.equal(l.ledger.bonus, c.winB + 2*c.goalB, "and the bonuses");
+  assert.equal(l.ledger.vic, l.lastEarn.cut, "and Vic's slice");
+});
+
+test("life v2: a transfer brings a signing-on fee and a renegotiated contract", async () => {
+  const { dbg } = await loadGame();
+  dbg.fakeSeasonEnd(1, 90);
+  const before = dbg.lifeInfo().monies;
+  dbg.nextSeasonSim("RealMadrid", "ESP");
+  const l = dbg.lifeInfo();
+  assert.ok(l.ledger.signing > 0, "a signing-on fee is banked");
+  assert.ok(l.monies > before, "the fee lands (after Vic)");
+  assert.ok(l.contract.wage > 100, "Real Madrid pay superstar wages: " + l.contract.wage);
+  assert.ok(l.msgs.includes("vic") || l.agentWho === "vic", "Vic announces the deal");
+});
+
+test("life v2: the season's prize money lands with the review", async () => {
+  const { dbg } = await loadGame();
+  dbg.newCareerSim("England", "ENG2", "Millwall");
+  let guard = 240, r;
+  while (guard-- > 0){ r = dbg.playNext(true); if (r.done || r.exited || r.state === "seasonend") break; }
+  const l = dbg.lifeInfo();
+  assert.ok(l.prize && l.prize.gross > 0, "champions bank prize money: " + JSON.stringify(l.prize));
+  assert.equal(l.ledger.prize, l.prize.gross, "and it's in the books");
+});
+
+test("vic v2: speeches read out one sentence at a time", async () => {
+  const { dbg } = await loadGame();
+  const r = dbg.agentSim("intro");
+  assert.ok(r.pages >= 4, "the long intro paginates into sentences (got " + r.pages + " pages)");
+  assert.ok(r.len < 200, "each page is a sentence, not the whole wall of text");
+});
+
+test("journey v2: the tutorial queues at career start and the XI takes longer to crack", async () => {
+  const { dbg } = await loadGame();
+  dbg.newCareerSim("England", "ENG2", "Millwall");
+  const msgs = dbg.lifeInfo().msgs;
+  assert.ok(msgs.filter(w => w === "vic").length >= 6, "Vic's tutorial + season brief are queued (" + msgs.length + " msgs)");
+  // 5 straight wins used to be enough for the XI; not any more
+  for (let i = 0; i < 5; i++) dbg.playNext(true);
+  assert.notEqual(dbg.journeyInfo().role, "starter", "five good games no longer walk into the starting eleven");
+});
+
 test("life: a pre-Life save migrates with some savings put by", async () => {
   const { dbg, sandbox } = await loadGame();
   dbg.newCareerSim("England", "ENG", "Liverpool");

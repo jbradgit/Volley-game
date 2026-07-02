@@ -49,9 +49,12 @@ const SCREENS = [
   { name: 'leaguesel_free',  state: 'LEAGUESEL',   setup: "__dbg.forceUnlocksSim({freestart:true})" },
   { name: 'clubsel_locked',  state: 'CLUBSEL',     setup: "__dbg.resetUnlocksSim();__dbg.stageClubSelSim('ENG')" },
   { name: 'clubsel_eng2',    state: 'CLUBSEL',     setup: "__dbg.stageClubSelSim('ENG2')" },
-  // E8 "The Life": shop/gym/ad-break worst cases (skint vs loaded), plus a trainer monologue
-  { name: 'life_skint',      state: 'LIFE',        setup: "__dbg.newCareerSim('England','ENG2','Millwall');__dbg.setJourney({energy:47})" },
-  { name: 'life_loaded',     state: 'LIFE',        setup: "__dbg.newCareerSim('England','ENG2','Millwall');__dbg.setMonies(20000);__dbg.setJourney({rep:60,energy:35});__dbg.buyItemSim('trackie');__dbg.buyItemSim('saloon');__dbg.buyItemSim('mansion');__dbg.signSponsorSim();__dbg.hireTrainerSim('sven')" },
+  // E8 "£ SHOP": shop/gym/finances/ad-break worst cases (skint vs loaded), tooltip, trainer monologue
+  { name: 'shop_skint',      state: 'SHOP',        setup: "__dbg.newCareerSim('England','ENG2','Millwall');__dbg.setJourney({energy:47})" },
+  { name: 'shop_loaded',     state: 'SHOP',        setup: "__dbg.newCareerSim('England','ENG2','Millwall');__dbg.setMonies(20000);__dbg.setJourney({rep:60,energy:35});__dbg.buyItemSim('trackie');__dbg.buyItemSim('saloon');__dbg.buyItemSim('mansion');__dbg.signSponsorSim();__dbg.hireTrainerSim('sven')" },
+  // NB: the hover tooltip is an OVERLAY (it floats over content by design) — the linter would flag
+  // it as OVERLAP, so it isn't staged here; eyeball it via tools/journey_snaps.mjs instead.
+  { name: 'ledger',          state: 'LEDGER',      setup: "__dbg.newCareerSim('England','ENG2','Millwall');__dbg.setMonies(500);__dbg.buyItemSim('trackie');__dbg.hireTrainerSim('beef');__dbg.watchAdSim();__dbg.playNext(true)" },
   { name: 'trainersel',      state: 'TRAINERSEL',  setup: "__dbg.newCareerSim('England','ENG2','Millwall');__dbg.setMonies(700)" },
   { name: 'adbreak',         state: 'ADBREAK' },
   { name: 'agent_trainer',   state: 'AGENT',       setup: "__dbg.agentSim('trainer')" },
