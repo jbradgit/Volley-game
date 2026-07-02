@@ -43,9 +43,15 @@ const SCREENS = [
   { name: 'classicend',      state: 'CLASSICEND',  setup: "__dbg.classicStart(['ALICE','BOB','CARLA']);__dbg.classicPlay(42000);__dbg.classicPlay(31000);__dbg.classicPlay(55000)" },
   // career + other screens
   { name: 'career_home',     state: 'TABLE',       setup: "__dbg.newCareerSim('Brazil','ENG','Liverpool')" },
+  // E7 journey worst cases: cameo + tired panels on the home view; the locked journey map; locked giants in club select
+  { name: 'career_home_journey', state: 'TABLE',   setup: "__dbg.newCareerSim('England','ENG2','Millwall');__dbg.setJourney({trust:20,energy:50})" },
+  { name: 'leaguesel_locked', state: 'LEAGUESEL',  setup: "__dbg.resetUnlocksSim()" },
+  { name: 'leaguesel_free',  state: 'LEAGUESEL',   setup: "__dbg.forceUnlocksSim({freestart:true})" },
+  { name: 'clubsel_locked',  state: 'CLUBSEL',     setup: "__dbg.resetUnlocksSim();__dbg.stageClubSelSim('ENG')" },
+  { name: 'clubsel_eng2',    state: 'CLUBSEL',     setup: "__dbg.stageClubSelSim('ENG2')" },
   { name: 'name',            state: 'NAME' },
   { name: 'natsel',          state: 'NATSEL' },
-  { name: 'clubsel',         state: 'CLUBSEL',     setup: "__dbg.newCareerSim('Brazil','ENG','Liverpool')" },
+  { name: 'clubsel',         state: 'CLUBSEL',     setup: "__dbg.forceUnlocksSim({freestart:true});__dbg.newCareerSim('Brazil','ENG','Liverpool');__dbg.stageClubSelSim('ENG')" },
   { name: 'seasonend',       state: 'SEASONEND',   setup: "__dbg.fakeSeasonEnd(1)" },
   { name: 'inbox',           state: 'INBOX',       setup: "__dbg.fakeSeasonEnd(1)" },
   { name: 'trophy',          state: 'TROPHY',      setup: "__dbg.newCareerSim('Brazil','ENG','Liverpool')" },
@@ -53,7 +59,8 @@ const SCREENS = [
   { name: 'over',            state: 'OVER' },
   // Slick Vic agent screen — the long intro is the worst case for text wrap/overflow on the right column
   { name: 'agent_intro',     state: 'AGENT',       setup: "__dbg.agentSim('intro')" },
-  { name: 'agent_team',      state: 'AGENT',       setup: "__dbg.agentSim('team')" },
+  { name: 'agent_team',      state: 'AGENT',       setup: "__dbg.forceUnlocksSim({freestart:true});__dbg.agentSim('team')" },
+  { name: 'agent_journey',   state: 'AGENT',       setup: "__dbg.resetUnlocksSim();__dbg.agentSim('team')" },
   { name: 'agent_callup',    state: 'AGENT',       setup: "__dbg.agentSim('callup_no')" },
 ];
 

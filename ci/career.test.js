@@ -104,25 +104,26 @@ test("season 2 is a European year: 38L + 5C + 8E = 51 matches, no internationals
   assert.ok(info.trophies.includes("euro"), "European trophy won");
 });
 
-test("losing season 1: 0 pts, cup KO after one tie, group-stage international exit", async () => {
+test("losing season 1: 0 pts, cup KO after one tie, NO international call-up (E7: rep too low)", async () => {
   const { dbg } = await loadGame();
   dbg.newCareerSim("Brazil");
   const c = playSeason(dbg, false);
   assert.equal(c.L, 38, "all league games are still played (no KO)");
   assert.equal(c.C, 1,  "knocked out of the cup after the first tie");
   assert.equal(c.E, 0);
-  assert.equal(c.I, 3,  "World Tournament: 3 group games, then eliminated");
-  assert.equal(c.total, 42);
+  assert.equal(c.I, 0,  "a nobody with a losing season doesn't get a call-up");
+  assert.equal(c.total, 39);
 
   const info = dbg.careerInfo();
   assert.equal(info.pts, 0, "lose all 38 -> 0 pts");
   assert.equal(info.cup.out, true);
   assert.equal(info.cup.won, false);
-  assert.equal(info.caps, 3);
+  assert.equal(info.caps, 0);
   assert.ok(!info.trophies.includes("cup"));
   assert.ok(!info.trophies.includes("intl"));
   assert.ok(!info.trophies.includes("euro"));
   assert.ok(info.nextEuro == null, "no European qualification");
+  assert.ok(dbg.journeyInfo().rep < 25, "a season of defeats leaves you unknown");
 });
 
 test("titleClinched() is true on a mathematically-decided table", async () => {
@@ -153,4 +154,104 @@ test("three winning seasons: correct trophy haul, caps and season cadence", asyn
   assert.equal(tally(t, "euro"), 2,   "Europe in seasons 2 and 3");
   assert.equal(tally(t, "intl"), 2,   "World Tournament in odd seasons 1 and 3");
   assert.equal(info.caps, 12,         "6 caps in each of seasons 1 and 3");
+});
+
+// ================= E7 "The Journey": lower-league start, reputation, energy, squad role =================
+
+test("journey: a new career starts as an unknown 3-ball cameo in the second tier", async () => {
+  const { dbg } = await loadGame();
+  const r = dbg.newCareerSim("England", "ENG2", "Millwall");
+  assert.equal(r.leagueId, "ENG2");
+  assert.equal(r.teams, 20, "the Championship has 20 clubs");
+  assert.equal(r.cal, 43, "38 league matchdays + 5 cup rounds, no Europe");
+
+  const j = dbg.journeyInfo();
+  assert.equal(j.tier, 2);
+  assert.equal(j.rep, 5, "an unknown");
+  assert.equal(j.role, "cameo", "the coach doesn't trust a trialist yet");
+  assert.ok(j.objective && j.objective.pos >= 1, "the board sets a season objective");
+
+  const plan = dbg.matchPlanSim();
+  assert.equal(plan.balls, 3, "a cameo gets 3 balls");
+  assert.equal(plan.targetBalls, 3, "with the target scaled to match (a fair cameo)");
+});
+
+test("journey: wins earn the coach's trust — cameo -> super sub -> starter", async () => {
+  const { dbg } = await loadGame();
+  dbg.newCareerSim("England", "ENG2", "Millwall");
+  const roles = [];
+  for (let i = 0; i < 10; i++){ roles.push(dbg.journeyInfo().role); dbg.playNext(true); }
+  assert.equal(roles[0], "cameo");
+  assert.ok(roles.includes("sub"), "passes through the super-sub role: " + roles.join(","));
+  assert.equal(dbg.journeyInfo().role, "starter", "a winning run earns a starting spot");
+  assert.equal(dbg.matchPlanSim().balls, 10, "a starter gets the full 10 balls");
+});
+
+test("journey: tired legs mean fewer balls for the SAME target", async () => {
+  const { dbg } = await loadGame();
+  dbg.newCareerSim("England", "ENG2", "Millwall");
+  dbg.setJourney({ trust: 100, energy: 50 });
+  let plan = dbg.matchPlanSim();
+  assert.equal(plan.targetBalls, 10, "the target still assumes 10 balls");
+  assert.equal(plan.balls, 9, "TIRED (40-59) costs one ball");
+  dbg.setJourney({ energy: 30 });
+  plan = dbg.matchPlanSim();
+  assert.equal(plan.balls, 8, "EXHAUSTED (<40) costs two");
+  dbg.setJourney({ energy: 95 });
+  assert.equal(dbg.matchPlanSim().balls, 10, "fresh legs = full quota");
+});
+
+test("journey: winning the second tier brings top-flight offers but NO European spot", async () => {
+  const { dbg } = await loadGame();
+  dbg.newCareerSim("England", "ENG2", "Millwall");
+  playSeason(dbg, true);
+  const info = dbg.careerInfo();
+  assert.equal(info.pos, 1, "champions of the second tier");
+  assert.ok(info.nextEuro == null, "no Europe from the second tier");
+  const offers = dbg.offersSim();
+  assert.ok(offers.some(o => o.leagueId === "ENG"), "a Championship winner draws Premier League interest: " + JSON.stringify(offers));
+});
+
+test("journey: reputation gates the elite — and a top-flight title unlocks free start", async () => {
+  const { dbg } = await loadGame();
+  // a modest reputation only attracts modest clubs
+  dbg.fakeSeasonEnd(1, 20);
+  let offers = dbg.offersSim();
+  assert.ok(offers.length > 0, "a champion still gets offers");
+  assert.ok(offers.every(o => o.rating <= 5), "rep 20 only tempts modest clubs: " + JSON.stringify(offers));
+  assert.ok(!offers.some(o => o.leagueId !== "ENG"), "no foreign interest at rep 20");
+
+  // a superstar champion gets the giants and the continent
+  const { dbg: dbg2 } = await loadGame();
+  dbg2.fakeSeasonEnd(1, 90);
+  offers = dbg2.offersSim();
+  assert.ok(offers.some(o => o.rating >= 9), "giants court a superstar");
+  assert.ok(offers.some(o => o.leagueId !== "ENG"), "foreign leagues come calling: " + JSON.stringify(offers));
+  assert.equal(dbg2.journeyInfo().unlocks.freestart, true, "a top-flight title unlocks free start");
+});
+
+test("journey: accepting a foreign offer moves the career abroad with trust to re-earn", async () => {
+  const { dbg } = await loadGame();
+  dbg.fakeSeasonEnd(1, 90);
+  const r = dbg.nextSeasonSim("RealMadrid", "ESP");
+  assert.equal(r.leagueId, "ESP", "career moved to La Liga");
+  assert.equal(r.slug, "RealMadrid");
+  assert.ok(r.trust >= 15 && r.trust <= 75, "a new gaffer's trust must be re-earned (got " + r.trust + ")");
+  // and the new season plays through without error
+  const c = playSeason(dbg, true);
+  assert.ok(c.L >= 38, "a full La Liga season plays out");
+});
+
+test("journey: a pre-journey save migrates to an established starter (never a downgrade)", async () => {
+  const { dbg, sandbox } = await loadGame();
+  dbg.newCareerSim("England", "ENG", "Liverpool");
+  const save = JSON.parse(sandbox.localStorage.getItem("vc_career"));
+  delete save.rep; delete save.energy; delete save.trust; delete save.objective; delete save.verdict;
+  save.titles = 1; save.trophies = [{ t: "league", s: 1, club: "Liverpool" }];
+  sandbox.localStorage.setItem("vc_career", JSON.stringify(save));
+  const m = dbg.loadCareerSim();
+  assert.ok(m.rep >= 35, "an existing career is never an unknown (rep " + m.rep + ")");
+  assert.equal(m.trust, 70, "an existing career keeps its starting spot");
+  assert.equal(m.energy, 100);
+  assert.equal(dbg.journeyInfo().unlocks.freestart, true, "existing titles count toward free start");
 });

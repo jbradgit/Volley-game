@@ -1,6 +1,37 @@
 {
- "_note": "Elite foreign leagues (E3), full real-life sizes. ENG (default) in teams.json. Derive-field kit schema; halves get explicit kits. targetMod/drawMod scale the AI strength curve only.",
+ "_note": "Elite foreign leagues (E3), full real-life sizes. ENG (default) in teams.json. Derive-field kit schema; halves get explicit kits. targetMod/drawMod scale the AI strength curve only. ENG2 (E7 journey) is tier 2: the career starting league - ratings 1-5, no European qualification.",
  "leagues": [
+  {
+   "id": "ENG2",
+   "name": "The Championship",
+   "country": "England",
+   "tier": 2,
+   "targetMod": 0.9,
+   "drawMod": 1.0,
+   "flag": { "t": "cross", "c": ["#ffffff", "#d62718"] },
+   "teams": [
+    { "slug": "Leicester", "name": "Leicester", "rating": 5, "shirt": "blue", "shorts": "white", "socks": "blue" },
+    { "slug": "Southampton", "name": "Southampton", "rating": 5, "shirt": "red", "shorts": "black", "socks": "red", "pattern": "stripes", "stripe2": "white" },
+    { "slug": "Ipswich", "name": "Ipswich", "rating": 4, "shirt": "blue", "shorts": "white", "socks": "blue" },
+    { "slug": "Coventry", "name": "Coventry", "rating": 4, "shirt": "skyblue", "shorts": "skyblue", "socks": "skyblue" },
+    { "slug": "WestBrom", "name": "West Brom", "rating": 4, "shirt": "white", "shorts": "white", "socks": "white", "pattern": "stripes", "stripe2": "navy" },
+    { "slug": "Middlesbrough", "name": "Middlesbrough", "rating": 4, "shirt": "red", "shorts": "white", "socks": "red" },
+    { "slug": "Norwich", "name": "Norwich", "rating": 3, "shirt": "yellow", "shorts": "green", "socks": "yellow" },
+    { "slug": "Watford", "name": "Watford", "rating": 3, "shirt": "yellow", "shorts": "black", "socks": "yellow" },
+    { "slug": "SheffUtd", "name": "Sheff Utd", "rating": 3, "shirt": "red", "shorts": "black", "socks": "red", "pattern": "stripes", "stripe2": "white" },
+    { "slug": "Blackburn", "name": "Blackburn", "rating": 3, "shirt": "blue", "shorts": "white", "socks": "white", "sleeves": "white" },
+    { "slug": "Birmingham", "name": "Birmingham", "rating": 3, "shirt": "blue", "shorts": "blue", "socks": "blue" },
+    { "slug": "Stoke", "name": "Stoke", "rating": 2, "shirt": "red", "shorts": "white", "socks": "white", "pattern": "stripes", "stripe2": "white" },
+    { "slug": "Hull", "name": "Hull", "rating": 2, "shirt": "orange", "shorts": "black", "socks": "black" },
+    { "slug": "QPR", "name": "QPR", "rating": 2, "shirt": "white", "shorts": "white", "socks": "white", "pattern": "hoops", "stripe2": "blue" },
+    { "slug": "Swansea", "name": "Swansea", "rating": 2, "shirt": "white", "shorts": "white", "socks": "white" },
+    { "slug": "Cardiff", "name": "Cardiff", "rating": 2, "shirt": "blue", "shorts": "blue", "socks": "blue" },
+    { "slug": "Derby", "name": "Derby", "rating": 1, "shirt": "white", "shorts": "black", "socks": "white" },
+    { "slug": "Preston", "name": "Preston", "rating": 1, "shirt": "white", "shorts": "navy", "socks": "white" },
+    { "slug": "Millwall", "name": "Millwall", "rating": 1, "shirt": "darkblue", "shorts": "white", "socks": "darkblue" },
+    { "slug": "Portsmouth", "name": "Portsmouth", "rating": 1, "shirt": "blue", "shorts": "white", "socks": "red" }
+   ]
+  },
   {
    "id": "ESP",
    "name": "La Liga",

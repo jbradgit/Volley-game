@@ -5,7 +5,7 @@ foreign leagues, cups, European nights, international tournaments, and a light
 management layer — without ever diluting the core: **every fixture is still the
 10-ball volley game.***
 
-**Status:** E0 (calendar) + E1 (domestic cup) + E4 (Europe) + E5 (internationals) **shipped**. Owner decisions applied: cup/Europe/international matches are **5 balls with halved targets**; knockout ties are win-or-go-home (no draw band); the **World Tournament runs every 2 years, starting season 1**; the career home shows a **tailored view per competition** (league table / cup ladder / group table / flag-themed tournament hub). Remaining phases: E2 is partially in (nationality select shipped with E5), E3 (foreign leagues) and E6 (management economy) open. Builds on the engine as-is
+**Status:** E0 (calendar) + E1 (domestic cup) + E4 (Europe) + E5 (internationals) + E3 (foreign leagues) + **E7 (the Journey — see §10)** **shipped**. Owner decisions applied: cup/Europe/international matches are **5 balls with halved targets**; knockout ties are win-or-go-home (no draw band); the **World Tournament runs every 2 years, starting season 1** (E7: once your reputation earns a call-up); the career home shows a **tailored view per competition** (league table / cup ladder / group table / flag-themed tournament hub). Remaining phases: E2 is partially in (nationality select shipped with E5), E6 (management economy) open. Builds on the engine as-is
 (`index.html`): `CAR` save object, `TEAMS`/`teams.json`, `simRound`/`teamStrength`
 league sim, transfer-offer inbox, seeded matches, the HORSE turn engine.
 
@@ -182,3 +182,55 @@ mechanic is immediately reusable by E5.
 4. Should signings ever affect *your* matches (e.g. better serves) or stay
    sim-only? (Recommend sim-only: protects the sacred physics.)
 5. Fictional names: approve the working league names in §1 or supply your own.
+
+## 10. E7 — "The Journey" (SHIPPED 2026-07-02)
+
+Owner brief: *"career mode should feel like a journey"* — NSS-style progression instead of
+starting at the best club in the world. Five systems, all between-match state on `CAR`;
+the sacred volley physics are untouched (the systems only decide **how many balls** you
+get and **which clubs write to you**).
+
+1. **Humble beginnings — the second tier.** New league `ENG2` ("The Championship",
+   `tier:2` in `leagues.json`): 20 clubs rated 1–5, no European qualification. New careers
+   start there; the five elite leagues appear on league select as **LOCKED** rows (the
+   "journey map"). Reaching a league in any career unlocks *starting* there
+   (`vc_unlocks.leagues`); winning any **top-flight title** unlocks **FREE START** (any
+   club, any league — the old behaviour, now a reward). Career club-select only offers
+   modest clubs (rating ≤ 4) in tier-1 leagues until free start is earned.
+2. **Reputation 0–100** (`CAR.rep`, starts 5). Earned per result weighted by opponent
+   rating (cup/Euro/intl nights ×1.3, second-tier ×0.7), plus trophies (+6 cup, +10 league,
+   +12 Europe, +15 world) and the board verdict; positive gains taper (`×(1−rep/130)`) so
+   LEGEND takes seasons. Gates: **transfer offers** (`repNeed()` — giants need ~68),
+   **cross-league offers** (tier-1, rep ≥ 45, top-8 finish → the E3 headline move),
+   **international call-ups** (rep ≥ 25 — a losing nobody stays home). Shown as stars +
+   tier (UNKNOWN → PROSPECT → RISING STAR → BIG NAME → SUPERSTAR → LEGEND) on the
+   career-home REPUTATION panel.
+3. **Energy 0–100** (`CAR.energy`). Matches cost legs; a league week's rest more than
+   recovers it, midweek cup/Euro slots barely do — so **congested runs** (the treble
+   chase) are what tire you: `<60` costs one ball, `<40` two, **with the target
+   unchanged** (owner's rule: *"less balls to hit your target"*). Fresh every new season;
+   floor of 70 going into a World Tournament. CONDITION panel + countdown strap
+   ("TIRED LEGS: 9 BALLS, FULL TARGET").
+4. **Coach trust / squad role** (`CAR.trust`). New signings start low (25 + rep/2):
+   `<30` = **3-ball CAMEO**, `<60` = **6-ball SUPER SUB** — both with the target scaled to
+   the balls (the `matchTargetBalls` split in `setTargets`), so it's a fair cameo.
+   Appearances/wins build trust ("took his chance" bonus for subs hitting the win
+   target); a losing streak as a starter erodes it. Role shown in the NEXT MATCH bar,
+   the countdown strap, and news lines on promotion/benching.
+5. **Board expectations** (`CAR.objective`, set every season from the club's rating rank):
+   WIN THE LEAGUE / TOP 4 / TOP 7 / TOP HALF / BEAT THE DROP. Season review shows the
+   verdict (DELIGHTED/SATISFIED/DISAPPOINTED/FURIOUS) with the rep swing; the career-home
+   POSITION cell is coloured against the goal.
+
+Offer ladder (`genOffers`): same-league clubs above you (rep-gated) + tier-2 → ENG step-up
+offers when you shine + foreign giants for big names + an ENG2 **lifeline** after a
+bottom-three top-flight season. Offers carry `leagueId`; accepting one calls
+`nextSeason(slug, leagueId)`.
+
+Saves: pre-journey careers migrate in `loadCareer()` as **established starters** (rep ≥ 35
+from titles/trophies/caps, trust 70, energy 100 — never a downgrade); existing titles
+count toward free start. `vc_unlocks` lives OUTSIDE `vc_career` so it survives new careers.
+
+Deferred E7 ideas (owner's "unlockables" theme, cosmetic-only): unlockable ball skins /
+boot colours / celebrations tied to milestones; a PROFILE/milestones panel; sacking +
+forced transfer-listing after a FURIOUS season.

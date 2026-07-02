@@ -10,7 +10,23 @@ device or a fresh session. Last updated: 2026-06-30.
 The 3D-sprite pipeline (old §3) is **long DONE and deployed**. **Live site:**
 https://jbradgit.github.io/Volley-game/ (GitHub Pages serves `main`).
 
-**Git state right now (2026-07-02):**
+**Git state right now (2026-07-02, second session):**
+- **IN FLIGHT: branch `claude/career-journey` (this working tree) — E7 "The Journey" career
+  overhaul, UNDEPLOYED, awaiting the owner's eyeball** (visual + gameplay change → owner review
+  before landing on `main`). Full CI green (36/36 + smoke), layout audit clean (24 screens).
+  What it is (owner brief: "career mode should feel like a journey", NSS-style):
+  new **second tier `ENG2`** ("The Championship", 20 clubs, tier 2, no Europe) where every new
+  career now STARTS; elite leagues/big clubs **LOCKED** on the select screens until earned
+  (`vc_unlocks` in localStorage: reach a league to unlock starting there; win a top-flight title
+  → FREE START anywhere); **reputation 0-100** (stars + tier on the career home) gating transfer
+  offers, foreign-giant offers and international call-ups; **energy** (congested cup/Euro runs =
+  fewer balls, SAME target); **coach trust / squad role** (new signings = 3-ball CAMEO → 6-ball
+  SUPER SUB → starter, targets scaled fairly via the new `matchTargetBalls` split in
+  `setTargets`); **board expectations** with a season-review verdict + rep swing. Old saves
+  migrate as established starters (never a downgrade). Design details: `docs/CAREER_DESIGN.md`
+  §10. New/changed tests: `ci/career.test.js` (+7 journey tests, losing-season test now expects
+  NO call-up at low rep), `ci/leagues.test.js` (+ENG2). Audit gained journey screens
+  (`leaguesel_locked/free`, `clubsel_locked/eng2`, `career_home_journey`, `agent_journey`).
 - The 2026-06-30 session (logo, Slick Vic, HUD venue chips, fixes) **IS DEPLOYED** — owner played it
   via `play.bat` and approved; landed on `main` (`6bdd36b`) along with the workspace audit
   (`PROJECT_HEALTH_AUDIT.md`) and the port-5578 config fixes. Its branch is deleted.
@@ -22,8 +38,6 @@ https://jbradgit.github.io/Volley-game/ (GitHub Pages serves `main`).
   provenance table (**`docs/AUDIO_SHORTLIST.md` §1b** — which sound goes where and does what).
   Everything deleted is still recoverable from Git history until the ROADMAP C.3 `git filter-repo`
   history rewrite — which is now THE remaining IP step (plus club names, fonts, the 6 SFX).
-- **NOTHING is in flight.** `main` = the only branch = deployed = this working tree. A fresh clone +
-  this file is a complete pickup ("keep going" = start priority 1 below on a new `claude/<topic>` branch).
 
 **What the 2026-06-30 session shipped (this branch, UNDEPLOYED):**
 - **Homescreen logo redesigned** — bold chunky italic 3D-extruded "Lardiland"-style wordmark

@@ -204,7 +204,7 @@
     .then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
     .then(j=>{
       const eng=j.teams.slice().sort((a,b)=>a.name.localeCompare(b.name));   // club-select listed A–Z
-      LEAGUES.ENG=eng; LEAGUE_META.ENG={id:"ENG",name:"Premier League",country:"England",targetMod:1.0,drawMod:1.0,flag:{t:"cross",c:["#ffffff","#d62718"]}};
+      LEAGUES.ENG=eng; LEAGUE_META.ENG={id:"ENG",name:"Premier League",country:"England",tier:1,targetMod:1.0,drawMod:1.0,flag:{t:"cross",c:["#ffffff","#d62718"]}};
       TEAMS=eng; PAL=j.palette; for (const t of eng) TEAMBY[t.slug]=t; rosterStatus="ok"; })
     .catch(e=>{ rosterStatus="error"; try{ console.error("teams.json failed to load:", e); }catch(_){} });
   // Keeper sprite-atlas manifest (per-frame rects + offsets, all 371-frame anims packed).
@@ -248,15 +248,31 @@
     .then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
     .then(j=>{ for (const lg of (j.leagues||[])){
         LEAGUES[lg.id]=lg.teams.slice().sort((a,b)=>a.name.localeCompare(b.name));
-        LEAGUE_META[lg.id]={id:lg.id, name:lg.name, country:lg.country, targetMod:lg.targetMod||1, drawMod:lg.drawMod||1, flag:lg.flag};
+        LEAGUE_META[lg.id]={id:lg.id, name:lg.name, country:lg.country, tier:lg.tier||1, targetMod:lg.targetMod||1, drawMod:lg.drawMod||1, flag:lg.flag};
         for (const t of lg.teams) if(!TEAMBY[t.slug]) TEAMBY[t.slug]=t; }
       leaguesStatus="ok";
       if (CAR && CAR.leagueId) setActiveLeague(CAR.leagueId); })   // re-apply if a foreign career was already loaded
     .catch(e=>{ leaguesStatus="error"; try{ console.error("leagues.json failed to load:", e); }catch(_){} });
   function setActiveLeague(id){ if (LEAGUES[id]) TEAMS = LEAGUES[id]; else if (LEAGUES.ENG) TEAMS = LEAGUES.ENG;
     LG_DIFF = (LEAGUE_META[id] && LEAGUE_META[id].targetMod) || 1.0; }   // scales the league-sim AI strength only (sacred physics untouched)
-  function leagueList(){ return ["ENG","ESP","ITA","GER","FRA"].filter(id=>LEAGUE_META[id]); }
+  function leagueList(){ return ["ENG2","ENG","ESP","ITA","GER","FRA"].filter(id=>LEAGUE_META[id]); }   // journey order: the second tier (where careers start) first
   function activeLeagueMeta(){ return LEAGUE_META[(CAR&&CAR.leagueId)||"ENG"] || LEAGUE_META.ENG || {name:"League",targetMod:1,drawMod:1}; }
+  function leagueTier(id){ return (LEAGUE_META[id] && LEAGUE_META[id].tier) || 1; }
+  function activeLeagueTier(){ return leagueTier((CAR&&CAR.leagueId)||"ENG"); }
+  // ---- E7 journey unlocks (global, OUTSIDE the career save): which leagues a NEW career may start
+  // in, and whether "free start" (any club, any league) has been earned. Reaching a league in any
+  // career unlocks starting there; winning a TOP-FLIGHT title unlocks free start for good.
+  function loadUnlocks(){ try{ const u=JSON.parse(localStorage.getItem("vc_unlocks"));
+    return (u && typeof u==="object") ? { leagues:u.leagues||{}, freestart:!!u.freestart } : { leagues:{}, freestart:false };
+  }catch(e){ return { leagues:{}, freestart:false }; } }
+  let UNLOCKS = loadUnlocks();
+  function saveUnlocks(){ localStorage.setItem("vc_unlocks", JSON.stringify(UNLOCKS)); }
+  function unlockLeague(id){ if (id && !UNLOCKS.leagues[id]){ UNLOCKS.leagues[id]=true; saveUnlocks(); } }
+  function unlockFreeStart(){ if (!UNLOCKS.freestart){ UNLOCKS.freestart=true; saveUnlocks(); } }
+  function leagueStartAllowed(id){
+    if (id==="ENG" && !LEAGUE_META.ENG2) return true;   // leagues.json failed: never brick career start (constraint #5)
+    return UNLOCKS.freestart || leagueTier(id)===2 || !!UNLOCKS.leagues[id]; }
+  function clubStartAllowed(t, id){ return UNLOCKS.freestart || leagueTier(id)===2 || (t.rating||5)<=4; }   // modest clubs only, until free start is earned
   // Reigning champion shown on the league-select screen. That screen is new-career-only (no save
   // exists yet), so the champion of a fresh universe = the strongest club: position 1 where the
   // league supplies positions (ENG), else top rating, stable tie-break by name.
@@ -362,6 +378,14 @@
         c.trn = null; c.trnDone = false;
       }
       if (c && !c.leagueId) c.leagueId = "ENG";                            // migrate pre-foreign-league saves
+      if (c && c.rep==null){                                               // migrate pre-journey saves:
+        // an existing career is an established player — trusted starter, fresh legs, and a
+        // reputation earned from what the save already shows (never a downgrade).
+        c.rep = clamp(35 + (c.titles||0)*10 + ((c.trophies||[]).length)*4 + (c.caps||0)*0.5, 35, 90);
+        c.energy = 100; c.trust = 70; c.objective = null; c.verdict = null;
+        unlockLeague(c.leagueId);
+        if ((c.titles||0)>0) unlockFreeStart();                            // they had already won a top-flight title
+      }
       return c;
     } catch(e){ return null; }
   }
@@ -423,13 +447,94 @@
     while (CAR.calIdx < CAR.cal.length && evDead(CAR.cal[CAR.calIdx])) CAR.calIdx++;
     return CAR.calIdx < CAR.cal.length ? CAR.cal[CAR.calIdx] : null;
   }
+  // ---- E7 "The Journey": reputation, energy and squad role (between-match state only —
+  // the volley itself is untouched; these systems just decide HOW MANY balls you get and
+  // which clubs come calling). All values live on CAR and are display-rounded elsewhere.
+  const REP_TIERS=[[88,"LEGEND"],[70,"SUPERSTAR"],[50,"BIG NAME"],[30,"RISING STAR"],[15,"PROSPECT"],[0,"UNKNOWN"]];
+  const REP_CALLUP = 25;                       // minimum reputation for an international call-up
+  function repTier(r){ for (const [min,n] of REP_TIERS) if ((r||0)>=min) return n; return "UNKNOWN"; }
+  function repStars(r){ return clamp(Math.round((r||0)/20), 0, 5); }
+  function repStarStr(r){ const n=repStars(r); return "★".repeat(n)+"☆".repeat(5-n); }
+  function roleFor(trust){ return trust>=60 ? "starter" : (trust>=30 ? "sub" : "cameo"); }
+  const ROLE_LABEL={ starter:"STARTER", sub:"SUPER SUB", cameo:"CAMEO" };
+  function roleBalls(role, base){              // base = 10 (league) or 5 (cup/Europe/intl)
+    if (role==="starter") return base;
+    if (role==="sub") return base===10 ? 6 : 4;
+    return 3;
+  }
+  function energyBallCut(e){ return e>=60 ? 0 : (e>=40 ? 1 : 2); }   // tired legs = fewer balls, SAME target
+  function energyLabel(e){ return e>=80 ? "FRESH" : (e>=60 ? "GOOD" : (e>=40 ? "TIRED" : "EXHAUSTED")); }
+  // The plan for a career match: the ROLE scales the target with the balls (a fair cameo);
+  // TIREDNESS removes balls without touching the target (the owner's fatigue rule).
+  function matchPlan(base){
+    if (!CAR || CAR.rep==null) return { role:"starter", balls:base, targetBalls:base };
+    const role=roleFor(CAR.trust==null?100:CAR.trust);
+    const tb=roleBalls(role, base);
+    const balls=Math.max(2, tb - energyBallCut(CAR.energy==null?100:CAR.energy));
+    return { role, balls, targetBalls:tb };
+  }
+  // Board expectation for the season: judged against the club's standing in this league.
+  function makeObjective(){
+    const my=TEAMBY[CAR.slug], N=TEAMS.length;
+    const exp=TEAMS.slice().sort((a,b)=>(b.rating-a.rating)||a.name.localeCompare(b.name)).findIndex(t=>t.slug===CAR.slug)+1;
+    if (exp<=2) return { pos:1, label:"WIN THE LEAGUE" };
+    if (exp<=4) return { pos:4, label:"FINISH TOP 4" };
+    if (exp<=7) return { pos:7, label:"FINISH TOP 7" };
+    if (exp<=Math.ceil(N*0.65)) return { pos:Math.ceil(N/2), label:"TOP-HALF FINISH" };
+    return { pos:N-3, label:"BEAT THE DROP" };
+  }
+  function bumpRep(n, why){
+    if (!CAR || CAR.rep==null) return;
+    const before=repTier(CAR.rep);
+    if (n>0) n*=Math.max(0.15, 1-CAR.rep/130);   // diminishing returns: legend status takes SEASONS, not one hot streak
+    CAR.rep=clamp(CAR.rep+n, 0, 100);
+    const after=repTier(CAR.rep);
+    if (after!==before && n>0) CAR.news.unshift(CAR.name+" is a "+after.toLowerCase()+" now"+(why?" - "+why:"")+"!");
+  }
+  // Per-match journey update, called from commitMatch (every competition) BEFORE the result is
+  // committed. `sim` = the match was auto-resolved (endSeasonEarly): reputation only, no legs/trust.
+  function applyJourney(res, ev, sim, oppRating){
+    if (!CAR || CAR.rep==null) return;
+    const oppR=oppRating||(OPPONENT&&OPPONENT.rating)||5, tier=activeLeagueTier();
+    let dRep = res==="W" ? 0.5+oppR*0.12 : (res==="D" ? 0.1 : -0.35);
+    if (ev.t!=='L' && res==="W") dRep*=1.3;               // cup/European/international nights carry extra weight
+    if (tier===2 && ev.t!=='I') dRep*=0.7;                // second-tier football moves the needle less
+    bumpRep(dRep);
+    if (sim) return;
+    // energy: a match costs legs; a league week (with its full week's rest) restores more
+    // than a midweek cup/Euro/intl slot — so congested runs are what tire you out.
+    const rec = ev.t==='L' ? 16+0.18*(100-CAR.energy) : (ev.t==='I' ? 8 : 3+0.10*(100-CAR.energy));
+    const cost = 6 + 1.6*matchBalls + (rnd(5)-2);
+    CAR.energy = clamp(Math.round(CAR.energy + rec - cost), 5, 100);
+    // coach trust: appearances build it, wins build it faster, a benched player who hits the
+    // win target "takes his chance"; a losing run as a starter costs it.
+    if (ev.t!=='I'){
+      const role=roleFor(CAR.trust), before=role;
+      let dT = 3;
+      if (res==="W") dT += (role==="starter" ? 2 : 5);
+      else if (res==="L") dT = (role==="starter" ? -2 : 1);
+      if (role!=="starter" && M.score>=M.winTarget) dT += 3;
+      if (role==="starter" && (CAR.form||[]).slice(0,2).join("")==="LL" && res==="L") dT -= 6;   // 3 straight losses
+      CAR.trust = clamp(CAR.trust + dT, 5, 100);
+      const after=roleFor(CAR.trust);
+      if (after!==before){
+        CAR.news.unshift(after==="starter" ? CAR.name+" wins a starting spot!"
+                        : (before==="cameo" ? "Gaffer's notebook: more minutes for "+CAR.name
+                                            : "Benched! "+CAR.name+" dropped to the subs"));
+      }
+    }
+  }
   function newCareer(name, slug, nation, leagueId){
     setActiveLeague(leagueId||"ENG");
     CAR = { name:name||"You", slug, season:1, idx:0, leagueId:leagueId||"ENG", fixtures:makeFixtures(slug),
             table:freshTable(), news:[], titles:0, form:[], titleOdds:null,
             nation:nation||"England", caps:0, intlGoals:0, trophies:[],
             cup:initCup(), euro:null, nextEuro:null, cal:buildCalendar(false, leagueMatchdays()), calIdx:0,
-            trn:null, trnDone:false };
+            trn:null, trnDone:false,
+            rep:5, energy:100, trust:27, verdict:null };   // the journey: an unknown kid fighting for minutes
+    CAR.objective = makeObjective();
+    unlockLeague(CAR.leagueId);
+    CAR.news.unshift("Board expectation: "+CAR.objective.label);
     CAR.news.unshift(name+" signs for "+TEAMBY[slug].name+"!");
     saveCareer();
   }
@@ -522,10 +627,12 @@
         CAR.form=(CAR.form||[]); CAR.form.unshift(res); CAR.form=CAR.form.slice(0,5);
         simRound([CAR.slug, fx.opp]); CAR.idx++;
         CAR.lastResults = genGameweekResults(res, fx);
+        applyJourney(res, ev, true, (TEAMBY[fx.opp]||{}).rating);   // sim: reputation only
       } else {
         eventSetup(ev);                                       // sets OPPONENT for the quick resolve
         const pw=clamp(0.55+(TEAMBY[CAR.slug].rating-OPPONENT.rating)*0.05, 0.15, 0.90);
         const res = Math.random()<pw ? 'W' : 'L';
+        applyJourney(res, ev, true);
         if (ev.t==='C') commitCup(res); else commitEuro(res, ev);
       }
       CAR.calIdx++;
@@ -619,26 +726,72 @@
       OFFER_CLOSE[rnd(OFFER_CLOSE.length)]+"\n\n"+
       "Yours in football,\n"+sign[0]+", "+sign[1]+"\n"+t.name;
   }
+  // A club only writes to a player whose name is big enough (E7: reputation gates the ladder).
+  function repNeed(rating, tier){
+    if (tier===2) return 0;
+    return rating>=9 ? 68 : rating>=8 ? 55 : rating>=7 ? 42 : rating>=6 ? 30 : rating>=5 ? 18 : 8;
+  }
+  function leaguePos(t, leagueId){   // "finishing position" for a club in an unsimulated league: rating rank
+    const teams=LEAGUES[leagueId]||[];
+    return teams.slice().sort((a,b)=>(b.rating-a.rating)||a.name.localeCompare(b.name)).findIndex(x=>x.slug===t.slug)+1;
+  }
+  function mkOffer(t, fp, leagueId){
+    const sign=OFFER_SIGN[rnd(OFFER_SIGN.length)];
+    const foreign = leagueId && leagueId!==CAR.leagueId;
+    let body=offerBody(t,fp,sign);
+    if (foreign && LEAGUE_META[leagueId])
+      body=body.replace("\n\nYours in football,", "\n\nP.S. Yes, this one means "+LEAGUE_META[leagueId].name+" football. Your volleys translate to any language.\n\nYours in football,");
+    return { slug:t.slug, name:t.name, rating:TEAMBY[t.slug].rating, pos:fp, leagueId:leagueId||CAR.leagueId,
+             subject:offerSubject(fp), body, read:false,
+             sign:sign[0]+" · "+sign[1],
+             from:sign[0].toLowerCase().split(" ").join(".")+"@"+t.slug.toLowerCase()+".smail.co.uk" };
+  }
   function genOffers(){
-    const pos=myPosition();
+    const pos=myPosition(), rep=CAR.rep==null?100:CAR.rep, tier=activeLeagueTier(), N=TEAMS.length;
     const nMax = pos===1?4 : pos<=4?3 : pos<=10?2 : pos<=14?1 : 0;
-    if (nMax<=0) return [];
-    const std=standings();
-    // clubs that finished ABOVE you, closest first (the realistic next step up)…
-    const above=std.filter(t=>t.slug!==CAR.slug && clubFinishPos(t.slug)<pos);
-    let cands=above.slice(-nMax).reverse();
-    // …and if you're at/near the top, the rest of the elite court you too
-    if (cands.length<nMax){ const below=std.filter(t=>t.slug!==CAR.slug && clubFinishPos(t.slug)>pos);
-      cands=cands.concat(below.slice(0, nMax-cands.length)); }
-    return cands.map(t=>{ const fp=clubFinishPos(t.slug), sign=OFFER_SIGN[rnd(OFFER_SIGN.length)];
-      return { slug:t.slug, name:t.name, rating:TEAMBY[t.slug].rating, pos:fp,
-               subject:offerSubject(fp), body:offerBody(t,fp,sign), read:false,
-               sign:sign[0]+" · "+sign[1],
-               from:sign[0].toLowerCase().split(" ").join(".")+"@"+t.slug.toLowerCase()+".smail.co.uk" }; });
+    const std=standings(), offers=[];
+    // 1. the same-league ladder: clubs that finished above you, closest first — if your name is big enough
+    if (nMax>0){
+      const ok=t=> t.slug!==CAR.slug && rep>=repNeed(TEAMBY[t.slug].rating, tier);
+      const above=std.filter(t=>ok(t) && clubFinishPos(t.slug)<pos);
+      let cands=above.slice(-nMax).reverse();
+      if (cands.length<nMax){ const below=std.filter(t=>ok(t) && clubFinishPos(t.slug)>pos);
+        cands=cands.concat(below.slice(0, nMax-cands.length)); }
+      for (const t of cands) offers.push(mkOffer(t, clubFinishPos(t.slug)));
+    }
+    // 2. the step UP a tier: shine in the second tier and top-flight scouts come calling
+    if (tier===2 && (pos<=6 || (CAR.cup&&CAR.cup.won) || rep>=30)){
+      const pool=(LEAGUES.ENG||[]).filter(t=>rep>=repNeed(t.rating,1)).sort((a,b)=>b.rating-a.rating).slice(0,2);
+      for (const t of pool) offers.push(mkOffer(t, leaguePos(t,"ENG"), "ENG"));
+    }
+    // 3. abroad: a big name near the top of a top flight draws foreign giants (the E3 headline move)
+    if (tier===1 && rep>=45 && pos<=8){
+      const others=leagueList().filter(id=>id!==CAR.leagueId && leagueTier(id)===1);
+      const pool=[];
+      for (const id of others) for (const t of (LEAGUES[id]||[])) if (rep>=repNeed(t.rating,1)+5) pool.push({t,id});
+      shuffle(pool).sort((a,b)=>b.t.rating-a.t.rating);   // the biggest names within reach (shuffle = random tie-break)
+      for (const {t,id} of pool.slice(0,2)) offers.push(mkOffer(t, leaguePos(t,id), id));
+    }
+    // 4. the lifeline: a bottom-three top-flight season still leaves a road back through the second tier
+    if (tier===1 && pos>=N-2 && LEAGUES.ENG2){
+      const pool=shuffle(LEAGUES.ENG2.slice()).slice(0,2);
+      for (const t of pool) offers.push(mkOffer(t, leaguePos(t,"ENG2"), "ENG2"));
+    }
+    return offers;
   }
   function enterSeasonEnd(){
     const pos=myPosition();
-    CAR.nextEuro = pos<=4 ? 'CT' : (pos<=7 ? 'CC' : null);   // European qualification for NEXT season
+    CAR.nextEuro = activeLeagueTier()===2 ? null : (pos<=4 ? 'CT' : (pos<=7 ? 'CC' : null));   // no Europe from the second tier
+    if (CAR.rep!=null && !CAR.verdict){                      // E7: the board's verdict on the season (once)
+      const obj=CAR.objective;
+      if (pos===1){ bumpRep(10, "champions"); if (activeLeagueTier()===1 && !UNLOCKS.freestart){ unlockFreeStart(); CAR.news.unshift("UNLOCKED: free start - new careers can begin anywhere!"); } }
+      if (obj){
+        const met=pos<=obj.pos, big=met ? (pos===1 || obj.pos-pos>=3) : (pos-obj.pos>=5 || pos>=TEAMS.length-2);
+        CAR.verdict={ met, label: met ? (big?"DELIGHTED":"SATISFIED") : (big?"FURIOUS":"DISAPPOINTED"),
+                      dRep: met ? (big?7:4) : (big?-6:-3), pos, need:obj.label };
+        bumpRep(CAR.verdict.dRep);
+      }
+    }
     if (!CAR.offers) CAR.offers=genOffers();
     inboxSel=0; openedOffer=0; state=ST.SEASONEND;
   }
@@ -667,6 +820,8 @@
   let tableScrollY=0, tableSwipeAnchorY=null, tableSwipeAnchorScroll=0;
   const TBL_ROWH=20, TBL_CLIPH=284;   // touch career-table: row height + visible scroll height (shared by drawTable + scroll/swipe handlers so they never drift)
   let matchBalls=10;        // total balls for current match (used by ball counter)
+  let matchTargetBalls=10;  // balls the TARGET is scaled for (E7: tired legs get fewer balls than the target assumes)
+  let matchNote="";         // countdown strap line for a reduced-ball career match ("SUPER SUB: 6 BALLS")
   let matchKO=false;        // knockout tie: no draw band (cup / euro KO / intl KO)
   let matchLoading=false;   // true while a requested match waits for its sprite bases to download (shows LOADING…)
   let firstShotShown=false; // true after first kick, hides drag-prompt on subsequent shots
@@ -683,7 +838,9 @@
   const HAIR_COLOURS = [[40,40,42],[150,95,45],[225,195,120],[196,96,0],[120,30,30],[185,185,185]]; // black, brown, blonde, ginger, auburn, grey
 
   function setTargets() {
-    const k = matchBalls/10;          // 5-ball matches (cup / Europe / internationals) halve the targets
+    // The target scales with the balls the ROLE grants (5-ball cups halve it; a 3-ball cameo gets
+    // 3/10). Tiredness (E7) reduces matchBalls BELOW matchTargetBalls — fewer balls, same target.
+    const k = matchTargetBalls/10;
     M.winTarget = Math.round((2000 + OPPONENT.rating*1500 + rnd(10)*200)*k);
     if (!OPPONENT.home) M.winTarget += Math.round(2000*k);
     M.drawTarget = Math.floor(M.winTarget*5/10);
@@ -692,7 +849,8 @@
 
   function startMatch(opts) {
     opts = opts || {};
-    matchBalls=opts.balls||10; matchKO=!!opts.ko; M.score=0; M.attempts=matchBalls; M.goals=0; manX=MAN_START_X; mouseTargetX=null; firstShotShown=false;
+    matchBalls=opts.balls||10; matchTargetBalls=opts.targetBalls||matchBalls; matchNote=opts.note||"";
+    matchKO=!!opts.ko; M.score=0; M.attempts=matchBalls; M.goals=0; manX=MAN_START_X; mouseTargetX=null; firstShotShown=false;
     { const a=[0,1,2,3]; for(let i=3;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]];} defVariants=a.slice(0,3); }   // 3 distinct defender poses from the 4-pose sheet (no two alike), randomised per match
     if (opts.seed!=null){                 // seeded: a reproducible serve sequence (daily / HORSE round)
       const pr=mulberry32(opts.seed>>>0);
@@ -739,12 +897,17 @@
     else { const o=euroNextOpp(ev); oppSlug=o.slug; home=o.home; balls=5; ko=o.ko; }
     const ot=TEAMBY[oppSlug]||{name:oppSlug, rating:5};
     OPPONENT={ slug:oppSlug, name:ot.name, rating:ot.rating, home:home };
-    return { balls, ko, strikerSlug:CAR.slug, oppSlug };
+    // E7: the coach decides your minutes (role) and your legs decide the rest (energy)
+    const plan=matchPlan(balls);
+    let note="";
+    if (plan.targetBalls<balls) note=(plan.role==="cameo"?"CAMEO OFF THE BENCH: ":"SUPER SUB: ")+plan.balls+" BALLS";
+    else if (plan.balls<plan.targetBalls) note="TIRED LEGS: "+plan.balls+" BALLS, FULL TARGET";
+    return { balls:plan.balls, targetBalls:plan.targetBalls, note, ko, role:plan.role, strikerSlug:CAR.slug, oppSlug };
   }
   function startFixture() {
     const ev=peekEvent(); if (!ev){ seasonOver(); return; }
     const o=eventSetup(ev);
-    loadKits(o.strikerSlug, o.oppSlug, ()=>startMatch({balls:o.balls, ko:o.ko}));
+    loadKits(o.strikerSlug, o.oppSlug, ()=>startMatch({balls:o.balls, targetBalls:o.targetBalls, note:o.note, ko:o.ko}));
   }
   function matchResult(){ return M.score>=M.winTarget ? "W" : (M.score>=M.drawTarget ? "D" : "L"); }
   // Match finished (10 balls used): show the VICTORY/DRAW/LOSS burst, then commit.
@@ -784,6 +947,7 @@
   function commitMatch() {
     if (!CAR){ state=ST.OVER; return; }
     const res=matchResult(), ev=pendingEv||{t:'L'};
+    applyJourney(res, ev);                                 // E7: reputation / energy / coach trust
     if (ev.t==='I'){ commitIntl(res); return; }            // tournament drives its own flow
     if (ev.t==='L') commitLeague(res);
     else if (ev.t==='C') commitCup(res);
@@ -812,7 +976,7 @@
     if (res==='W'){
       CAR.news.unshift(c.round===4 ? CAR.name+" lifts the Cup! Glory for "+MYCLUB.name+"!"
                                    : MYCLUB.name+" past "+oname+" in the Cup");
-      if (c.round===4){ c.won=true; (CAR.trophies=CAR.trophies||[]).push({t:"cup", s:CAR.season, club:CAR.slug}); }
+      if (c.round===4){ c.won=true; (CAR.trophies=CAR.trophies||[]).push({t:"cup", s:CAR.season, club:CAR.slug}); bumpRep(6, "a cup winner"); }
       c.round++; c.opp=null;
     } else { c.out=true; CAR.news.unshift("Cupset! "+oname+" dump "+MYCLUB.name+" out"); }
     CAR.news=CAR.news.slice(0,8);
@@ -852,6 +1016,7 @@
     } else {
       if (res==='W'){ e.stage='won';
         (CAR.trophies=CAR.trophies||[]).push({t:"euro", s:CAR.season, club:CAR.slug});
+        bumpRep(12, "a European champion");
         CAR.news.unshift("KINGS OF EUROPE! "+MYCLUB.name+" win the "+comp+"!"); }
       else { e.stage='out'; CAR.news.unshift("Final defeat for "+MYCLUB.name+" in the "+comp); }
     }
@@ -859,10 +1024,12 @@
   }
   // ---- season finished -> world tournament every other year (incl. season 1), then the summer ----
   function seasonOver(){
-    if (CAR.season % 2 === 1 && CAR.nation && WORLD && !CAR.trnDone){ startTournament(); return; }
+    if (CAR.season % 2 === 1 && CAR.nation && WORLD && !CAR.trnDone
+        && (CAR.rep==null || CAR.rep>=REP_CALLUP)){ startTournament(); return; }   // E7: a call-up is EARNED
     enterSeasonEnd();
   }
   function startTournament(){
+    if (CAR.rep!=null) CAR.energy=Math.max(CAR.energy, 70);   // a week off before the squad meets up
     if (!CAR.trn){
       const others=shuffle(WORLD.nations.filter(n=>n.slug!==CAR.nation)).slice(0,3).map(n=>n.slug);
       const gt={}; gt[CAR.nation]={p:0,w:0,d:0,l:0,pts:0};
@@ -891,7 +1058,9 @@
   }
   function startTrnMatch(){
     const o=trnSetup();
-    loadKits(o.strikerSlug, OPPONENT.slug, ()=>startMatch({balls:5, ko:o.ko}));
+    // For your country you always start — but a long club season leaves its mark on the legs (E7)
+    const cut=(CAR&&CAR.rep!=null) ? energyBallCut(CAR.energy) : 0, balls=Math.max(2, 5-cut);
+    loadKits(o.strikerSlug, OPPONENT.slug, ()=>startMatch({balls, targetBalls:5, note:cut>0?("TIRED LEGS: "+balls+" BALLS, FULL TARGET"):"", ko:o.ko}));
   }
   function commitIntl(res){
     const T=CAR.trn;
@@ -911,7 +1080,8 @@
     else if (T.stage==='SF') T.stage = res==='W' ? 'F'  : 'out';
     else if (T.stage==='F'){
       if (res==='W'){ T.stage='won';
-        (CAR.trophies=CAR.trophies||[]).push({t:"intl", s:CAR.season, club:CAR.nation}); }
+        (CAR.trophies=CAR.trophies||[]).push({t:"intl", s:CAR.season, club:CAR.nation});
+        bumpRep(15, "a world champion"); }
       else T.stage='out';
     }
     saveCareer();
@@ -1929,12 +2099,16 @@
     // (mode shown on the right of the header bar)
     const rows=10, cw=CLUB_CW, ch=30, x0=CLUB_X0, y0=62;     // 2 columns x 10 rows, spread across the view (shared with clubHit)
     menuSel = clamp(menuSel,0,TEAMS.length-1);
+    let anyLocked=false;
     TEAMS.forEach((t,i)=>{
       if (ttSub(t.name, i)===null) return;                         // print clubs in order
       const col=Math.floor(i/rows), row=i%rows, cx=x0+col*cw, cy=y0+row*ch, sel=i===menuSel, mid=cy+ch/2;
+      const locked = pendingMode==="career" && !clubStartAllowed(t, pendingLeague);   // E7: big clubs are earned
+      if (locked) anyLocked=true;
       if (sel){ ctx.strokeStyle="rgba(255,255,255,0.75)"; ctx.lineWidth=1.5; ctx.strokeRect(cx+0.75, mid-(ch-4.5)/2, cw-7.5, ch-4.5); }
       // kit swatch: striped -> vertical bars; contrasting sleeves -> side bars; accent -> half-and-half; else solid
       const sw=20, sx=cx+7, sy=mid-sw/2;
+      if (locked) ctx.globalAlpha=0.35;
       ctx.fillStyle=PAL[t.shirt]||"#888"; ctx.fillRect(sx,sy,sw,sw);
       if (t.pattern==="stripes" && t.stripe2){
         ctx.fillStyle=PAL[t.stripe2]||"#888";
@@ -1948,10 +2122,16 @@
         ctx.fillRect(sx+sw/2, sy, sw/2, sw);
       }
       ctx.strokeStyle="rgba(0,0,0,0.6)"; ctx.lineWidth=1; ctx.strokeRect(sx,sy,sw,sw);
-      ctx.font=ttFont(14); ctx.fillStyle = sel ? TTX.yellow : TTX.white;
+      ctx.font=ttFont(14); ctx.fillStyle = locked ? TTX.dim : (sel ? TTX.yellow : TTX.white);
       centredText(t.name, sx+sw+8, mid, "left");
+      ctx.globalAlpha=1;
+      if (locked){ ctx.font=ttFont(10); ctx.fillStyle=TTX.red; ctx.textAlign="right";
+        centredText("LOCKED", cx+cw-14, mid, "right"); ctx.textAlign="left"; }
     });
     ctx.textAlign="center"; ctx.font=ttFont(13); ctx.fillStyle=TTX.grey;
+    if (anyLocked){ ctx.font=ttFont(12); ctx.fillStyle=TTX.dim;
+      ctx.fillText("GREYED CLUBS ARE LOCKED: EARN A TRANSFER THERE, OR WIN A TOP-FLIGHT TITLE TO START ANYWHERE", VW/2, SH-32);
+      ctx.font=ttFont(13); ctx.fillStyle=TTX.grey; }
     ctx.fillText(TOUCH?"TAP A CLUB TO START":"← ↑ ↓ →  CHOOSE    SPACE  CONFIRM    ESC  BACK", VW/2, SH-14);
     ctx.textAlign="left";
   }
@@ -2029,8 +2209,10 @@
       ctx.fillStyle="rgba(255,255,255,0.12)";
       ctx.fillRect(VW*0.375,hY-10,1,(vY-hY)+22); ctx.fillRect(VW*0.625,hY-10,1,(vY-hY)+22);
       ctx.textBaseline="middle"; ctx.textAlign="center";
+      const obj=CAR.objective;   // E7: the board's target frames your position
+      const goalShort = obj ? (obj.pos===1 ? "WIN IT" : (obj.pos>=TEAMS.length-3 ? "STAY UP" : "TOP "+obj.pos)) : null;
       ctx.font=ttFont(13); ctx.fillStyle=TTX.grey;
-      ctx.fillText("FORM", c1, hY); ctx.fillText("POSITION", c2, hY);
+      ctx.fillText("FORM", c1, hY); ctx.fillText(goalShort ? "POSITION · GOAL: "+goalShort : "POSITION", c2, hY);
       ctx.fillText(titleClinched()?"STATUS":"TITLE ODDS", c3, hY);
       // value row — roomy W/D/L chips with truly centred letters
       const chipW=24, chipH=22, gap=6;
@@ -2042,7 +2224,9 @@
           ctx.font=ttFont(15); ctx.fillStyle="#ffffff"; ctx.fillText(rf, fcx+chipW/2, vY+1);
           fcx += chipW+gap;
         } }
-      ctx.font=ttFont(18); ctx.fillStyle=TTX.cyan; ctx.fillText(ord(mypos).toUpperCase(), c2, vY);
+      ctx.font=ttFont(18);
+      ctx.fillStyle = obj ? (mypos<=obj.pos ? TTX.green : (mypos>=obj.pos+5 ? "#ff8888" : TTX.cyan)) : TTX.cyan;
+      ctx.fillText(ord(mypos).toUpperCase(), c2, vY);
       if (titleClinched()){ ctx.font=ttFont(17); ctx.fillStyle=TTX.neon; ctx.fillText("★ CHAMPIONS", c3, vY); }
       else { ctx.font=ttFont(18); ctx.fillStyle=TTX.yellow; ctx.fillText(CAR.titleOdds+"%", c3, vY); }
       ctx.textBaseline="alphabetic"; ctx.textAlign="left";
@@ -2057,6 +2241,27 @@
       let fsz=22; ctx.textAlign="center"; ctx.font=ttFont(fsz);
       while (ctx.measureText(fixtureStr).width > nbW-28 && fsz>12){ fsz--; ctx.font=ttFont(fsz); }
       ctx.fillStyle=TTX.white; ctx.fillText(fixtureStr, VW/2, nbY+40);
+      // ---- E7 journey: your role in the NEXT MATCH bar + REPUTATION / CONDITION side panels ----
+      if (CAR.rep!=null){
+        const plan=matchPlan(10);
+        const reduced=plan.balls<10;
+        pxText(ROLE_LABEL[plan.role]+" · "+plan.balls+" BALLS", nbX+nbW-8, nbY+9, 11, reduced?"#ff9f1c":"#cfd6dd", 'r', 'm');
+        const pnl=(px,title)=>{ ctx.fillStyle="#0a1224"; ctx.fillRect(px,nbY,142,nbH);
+          ctx.strokeStyle=TTX.blue; ctx.lineWidth=2; ctx.strokeRect(px+1,nbY+1,140,nbH-2);
+          ttBar(title, px, nbY, 142, 16, TTX.blue, TTX.white, {center:true, size:11}); };
+        // reputation: stars + tier
+        pnl(10, "REPUTATION");
+        pxText(repStarStr(CAR.rep), 10+71, nbY+27, 14, "#ffd700", 'c', 'm');
+        pxText(repTier(CAR.rep), 10+71, nbY+41, 10, TTX.grey, 'c', 'm');
+        // condition: energy bar + status
+        const ex=VW-152; pnl(ex, "CONDITION");
+        const e=CAR.energy, bw=110, bx2=ex+16, by2=nbY+23;
+        ctx.fillStyle="rgba(255,255,255,0.12)"; ctx.fillRect(bx2,by2,bw,7);
+        ctx.fillStyle = e>=60?"#1f9d49":(e>=40?"#ff9f1c":"#c43a3a");
+        ctx.fillRect(bx2,by2,Math.round(bw*e/100),7);
+        const cut=energyBallCut(e);
+        pxText(energyLabel(e)+(cut>0?" · -"+cut+" BALL"+(cut>1?"S":""):""), ex+71, nbY+41, 10, cut>0?"#ff9f1c":TTX.grey, 'c', 'm');
+      }
 
       // call-to-action / clinch button — touch taps, desktop uses keyboard
       clinchBtn=null;
@@ -2140,9 +2345,17 @@
       ctx.fillStyle=TTX.yellow; ctx.fillText(""+r.pts, c2, vY);
       ctx.fillStyle="#ffd700";  ctx.fillText(""+((CAR.titles||0)+(pos===1?1:0)), c3, vY);
       ctx.textBaseline="alphabetic";
+      // E7: the board's verdict on the season (rep swing already applied at enterSeasonEnd)
+      let pbShift=0;
+      if (CAR.verdict){
+        const v=CAR.verdict;
+        ctx.font=ttFont(14); ctx.fillStyle = v.met ? TTX.green : "#ff8888"; ctx.textAlign="center";
+        ctx.fillText("BOARD "+v.label+"  ·  ASKED: "+v.need+"  ·  REPUTATION "+(v.dRep>0?"+":"")+v.dRep+"  ("+repTier(CAR.rep)+" "+repStarStr(CAR.rep)+")", VW/2, vY+34);
+        pbShift=22;
+      }
       // Smail panel: the summer's post
       const n=(CAR.offers||[]).length;
-      const pbW=560, pbX=VW/2-pbW/2, pbY=vY+30, pbH=54;
+      const pbW=560, pbX=VW/2-pbW/2, pbY=vY+30+pbShift, pbH=54;
       ctx.fillStyle="#0a1224"; ctx.fillRect(pbX,pbY,pbW,pbH);
       ctx.strokeStyle=TTX.blue; ctx.lineWidth=2; ctx.strokeRect(pbX+1,pbY+1,pbW-2,pbH-2);
       const mw=drawSmailMark(pbX+18, pbY+pbH/2, 24);
@@ -2297,7 +2510,7 @@
       else { ctx.fillStyle=TTX.dim; ctx.fillText("-", VW/2+286, y+23); }
     }
     ctx.textAlign="center"; ctx.font=ttFont(12); ctx.fillStyle=TTX.grey;
-    ctx.fillText("5 BALLS · WIN OR GO HOME", VW/2, y0+5*rowH+8);
+    ctx.fillText(matchPlan(5).balls+" BALLS · WIN OR GO HOME", VW/2, y0+5*rowH+8);
     const me=TEAMBY[CAR.slug].name, op=(TEAMBY[c.opp]||{name:c.opp}).name;
     compFooter(c.home? me+"  v  "+op : op+"  v  "+me, "CUP · "+CUP_ROUNDS[c.round], "#b8860b");
   }
@@ -2310,7 +2523,7 @@
       pxText("GROUP STAGE  ·  MATCH "+(e.gIdx+1)+" OF 6", VW/2, ht+24, 14, "#cfd6dd", 'c','m');
       drawGroupRows(CAR.slug, e.group, e.gt, VW/2-280, ht+58, 560);
       ctx.textAlign="center"; ctx.font=ttFont(12); ctx.fillStyle=TTX.grey;
-      ctx.fillText("TOP TWO QUALIFY · 5 BALLS PER MATCH", VW/2, ht+232);
+      ctx.fillText("TOP TWO QUALIFY · "+matchPlan(5).balls+" BALLS PER MATCH", VW/2, ht+232);
     } else {
       pxText(e.stage==='SF' ? "SEMI - FINAL" : "THE FINAL", VW/2, ht+90, 26, "#ffd700", 'c','m');
       ctx.textAlign="center"; ctx.font=ttFont(16); ctx.fillStyle=TTX.white;
@@ -2400,16 +2613,26 @@
     menuSel = clamp(menuSel, 0, ids.length-1);
     ids.forEach((id,i)=>{
       const m=LEAGUE_META[id], cx=CLUB_X0, cy=LGSEL_Y0+i*LGSEL_CH, sel=i===menuSel, mid=cy+(LGSEL_CH-8)/2;
+      const locked=!leagueStartAllowed(id);   // E7 journey: elite leagues are earned, not given
       if (sel){ ctx.fillStyle="rgba(255,255,255,0.10)"; ctx.fillRect(cx,cy,LGSEL_CW,LGSEL_CH-8);
         ctx.strokeStyle="rgba(255,255,255,0.8)"; ctx.lineWidth=1.5; ctx.strokeRect(cx+0.75,cy+0.75,LGSEL_CW-1.5,LGSEL_CH-9.5); }
+      if (locked) ctx.globalAlpha=0.45;
       drawFlag(cx+12, mid-18, 54, 36, m.flag);
-      ctx.font=ttFont(22); ctx.textAlign="left"; ctx.textBaseline="middle"; ctx.fillStyle = sel ? TTX.yellow : TTX.white;
+      ctx.font=ttFont(22); ctx.textAlign="left"; ctx.textBaseline="middle";
+      ctx.fillStyle = locked ? TTX.dim : (sel ? TTX.yellow : TTX.white);
       ctx.fillText(m.name, cx+82, mid-8);
+      ctx.globalAlpha=1;
       ctx.font=ttFont(13);
-      const champ=leagueChampion(id);
-      ctx.fillStyle=TTX.grey; ctx.fillText("Reigning champions:", cx+82, mid+13);
-      const lblW=ctx.measureText("Reigning champions:  ").width;
-      ctx.fillStyle=TTX.yellow; ctx.fillText(champ?champ.name:"-", cx+82+lblW, mid+13);
+      if (locked){
+        ctx.fillStyle=TTX.red; ctx.fillText("LOCKED. Reach this league in a career to unlock it.", cx+82, mid+13);
+      } else if ((m.tier||1)===2){
+        ctx.fillStyle=TTX.green; ctx.fillText("Start here. Every legend starts somewhere.", cx+82, mid+13);
+      } else {
+        const champ=leagueChampion(id);
+        ctx.fillStyle=TTX.grey; ctx.fillText("Reigning champions:", cx+82, mid+13);
+        const lblW=ctx.measureText("Reigning champions:  ").width;
+        ctx.fillStyle=TTX.yellow; ctx.fillText(champ?champ.name:"-", cx+82+lblW, mid+13);
+      }
       ctx.textBaseline="alphabetic";
     });
     ctx.textAlign="center"; ctx.font=ttFont(13); ctx.fillStyle=TTX.grey;
@@ -2470,7 +2693,9 @@
         ctx.fillStyle = o.read?TTX.grey:TTX.yellow;
         ctx.fillText(o.subject, 250, y+19);
         ctx.font=ttFont(10); ctx.fillStyle=TTX.dim;
-        ctx.fillText((o.from||("theboard@"+o.slug.toLowerCase()+".smail.co.uk"))+"   ·   "+o.name+" finished "+ord(o.pos), 44, y+35);
+        const whence = (o.leagueId && o.leagueId!==CAR.leagueId && LEAGUE_META[o.leagueId])
+          ? o.name+" · "+LEAGUE_META[o.leagueId].name : o.name+" finished "+ord(o.pos);
+        ctx.fillText((o.from||("theboard@"+o.slug.toLowerCase()+".smail.co.uk"))+"   ·   "+whence, 44, y+35);
       } else {
         ctx.font=ttFont(14,"bold "); ctx.fillStyle=TTX.neon;
         ctx.fillText("» NO THANKS, STAY AT "+(TEAMBY[CAR.slug]?TEAMBY[CAR.slug].name.toUpperCase():"YOUR CLUB")+" & START NEXT SEASON", 24, y+27);
@@ -2512,22 +2737,34 @@
   function openEmail(i){ const offers=CAR.offers||[]; if(i<0||i>=offers.length) return; openedOffer=i; offers[i].read=true; state=ST.EMAIL; }
   function emailAction(k){
     const o=(CAR.offers||[])[openedOffer];
-    if (k==="accept" && o){ nextSeason(o.slug); }
+    if (k==="accept" && o){ nextSeason(o.slug, o.leagueId); }
     else if (k==="decline" || k==="back"){ state=ST.INBOX; }
   }
-  function nextSeason(newSlug){
+  function nextSeason(newSlug, newLeagueId){
     if (myPosition()===1){                              // count last season's title before reset
       CAR.titles++;
       (CAR.trophies=CAR.trophies||[]).push({t:"league", s:CAR.season, club:CAR.slug});
     }
     CAR.season++; CAR.idx=0;
-    if (newSlug && newSlug!==CAR.slug){ CAR.slug=newSlug; CAR.news.unshift(CAR.name+" joins "+TEAMBY[newSlug].name+"!"); }
+    const moved = newSlug && newSlug!==CAR.slug;
+    if (newLeagueId && newLeagueId!==CAR.leagueId){     // E7: a cross-league transfer — the headline move
+      CAR.leagueId=newLeagueId; setActiveLeague(newLeagueId); unlockLeague(newLeagueId);
+      CAR.nextEuro=null;                                // European spots don't travel with you
+    }
+    if (moved){ CAR.slug=newSlug; CAR.news.unshift(CAR.name+" joins "+TEAMBY[newSlug].name+"!"); }
+    if (CAR.rep!=null){                                 // E7: fresh legs; a new gaffer's trust must be earned
+      CAR.energy=100;
+      CAR.trust = moved ? clamp(25+Math.round(CAR.rep/2), 15, 75) : clamp((CAR.trust==null?70:CAR.trust)+10, 5, 100);
+    }
     CAR.fixtures = makeFixtures(CAR.slug); CAR.table = freshTable(); CAR.titleOdds=null;
-    CAR.offers=null; CAR.lastResults=null;
+    CAR.offers=null; CAR.lastResults=null; CAR.verdict=null;
     CAR.cup = initCup();
+    if (activeLeagueTier()===2) CAR.nextEuro=null;      // no European nights in the second tier
     CAR.euro = initEuro(CAR.nextEuro, CAR.slug); CAR.nextEuro=null;
     CAR.cal = buildCalendar(!!CAR.euro, leagueMatchdays()); CAR.calIdx=0;
     CAR.trn=null; CAR.trnDone=false;
+    CAR.objective = makeObjective();
+    CAR.news.unshift("Board expectation: "+CAR.objective.label);
     saveCareer(); state=ST.TABLE;
   }
 
@@ -2542,6 +2779,7 @@
   const VIC_LINES = {
     intro:  "AWRIGHT, SUNSHINE! SLICK VIC'S THE NAME, BEST AGENT IN THE GAME, AND THAT'S NO WORD OF A LIE. NOW THEN, REMIND ME. WHAT COUNTRY ARE YOU FROM? STICK WITH OL' VIC AND YOU'LL BE PULLING ON THAT NATIONAL SHIRT ONE DAY. THAT'S THE SLICK VIC GUARANTEE.",
     team:   "A TALENT LIKE YOU CAN PLAY ANYWHERE, MY SON. I'VE ALREADY HAD A QUIET WORD IN ALL THE RIGHT EARHOLES, SO LET'S GET YOU SIGNED UP. PICK YOUR LEAGUE AND WE'LL TAKE IT FROM THERE.",
+    journey:"NOW, STRAIGHT TALK, SUNSHINE. NOBODY'S HEARD OF YOU. YET. SO IT'S THE CHAMPIONSHIP FOR NOW, AND A SPOT ON THE BENCH AT THAT. BANG IN THE GOALS, MAKE A NAME, AND THE BIG BOYS WILL COME KNOCKING. THAT'S HOW EVERY LEGEND STARTS, TRUST ME. NOW, 'AVE A LOOK AT THE LADDER.",
     callup: "PACK YER BAGS, SUNSHINE, YOU'RE IN THE NATIONAL SQUAD! I TOLD 'EM YOU WERE THE REAL DEAL AND THEY SNAPPED ME HAND OFF. DON'T LET YER OL' PAL VIC DOWN NOW, EH?",
     nocall: "NO CALL-UP THIS TIME, MY SON. THEIR LOSS, NOT OURS. KEEP BANGING 'EM IN AND THEY'LL COME CRAWLIN' BACK. NOW THEN, LET'S 'AVE A BUTCHER'S AT THESE TRANSFER OFFERS, SHALL WE?"
   };
@@ -2561,15 +2799,22 @@
       ()=>{ if (WORLD && WORLD.nations){ state=ST.NATSEL; } else { pendingNation="England"; state=ST.LEAGUESEL; } stateEnterAt=performance.now(); menuSel=0; });
   }
   function agentTeamPick(){ // B — appears after nationality, BEFORE league select (owner) → League select
-    showAgent(VIC_LINES.team, ()=>{ state=ST.LEAGUESEL; stateEnterAt=performance.now(); menuSel=0; });
+    // E7 journey: until free start is earned, Vic levels with you — you're starting at the bottom
+    showAgent(UNLOCKS.freestart ? VIC_LINES.team : VIC_LINES.journey,
+      ()=>{ state=ST.LEAGUESEL; stateEnterAt=performance.now(); menuSel=0; });
   }
   function hasNationalCallUp(){
     // International call-up = your nation contests the World Tournament NEXT season. Mirrors
     // seasonOver()'s odd-season tournament rule (`CAR.season % 2 === 1`), evaluated a season ahead.
-    return !!(CAR && CAR.nation && WORLD && WORLD.nations && ((CAR.season+1) % 2 === 1));
+    return !!(CAR && CAR.nation && WORLD && WORLD.nations && ((CAR.season+1) % 2 === 1)
+              && (CAR.rep==null || CAR.rep>=REP_CALLUP));   // E7: no call-up until your name is known
   }
   function agentCallUp(){   // C — end-of-season call-up check → Transfer Offers (inbox)
-    showAgent(hasNationalCallUp() ? VIC_LINES.callup : VIC_LINES.nocall, openTransferOffers);
+    let line = hasNationalCallUp() ? VIC_LINES.callup : VIC_LINES.nocall;
+    const curCountry=(LEAGUE_META[CAR.leagueId]||{}).country;
+    if ((CAR.offers||[]).some(o=>o.leagueId && LEAGUE_META[o.leagueId] && LEAGUE_META[o.leagueId].country!==curCountry))
+      line += " OH, AND 'OLD ON TO YOUR 'AT, SUNSHINE. THERE'S FOREIGN POST IN THAT MAILBAG OF YOURS.";
+    showAgent(line, openTransferOffers);
   }
   function openTransferOffers(){   // the existing SEASONEND → transfer-inbox transition
     if ((CAR.offers||[]).length>0){ inboxSel=0; state=ST.INBOX; } else nextSeason(null);
@@ -3147,6 +3392,9 @@
         }
         if (leftFooted){ ctx.fillStyle="rgba(0,0,0,0.85)"; ctx.font=ttFont(14); ctx.fillText("LEFT-FOOTED!", SW/2+2, 101);
                          ctx.fillStyle=TTX.cyan; ctx.fillText("LEFT-FOOTED!", SW/2, 100); }
+        if (matchNote){  // E7: reduced-ball career match (sub cameo / tired legs)
+          ctx.fillStyle="rgba(0,0,0,0.85)"; ctx.font=ttFont(14); ctx.fillText(matchNote, SW/2+2, 83);
+          ctx.fillStyle="#ff9f1c"; ctx.fillText(matchNote, SW/2, 82); }
         const n=Math.max(1,Math.ceil(countdownT));
         ctx.font=ttFont(86);                                       // large VT323 countdown digit (not chunky 8-bit)
         ctx.fillStyle="rgba(0,0,0,0.75)"; ctx.fillText(n, SW/2+4, 238);
@@ -3311,9 +3559,13 @@
     else if (state===ST.NATSEL){ if(WORLD && WORLD.nations){
       pendingNation=WORLD.nations[menuSel].slug; agentTeamPick(); } }   // State B (Vic) appears here → then league select
     else if (state===ST.LEAGUESEL){ const ids=leagueList(); if(ids.length){
-      pendingLeague=ids[clamp(menuSel,0,ids.length-1)]; setActiveLeague(pendingLeague); state=ST.CLUBSEL; stateEnterAt=performance.now(); menuSel=0; } }
+      const id=ids[clamp(menuSel,0,ids.length-1)];
+      if (!leagueStartAllowed(id)) return;   // E7: locked league — earn a transfer there first
+      pendingLeague=id; setActiveLeague(pendingLeague); state=ST.CLUBSEL; stateEnterAt=performance.now(); menuSel=0; } }
     else if (state===ST.CLUBSEL){ if(TEAMS.length){
-      const slug=TEAMS[menuSel].slug; GMODE="career"; newCareer(nameBuf.trim()||"You", slug, pendingNation, pendingLeague); state=ST.TABLE;
+      const t=TEAMS[menuSel];
+      if (pendingMode==="career" && !clubStartAllowed(t, pendingLeague)) return;   // E7: locked club — too big for an unknown
+      GMODE="career"; newCareer(nameBuf.trim()||"You", t.slug, pendingNation, pendingLeague); state=ST.TABLE;
     } }
     else if (state===ST.TRNHUB){
       const T=CAR&&CAR.trn; if(!T) { state=ST.MENU; }
@@ -3582,21 +3834,26 @@
         return { anim:keeperPose.anim, frame:keeperPose.frame };
       },
       // dev: jump straight to a finished season (transfer inbox) with a random final table
-      fakeSeasonEnd: function(myPos){
+      fakeSeasonEnd: function(myPos, rep){
         GMODE="career";
         CAR={ name:"KOPP", slug:TEAMS[0].slug, season:1, idx:38, fixtures:makeFixtures(TEAMS[0].slug),
-              table:freshTable(), news:["{c} crowned!"], titles:0, form:["W","W","D","L","W"], titleOdds:50, offers:null, lastResults:null };
+              table:freshTable(), news:["{c} crowned!"], titles:0, form:["W","W","D","L","W"], titleOdds:50, offers:null, lastResults:null,
+              leagueId:(Object.keys(LEAGUES).find(id=>LEAGUES[id]===TEAMS))||"ENG",   // whichever league is active
+              rep:(rep==null?75:rep), energy:80, trust:70, verdict:null };
         for (const t of TEAMS){ const r=CAR.table[t.slug]; r.p=38; r.w=5+rnd(22); r.d=rnd(38-r.w); r.l=38-r.w-r.d; r.pts=r.w*3+r.d; r.gd=r.w*2-r.l*2+rnd(10)-5; }
         if (myPos===1){ const r=CAR.table[CAR.slug]; r.w=34; r.d=3; r.l=1; r.pts=105; r.gd=80; }   // force a title
+        CAR.objective=makeObjective();
         enterSeasonEnd(); return {state, offers:(CAR.offers||[]).map(o=>o.name), pos:myPosition()};
       },
       // dev: mid-season table where the title is already mathematically won
       clinchTitle: function(){
         GMODE="career";
         CAR={ name:"KOPP", slug:TEAMS[0].slug, season:1, idx:34, fixtures:makeFixtures(TEAMS[0].slug),
-              table:freshTable(), news:["Champions elect"], titles:0, form:["W","W","W","W","W"], titleOdds:100, offers:null, lastResults:[] };
+              table:freshTable(), news:["Champions elect"], titles:0, form:["W","W","W","W","W"], titleOdds:100, offers:null, lastResults:[],
+              leagueId:"ENG", rep:62, energy:74, trust:85, verdict:null };
         for (const t of TEAMS){ const r=CAR.table[t.slug]; r.p=34; r.w=2+rnd(15); r.d=rnd(10); r.l=34-r.w-r.d; r.pts=r.w*3+r.d; r.gd=r.w-r.l; }
         const me=CAR.table[CAR.slug]; me.p=34; me.w=33; me.d=1; me.l=0; me.pts=100; me.gd=90;
+        CAR.objective=makeObjective();
         CAR.lastResults=genGameweekResults("W",{home:true,opp:TEAMS[1].slug});
         state=ST.TABLE; return {state, clinched:titleClinched()};
       },
@@ -3606,15 +3863,31 @@
         if (state===ST.TRNHUB){
           const T=CAR.trn;
           if (T.stage==='out'||T.stage==='won'){ CAR.trnDone=true; enterSeasonEnd(); return {trn:T.stage, exited:true, state}; }
-          const o=trnSetup(); matchBalls=5; matchKO=o.ko; setTargets();
+          const o=trnSetup(); matchBalls=5; matchTargetBalls=5; matchKO=o.ko; setTargets();
           M.score = win?M.winTarget:0; M.goals=win?2:0; commitMatch();
           return {trn:CAR.trn.stage, state};
         }
         const ev=peekEvent(); if (!ev){ seasonOver(); return {done:true, state}; }
-        const o=eventSetup(ev); matchBalls=o.balls; matchKO=o.ko; setTargets();
+        const o=eventSetup(ev); matchBalls=o.balls; matchTargetBalls=o.targetBalls||o.balls; matchKO=o.ko; setTargets();
         M.score = win?M.winTarget:0; M.goals=win?2:0; commitMatch();
         return {ev:ev.t, state};
       },
+      // ---- E7 journey harness ----
+      journeyInfo: function(){ return CAR ? { rep:CAR.rep, energy:CAR.energy, trust:CAR.trust,
+        role:roleFor(CAR.trust==null?100:CAR.trust), tier:activeLeagueTier(), leagueId:CAR.leagueId,
+        objective:CAR.objective, verdict:CAR.verdict,
+        unlocks:{ leagues:Object.keys(UNLOCKS.leagues), freestart:UNLOCKS.freestart } }
+        : { unlocks:{ leagues:Object.keys(UNLOCKS.leagues), freestart:UNLOCKS.freestart } }; },
+      setJourney: function(o){ o=o||{}; if(o.rep!=null)CAR.rep=o.rep; if(o.energy!=null)CAR.energy=o.energy;
+        if(o.trust!=null)CAR.trust=o.trust; return {rep:CAR.rep, energy:CAR.energy, trust:CAR.trust}; },
+      matchPlanSim: function(){ const ev=peekEvent(); if(!ev) return null;
+        const o=eventSetup(ev); return { ev:ev.t, balls:o.balls, targetBalls:o.targetBalls, role:o.role, note:o.note }; },
+      offersSim: function(){ return (CAR.offers||[]).map(o=>({slug:o.slug, rating:o.rating, leagueId:o.leagueId})); },
+      loadCareerSim: function(){ CAR=loadCareer(); if(CAR) setActiveLeague(CAR.leagueId);
+        return CAR && { rep:CAR.rep, energy:CAR.energy, trust:CAR.trust, leagueId:CAR.leagueId, season:CAR.season }; },
+      resetUnlocksSim: function(){ UNLOCKS={leagues:{}, freestart:false}; saveUnlocks(); return true; },   // audit: stage the locked journey map
+      forceUnlocksSim: function(o){ o=o||{}; if(o.freestart) UNLOCKS.freestart=true; for (const id of (o.leagues||[])) UNLOCKS.leagues[id]=true; saveUnlocks(); return true; },
+      stageClubSelSim: function(league){ pendingMode="career"; pendingLeague=league||"ENG"; setActiveLeague(pendingLeague); menuSel=0; return TEAMS.length; },
       newCareerSim: function(nation, league, slug){ GMODE="career"; setActiveLeague(league||"ENG"); newCareer("TEST", slug||(TEAMS[0]&&TEAMS[0].slug)||"Liverpool", nation||"Brazil", league||"ENG"); return {cal:CAR.cal.length, leagueId:CAR.leagueId, teams:TEAMS.length, slug:CAR.slug, state}; },
       leaguesSim: function(){ return leagueList().map(id=>({id, name:LEAGUE_META[id].name, teams:(LEAGUES[id]||[]).length})); },
       renderStateSim: function(s){ const prev=state; state=ST[s]||s; try{ render(); } finally { state=prev; } return true; },
@@ -3645,7 +3918,7 @@
       careerInfo: function(){ return { season:CAR.season, trophies:(CAR.trophies||[]).map(t=>t.t), caps:CAR.caps||0,
         nextEuro:CAR.nextEuro, cup:CAR.cup&&{round:CAR.cup.round,out:CAR.cup.out,won:CAR.cup.won},
         euro:CAR.euro&&CAR.euro.stage, pos:myPosition(), pts:CAR.table[CAR.slug].pts }; },
-      nextSeasonSim: function(){ nextSeason(null); return { season:CAR.season, euro:!!CAR.euro, cal:CAR.cal.length, state }; },
+      nextSeasonSim: function(slug, league){ nextSeason(slug||null, league||null); return { season:CAR.season, euro:!!CAR.euro, cal:CAR.cal.length, leagueId:CAR.leagueId, slug:CAR.slug, trust:CAR.trust, state }; },
       setMan: function(x){ manX = x; },
       pause: togglePause,
       step: function(n){ for(var i=0;i<(n||1);i++) swfFrame(); return {state,xball:Math.round(xball),yball:Math.round(yball),z:Math.round(z),booted,kicked,manFinished,dbx:Math.round(dbx),dive,no_dive,divedirn,hk:hitkeeper}; },

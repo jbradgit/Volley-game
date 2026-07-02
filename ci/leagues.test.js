@@ -27,6 +27,21 @@ test("all foreign leagues have full real-life sizes", async () => {
   assert.equal(sizes.ESP, 20, "La Liga"); assert.equal(sizes.ITA, 20, "Serie A");
   assert.equal(sizes.GER, 18, "Bundesliga"); assert.equal(sizes.FRA, 20, "Ligue 1");
   assert.equal(sizes.ENG, 20, "Premier League");
+  assert.equal(sizes.ENG2, 20, "the Championship (E7 journey starting league)");
+});
+
+test("the second tier (ENG2) exists, its slugs don't clash, and a season autoplays clean", async () => {
+  const { dbg, errors } = await loadGame();
+  const r = dbg.newCareerSim("England", "ENG2", "Portsmouth");
+  assert.equal(r.leagueId, "ENG2");
+  assert.equal(r.slug, "Portsmouth");
+  let guard = 200, res;
+  while (guard-- > 0) {
+    res = dbg.playNext(true);
+    dbg.tick();
+    if (res.done || res.exited || res.state === "seasonend") break;
+  }
+  assert.equal(errors.length, 0, "console errors during an ENG2 season: " + errors.join(" | "));
 });
 
 test("the league-select screen renders without error", async () => {
