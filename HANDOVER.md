@@ -22,6 +22,8 @@ https://jbradgit.github.io/Volley-game/ (GitHub Pages serves `main`).
   provenance table (**`docs/AUDIO_SHORTLIST.md` §1b** — which sound goes where and does what).
   Everything deleted is still recoverable from Git history until the ROADMAP C.3 `git filter-repo`
   history rewrite — which is now THE remaining IP step (plus club names, fonts, the 6 SFX).
+- **NOTHING is in flight.** `main` = the only branch = deployed = this working tree. A fresh clone +
+  this file is a complete pickup ("keep going" = start priority 1 below on a new `claude/<topic>` branch).
 
 **What the 2026-06-30 session shipped (this branch, UNDEPLOYED):**
 - **Homescreen logo redesigned** — bold chunky italic 3D-extruded "Lardiland"-style wordmark
@@ -77,8 +79,17 @@ Chrome; PNGs to `%TEMP%/volley_audit`). The in-match HUD isn't auto-audited — 
 (`__dbg.newCareerSim` → Space → Space) and screenshot the canvas.
 
 **Open / next (priority):**
-1. **Owner: eyeball this branch live, then deploy to `main`.**
-2. **Audio (NEXT TASK) — shortlist is PREPPED in `docs/AUDIO_SHORTLIST.md`** (sources, links, licences,
+1. **C.3 history rewrite — the remaining IP purge (Claude-doable, no owner input needed).** The
+   2026-07-02 working-tree purge deleted the Flash material, but it all still exists in public Git
+   HISTORY. Steps: (a) `git clone --mirror` backup somewhere safe FIRST; (b) `pip install git-filter-repo`;
+   (c) purge the historical paths — `original.swf`, `game2.zip`, `gamezip/`, `ruffle/`, `ruffle.html`,
+   `decomp/` (the current `docs/original_mechanics/` files survive — they moved there at `45bb6c3`),
+   `scordagol_web/`, `page_*.html`, `ref_gameplay.png`, `ref_logo.png`, `Gemini_Generated_Image_*`;
+   (d) force-push; Pages rebuilds itself. ⚠ AFTER the rewrite every other clone (the office box, the
+   original dev box) is stale — re-clone or hard-reset them; don't merge old clones back in. Repo
+   should drop from ~137 MB to well under 40 (Phase 0 exit criterion; `striker_base_v01.blend` 55 MB
+   stays unless the owner decides otherwise — provenance still unconfirmed, see PROJECT_HEALTH_AUDIT).
+2. **Audio (owner-gated) — shortlist is PREPPED in `docs/AUDIO_SHORTLIST.md`** (sources, links, licences,
    wiring notes). Owner auditions + picks, then a session does: (a) **replace the 6 SWF-decompiled SFX**
    in `assets/snd/` (whistle/goal/boos/ooh/kick/post — an IP blocker) with CC0/Pixabay ones + bump the
    `?v=hr5` cache tag; (b) add a looping **jazzy-chiptune menu track**. The audio system
@@ -97,8 +108,10 @@ Chrome; PNGs to `%TEMP%/volley_audit`). The in-match HUD isn't auto-audited — 
 
 **CI is the FULL suite — run ALL before pushing** (a subset once spammed the owner CI emails):
 `node ci/smoke.js && node --test ci/physics.test.js ci/career.test.js ci/horse.test.js ci/leagues.test.js`.
-Deploy = commit on the branch → push branch → `git push origin claude/3d-character-sprites:main`.
-Don't commit `node_modules/`, the scratch `tools/`, or `striker_base_v01.blend` (pre-existing, not ours).
+Deploy = commit on a short-lived `claude/<topic>` branch → push → `git push origin <branch>:main` →
+delete the branch (local + remote) once landed. Don't commit `node_modules/` or `tools/` (both
+gitignored). Don't add new large binaries; `striker_base_v01.blend` (55 MB, tracked) is the 3D-pipeline
+base model — its long-term home is an open call (PROJECT_HEALTH_AUDIT cleanup item 10).
 
 ---
 
@@ -248,6 +261,7 @@ smooth motion + one consistent style for all three characters + 100% original ar
 
 | Doc | Covers |
 |---|---|
+| `CLAUDE.md` | Session bootstrap, auto-loaded by Claude Code on any device — points here. |
 | **`HANDOVER.md`** (this) | Current state, workflow, the active task. Start here. |
 | `AUDIT.md` | Original technical audit (health grade, findings) — context for the roadmap. |
 | `ROADMAP.md` | Phased plan to publication (foundations → own-every-pixel → engineering → monetise → launch). Status ticks per task. |
