@@ -343,6 +343,7 @@
 
   // ---- Game state ----
   const ST = { MENU:"menu", NAME:"name", CLUBSEL:"clubsel", LEAGUESEL:"leaguesel", TABLE:"table", SEASONEND:"seasonend",
+               LIFE:"life", TRAINERSEL:"trainersel", ADBREAK:"adbreak",
                INBOX:"inbox", EMAIL:"email", TROPHY:"trophy", NATSEL:"natsel", TRNHUB:"trnhub",
                TITLE:"title", COUNTDOWN:"countdown", SERVE:"serve", FLIGHT:"flight", RESULT:"result",
                MATCHEND:"matchend", OVER:"over",
@@ -353,6 +354,7 @@
   let inboxSel = 0, openedOffer = 0;   // transfer-inbox cursor + opened email index
   let clinchBtn = null;                // clickable "end season" button rect on the career home (when title clinched)
   let trophyRoomBtn = null;            // clickable "trophies" button rect on the career home
+  let lifeHomeBtn = null;              // clickable "£ THE LIFE" button rect on the career home (E8)
   let nameBuf = "";         // player-name entry buffer
   let pendingMode = "career";  // 'quick' or 'career' — what the club-select confirms into
   let GMODE = "career";     // active game mode: 'career' | 'daily' | 'horse'
@@ -385,6 +387,11 @@
         c.energy = 100; c.trust = 70; c.objective = null; c.verdict = null;
         unlockLeague(c.leagueId);
         if ((c.titles||0)>0) unlockFreeStart();                            // they had already won a top-flight title
+      }
+      if (c && c.monies==null){                                            // migrate pre-Life (E8) saves:
+        // an established pro has some savings put by (scaled by how long the career has run)
+        c.monies = 100 + ((c.season||1)-1)*150;
+        c.earned = 0; c.items = {}; c.trainer = null; c.sponsor = null; c.msgs = []; c.adSeen = false;
       }
       return c;
     } catch(e){ return null; }
@@ -501,11 +508,20 @@
     if (tier===2 && ev.t!=='I') dRep*=0.7;                // second-tier football moves the needle less
     bumpRep(dRep);
     if (sim) return;
-    // energy: a match costs legs; a league week (with its full week's rest) restores more
-    // than a midweek cup/Euro/intl slot — so congested runs are what tire you out.
-    const rec = ev.t==='L' ? 16+0.18*(100-CAR.energy) : (ev.t==='I' ? 8 : 3+0.10*(100-CAR.energy));
-    const cost = 6 + 1.6*matchBalls + (rnd(5)-2);
+    // ---- energy (E8, NSS model): every match drains the legs and natural recovery is WEAK —
+    // protein shakes, a hired trainer and a better gaff are how you stay fresh.
+    const before_e=CAR.energy;
+    const rec = 14 + houseRec() + trainerRec() + (rnd(5)-2);
+    const cost = 3 + 2.6*matchBalls;
     CAR.energy = clamp(Math.round(CAR.energy + rec - cost), 5, 100);
+    if (CAR.trainer && CAR.trainer.games>0 && before_e>=40 && CAR.energy<40){   // the trainer notices you flagging
+      const td=TRAINERS.find(t=>t.id===CAR.trainer.id); if (td) queueMsg(td.id, td.nag);
+    }
+    if (CAR.trainer && CAR.trainer.games>0){
+      CAR.trainer.games--;
+      if (CAR.trainer.games<=0){ const td=TRAINERS.find(t=>t.id===CAR.trainer.id);
+        if (td) queueMsg(td.id, td.bye); }
+    }
     // coach trust: appearances build it, wins build it faster, a benched player who hits the
     // win target "takes his chance"; a losing run as a starter costs it.
     if (ev.t!=='I'){
@@ -517,12 +533,139 @@
       if (role==="starter" && (CAR.form||[]).slice(0,2).join("")==="LL" && res==="L") dT -= 6;   // 3 straight losses
       CAR.trust = clamp(CAR.trust + dT, 5, 100);
       const after=roleFor(CAR.trust);
-      if (after!==before){
-        CAR.news.unshift(after==="starter" ? CAR.name+" wins a starting spot!"
-                        : (before==="cameo" ? "Gaffer's notebook: more minutes for "+CAR.name
-                                            : "Benched! "+CAR.name+" dropped to the subs"));
+      if (after!==before){   // Vic breaks the team news (E8: comms, not just a headline)
+        queueMsg('vic', after==="starter"
+          ? "OI OI, SUPERSTAR! JUST GOT OFF THE DOG AND BONE WITH THE GAFFER AND YOU'RE IN THE STARTING ELEVEN FROM NOW ON. HE'S BEEN PURRING ABOUT YOU, SON. ABSOLUTELY PURRING."
+          : (before==="cameo"
+            ? "GOOD NEWS FROM THE TRAINING GROUND, MY SON. THE GAFFER'S WARMING TO YOU. MORE MINUTES COMING YOUR WAY, SO KEEP BANGING 'EM IN."
+            : "BAD NEWS, SUNSHINE. YOU'VE BEEN DROPPED. GAFFER RECKONS YOUR LEGS HAVE GONE. WE BOTH KNOW HE'S WRONG, SO PROVE IT OFF THE BENCH, EH?"));
       }
     }
+  }
+  // ---- E8 "The Life": Monies, protein shakes, the trainer, lifestyle and sponsors ----
+  // NSS-style economy adapted to SCORDAGOL. Monies pay for shakes (energy), a trainer
+  // (recovery per match), and lifestyle (clothes/motor/gadgets/the gaff) that boosts your
+  // EFFECTIVE reputation — which is what big clubs and sponsors look at. Vic takes his cut
+  // of everything, and it goes up every season. Prices scale with your star rating (NSS NRG rule).
+  const SHAKES=[
+    { id:'s', name:"HALF SCOOP",       nrg:25,  mult:18 },
+    { id:'m', name:"DOUBLE SCOOP",     nrg:55,  mult:36 },
+    { id:'l', name:"MASS GAINER 5000", nrg:100, mult:60 } ];
+  function shakePrice(s){ return s.mult*Math.max(1, repStars(effRep())); }
+  const TRAINERS=[
+    { id:'beef', name:"BARRY 'BEEF' BINNS", tier:1, cost:80, rec:8, games:10,
+      blurb:"OLD SCHOOL. RAW EGGS. BEEF.",
+      hire:"RIGHT THEN, SON. RULE ONE: PROTEIN. RULE TWO: MORE PROTEIN. I'VE BEEN ON THE SHAKES SINCE HALF SIX THIS MORNING AND I'VE NEVER FELT BETTER. TWO SCOOPS A DAY AND YOU'LL BE BUILT LIKE A RIDING SCHOOL. RIGHT, LET'S GRAFT.",
+      nag:"OI OI. LOOK AT THE STATE OF YOUR LEGS, SON. GET A SHAKE DOWN YOU BEFORE THE GAFFER NOTICES. HALF SCOOP MINIMUM. BEEF FLAVOUR IF THEY'VE GOT IT.",
+      bye:"THAT'S ME DONE, SON. CONTRACT'S UP. RE-SIGN ME DOWN THE LIFE SCREEN AND WE'LL GET YOU PROPER HENCH. DON'T LEAVE IT TOO LONG. PROTEIN WAITS FOR NO MAN." },
+    { id:'sven', name:"SVEN NUTRIBLAST", tier:2, cost:240, rec:13, games:10,
+      blurb:"MACROS. ISOLATES. SCIENCE.",
+      hire:"GREETINGS. I HAVE ANALYSED YOUR MACROS AND FRANKLY I AM DISTURBED. FROM TODAY WE OPTIMISE: WHEY ISOLATE AT DAWN, CASEIN AT NIGHT, AND A RECOVERY WINDOW OF PRECISELY 27 MINUTES. YOUR BODY IS A LABORATORY AND I AM THE SCIENTIST.",
+      nag:"YOUR GLYCOGEN LEVELS ARE A TRAGEDY. DRINK A SHAKE. THE ANABOLIC WINDOW IS CLOSING AS WE SPEAK. TICK TOCK. TICK TOCK.",
+      bye:"MY CONTRACT EXPIRES TODAY, AND SO, STATISTICALLY, WILL YOUR GAINS. RE-HIRE ME ON THE LIFE SCREEN. THE SPREADSHEET DEMANDS IT." },
+    { id:'proteina', name:"DR. PROTEINA", tier:3, cost:550, rec:18, games:10,
+      blurb:"ELITE. UNHINGED. 97% PROTEIN.",
+      hire:"AH. MY NEW SPECIMEN. I HAVE TRAINED TWO BALLON D'OR WINNERS AND, BRIEFLY, A RACEHORSE. MY METHODS ARE BEYOND SCIENCE: PROTEIN AIR. PROTEIN LIGHT. COLLAGEN MOONSHAKES. YOU WILL RECOVER FASTER THAN YOUR OWN SHADOW. WE BEGIN AT DAWN.",
+      nag:"I SENSE FATIGUE IN YOUR AURA. HYDROLYSED PEPTIDES. IMMEDIATELY. DO NOT MAKE ME PRESCRIBE THE 3AM YOLK RITUAL.",
+      bye:"OUR TIME TOGETHER CONCLUDES. YOUR MITOCHONDRIA WILL WEEP. SUMMON ME AGAIN ON THE LIFE SCREEN, WHEN YOUR WALLET HAS RECOVERED." } ];
+  const LIFESTYLE=[   // own the best item per category; each adds reputation, the gaff also aids recovery
+    { cat:"CLOTHES", items:[ {id:'trackie',name:"FRESH TRACKIE",cost:60,rep:1}, {id:'suit',name:"CLUB SUIT",cost:300,rep:2}, {id:'fit',name:"DESIGNER FIT",cost:1500,rep:4} ] },
+    { cat:"MOTOR",   items:[ {id:'hatch',name:"HOT HATCH",cost:250,rep:1}, {id:'saloon',name:"EXEC SALOON",cost:1200,rep:3}, {id:'super',name:"SUPERCAR",cost:6000,rep:6} ] },
+    { cat:"GADGETS", items:[ {id:'console',name:"GAMES CONSOLE",cost:120,rep:1}, {id:'watch',name:"DIAMOND WATCH",cost:900,rep:2}, {id:'jetski',name:"JET SKI",cost:3500,rep:4} ] },
+    { cat:"THE GAFF",items:[ {id:'flat',name:"FLATSHARE",cost:200,rep:1,rec:2}, {id:'semi',name:"SEMI-DETACHED",cost:1000,rep:2,rec:4}, {id:'pent',name:"PENTHOUSE",cost:4500,rep:4,rec:6}, {id:'mansion',name:"MANSION",cost:12000,rep:6,rec:8} ] } ];
+  const SPONSORS=[   // gated on EFFECTIVE rep + owning at least one lifestyle item (NSS rule)
+    { need:10, name:"TONY'S MEAT VAN",     perGoal:4,  perWin:6,  matches:20 },
+    { need:30, name:"CRISPY NUGGZ",        perGoal:10, perWin:15, matches:20 },
+    { need:50, name:"SCORBOOST PRO-TEIN",  perGoal:25, perWin:35, matches:20 },
+    { need:70, name:"GALAXY AIRWAYS",      perGoal:60, perWin:80, matches:20 } ];
+  const AD_MONIES=12, AD_SECS=4;                 // "a word from our sponsors": once per matchday, Vic-cut-free
+  function lifeBonus(){ if (!CAR || !CAR.items) return 0; let b=0;
+    for (const c of LIFESTYLE){ let best=0; for (const it of c.items) if (CAR.items[it.id]) best=Math.max(best, it.rep); b+=best; }
+    return b; }
+  function houseRec(){ if (!CAR || !CAR.items) return 0; let r=0;
+    for (const it of LIFESTYLE[3].items) if (CAR.items[it.id]) r=Math.max(r, it.rec||0); return r; }
+  function effRep(){ return (CAR && CAR.rep!=null) ? clamp(CAR.rep+lifeBonus(), 0, 100) : 0; }
+  function trainerRec(){ if (!CAR || !CAR.trainer || CAR.trainer.games<=0) return 0;
+    const t=TRAINERS.find(x=>x.id===CAR.trainer.id); return t ? t.rec : 0; }
+  function ownedCount(){ if (!CAR || !CAR.items) return 0; let n=0; for (const k in CAR.items) if (CAR.items[k]) n++; return n; }
+  function nextLifestyle(cat){   // the next UPGRADE: the tier above the best you own (never a downgrade)
+    let last=-1; cat.items.forEach((it,i)=>{ if (CAR.items && CAR.items[it.id]) last=i; });
+    return cat.items[last+1] || null; }
+  function bestSponsorDeal(){ if (ownedCount()<1) return null;   // no clobber, no sponsors
+    const r=effRep(); let best=null; for (const s of SPONSORS) if (r>=s.need) best=s; return best; }
+  function wageFor(){ const t=TEAMBY[CAR.slug]||{rating:3};   // kept TIGHT early (the NSS grind): a second-tier
+    return activeLeagueTier()===2 ? 10+t.rating*3 : 40+t.rating*10; }   // kid can't afford everything at once
+  function vicCutPct(){ return Math.min(25, 10+((CAR&&CAR.season||1)-1)); }
+  // Pay day: wage per appearance + win/goal bonuses + the sponsor's money, minus Vic's slice.
+  function matchEarnings(res, sim){
+    if (!CAR || CAR.monies==null) return;
+    let gross = wageFor();
+    if (res==="W") gross += Math.round(wageFor()*0.6);
+    if (!sim){
+      gross += M.goals*(activeLeagueTier()===2 ? 4 : 12);
+      if (CAR.sponsor && CAR.sponsor.left>0){
+        gross += M.goals*CAR.sponsor.perGoal + (res==="W"?CAR.sponsor.perWin:0);
+        CAR.sponsor.left--;
+        if (CAR.sponsor.left<=0){
+          queueMsg('vic', "THAT "+CAR.sponsor.name+" DEAL IS ALL PAID UP, SUNSHINE. LOVELY BIT OF BUSINESS. GET DOWN THE LIFE SCREEN AND WE'LL SIGN ANOTHER ONE.");
+          CAR.sponsor=null;
+        }
+      }
+    }
+    const cut=Math.round(gross*vicCutPct()/100);
+    CAR.monies+=gross-cut; CAR.earned=(CAR.earned||0)+gross-cut;
+    CAR.lastEarn={ gross, cut, net:gross-cut };
+    CAR.adSeen=false;                                  // a new matchday: the sponsors have a new word for you
+  }
+  function buyShake(i){
+    const s=SHAKES[i]; if (!s || !CAR || CAR.monies==null) return false;
+    const price=shakePrice(s);
+    if (CAR.monies<price || CAR.energy>=100) return false;
+    CAR.monies-=price; CAR.energy=clamp(CAR.energy+s.nrg, 5, 100); saveCareer(); return true;
+  }
+  function hireTrainer(id){
+    const t=TRAINERS.find(x=>x.id===id); if (!t || !CAR || CAR.monies==null) return false;
+    if (CAR.monies<t.cost) return false;
+    CAR.monies-=t.cost;
+    const renewal = CAR.trainer && CAR.trainer.id===id && CAR.trainer.games>0;
+    CAR.trainer={ id:t.id, games:(renewal?CAR.trainer.games:0)+t.games };
+    if (!renewal) queueMsg(t.id, t.hire);
+    saveCareer(); return true;
+  }
+  function buyLifestyle(id){
+    if (!CAR || CAR.monies==null) return false;
+    for (const c of LIFESTYLE) for (const it of c.items){
+      if (it.id!==id) continue;
+      if (CAR.items && CAR.items[id]) return false;
+      if (CAR.monies<it.cost) return false;
+      CAR.monies-=it.cost; (CAR.items=CAR.items||{})[id]=true; saveCareer(); return true;
+    }
+    return false;
+  }
+  function signSponsor(){
+    const d=bestSponsorDeal(); if (!d || !CAR || CAR.monies==null) return false;
+    if (CAR.sponsor && CAR.sponsor.name===d.name) return false;   // already on this deal
+    CAR.sponsor={ name:d.name, perGoal:d.perGoal, perWin:d.perWin, left:d.matches };
+    saveCareer(); return true;
+  }
+  function watchAdReward(){   // the satirical bit: Vic doesn't know about this income
+    if (!CAR || CAR.monies==null || CAR.adSeen) return false;
+    CAR.adSeen=true; CAR.monies+=AD_MONIES; CAR.earned=(CAR.earned||0)+AD_MONIES; saveCareer(); return true;
+  }
+  // ---- comms queue: Vic (and the trainer) talk to you between matches. Flushed whenever the
+  // career home would appear; each message is one agent screen. Persisted on the save.
+  function queueMsg(who, text){ if (CAR) (CAR.msgs=CAR.msgs||[]).push({who, text}); }
+  function flushMsgs(next){
+    if (CAR && CAR.msgs && CAR.msgs.length){
+      const m=CAR.msgs.shift(); saveCareer();
+      showAgent(m.text, ()=>flushMsgs(next), m.who);
+    } else next();
+  }
+  function queueSeasonBrief(){   // Vic delivers the board's expectation + announces his cut
+    if (!CAR || CAR.rep==null || !CAR.objective) return;
+    queueMsg('vic', "RIGHT, SEASON "+CAR.season+", SUNSHINE. I'VE HAD A BREW WITH THE BOARD AND THE WORD FROM UPSTAIRS IS: "
+      +CAR.objective.label+". DO THAT AND WE'RE ALL LAUGHING. OH, AND MY CUT IS "+vicCutPct()
+      +"% THIS SEASON. STANDARD INDUSTRY PRACTICE. DON'T LOOK IT UP.");
   }
   function newCareer(name, slug, nation, leagueId){
     setActiveLeague(leagueId||"ENG");
@@ -531,11 +674,13 @@
             nation:nation||"England", caps:0, intlGoals:0, trophies:[],
             cup:initCup(), euro:null, nextEuro:null, cal:buildCalendar(false, leagueMatchdays()), calIdx:0,
             trn:null, trnDone:false,
-            rep:5, energy:100, trust:27, verdict:null };   // the journey: an unknown kid fighting for minutes
+            rep:5, energy:100, trust:27, verdict:null,     // the journey: an unknown kid fighting for minutes
+            monies:60, earned:0, items:{}, trainer:null, sponsor:null, msgs:[], adSeen:false };   // the life: skint
     CAR.objective = makeObjective();
     unlockLeague(CAR.leagueId);
     CAR.news.unshift("Board expectation: "+CAR.objective.label);
     CAR.news.unshift(name+" signs for "+TEAMBY[slug].name+"!");
+    queueSeasonBrief();
     saveCareer();
   }
   // ---- Title-race model (shared by simRound + computeTitleOdds) ----
@@ -628,11 +773,13 @@
         simRound([CAR.slug, fx.opp]); CAR.idx++;
         CAR.lastResults = genGameweekResults(res, fx);
         applyJourney(res, ev, true, (TEAMBY[fx.opp]||{}).rating);   // sim: reputation only
+        matchEarnings(res, true);                                    // wages still land in the run-in
       } else {
         eventSetup(ev);                                       // sets OPPONENT for the quick resolve
         const pw=clamp(0.55+(TEAMBY[CAR.slug].rating-OPPONENT.rating)*0.05, 0.15, 0.90);
         const res = Math.random()<pw ? 'W' : 'L';
         applyJourney(res, ev, true);
+        matchEarnings(res, true);
         if (ev.t==='C') commitCup(res); else commitEuro(res, ev);
       }
       CAR.calIdx++;
@@ -747,7 +894,8 @@
              from:sign[0].toLowerCase().split(" ").join(".")+"@"+t.slug.toLowerCase()+".smail.co.uk" };
   }
   function genOffers(){
-    const pos=myPosition(), rep=CAR.rep==null?100:CAR.rep, tier=activeLeagueTier(), N=TEAMS.length;
+    // E8: clubs judge your EFFECTIVE reputation — earned rep plus the lifestyle you flaunt
+    const pos=myPosition(), rep=CAR.rep==null?100:effRep(), tier=activeLeagueTier(), N=TEAMS.length;
     const nMax = pos===1?4 : pos<=4?3 : pos<=10?2 : pos<=14?1 : 0;
     const std=standings(), offers=[];
     // 1. the same-league ladder: clubs that finished above you, closest first — if your name is big enough
@@ -917,6 +1065,7 @@
     if (GMODE==="classic"){ classicTurnDone(); return; } // classic: record this player's score, pass on
     if (GMODE==="daily"){ dailyDone();    return; }     // daily: record to leaderboard
     const res = matchResult();                          // career: VICTORY/DRAW/LOSS burst
+    matchEarnings(res);                                 // E8: pay day (shown on the burst)
     matchEndText  = res==="W" ? "VICTORY" : (res==="D" ? "DRAW" : "LOSS");
     matchEndColor = res==="W" ? "#46e36b" : (res==="D" ? "#c7d0da" : "#ff5d5d");
     if (res==="W") sfx.goal(); else if (res==="L") sfx.boos(); else sfx.whistle();
@@ -954,7 +1103,7 @@
     else commitEuro(res, ev);
     CAR.calIdx++;
     saveCareer();
-    if (!peekEvent()) seasonOver(); else state=ST.TABLE;
+    if (!peekEvent()) seasonOver(); else flushMsgs(()=>{ state=ST.TABLE; });   // E8: Vic/trainer comms first
   }
   function commitLeague(res){
     const me = CAR.table[CAR.slug], opp = CAR.table[OPPONENT.slug];
@@ -969,6 +1118,15 @@
     CAR.idx++;
     CAR.lastResults = genGameweekResults(res, CAR.fixtures[CAR.idx-1]);   // ticker for the career home screen
     CAR.titleOdds = computeTitleOdds();
+    // E8: Vic's mid-season word on the board's target (a third in, and down the home straight)
+    if (CAR.objective && CAR.rep!=null){
+      const N=CAR.fixtures.length, pos=myPosition();
+      if (CAR.idx===Math.round(N/3) || CAR.idx===Math.round(N*0.7)){
+        queueMsg('vic', pos<=CAR.objective.pos
+          ? "QUICK ONE, SUNSHINE. THE BOARD WANTED "+CAR.objective.label+" AND YOU'RE SITTING "+ord(pos).toUpperCase()+". CUSHTY. KEEP THIS UP AND I'LL HAVE A WORD ABOUT A PAY RISE. FOR ME, MAINLY."
+          : "WORD IN YOUR SHELL-LIKE, SON. THE BOARD WANTED "+CAR.objective.label+" AND YOU'RE "+ord(pos).toUpperCase()+". THE SUITS ARE SHUFFLING PAPERS. PULL YOUR SOCKS UP, EH?");
+      }
+    }
   }
   function commitCup(res){
     const c=CAR.cup, oname=OPPONENT.name;
@@ -1738,6 +1896,15 @@
     ctx.fillStyle=matchEndColor; ctx.fillText(word,0,0);                               // solid colour fill
     if (elapsed>0.06 && elapsed<0.30){ ctx.globalAlpha=alpha*Math.max(0,0.55-(elapsed-0.06)*2.6); ctx.fillStyle="#fff"; ctx.fillText(word,0,0); }  // slam flash
     ctx.restore();
+    // E8 pay day: the takings (and Vic's slice) land with the result
+    if (GMODE==="career" && CAR && CAR.lastEarn && elapsed>0.36){
+      const a=Math.min(1, (elapsed-0.36)*4) * (elapsed>1.25 ? Math.max(0,(1.6-elapsed)/0.35) : 1);
+      ctx.globalAlpha=a; ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.font=ttFont(18); ctx.fillStyle=TTX.yellow;
+      ctx.fillText("+"+CAR.lastEarn.net+" MONIES", SW/2, SH/2+92);
+      ctx.font=ttFont(12); ctx.fillStyle=TTX.grey;
+      ctx.fillText("(VIC'S CUT: "+CAR.lastEarn.cut+" M. HE SAYS CHEERS.)", SW/2, SH/2+114);
+    }
     ctx.globalAlpha=1; ctx.textBaseline="alphabetic"; ctx.textAlign="left";
   }
   function drawResultText() {
@@ -2138,12 +2305,17 @@
   function ord(n){ const s=["th","st","nd","rd"],v=n%100; return n+(s[(v-20)%10]||s[v]||s[0]); }
   function drawTable(){
     if (!TEAMS.length || !CAR){ ctx.textAlign="center"; ttPrint("LOADING…",0,200,TTX.cyan,0,{size:16,center:true}); ctx.textAlign="left"; return; }
+    if (!CAR.fixtures[CAR.idx]){   // season complete (e.g. backed out of a side-screen post-finale): prompt onward
+      ctx.textAlign="center"; ctx.font=ttFont(20); ctx.fillStyle=TTX.yellow;
+      ctx.fillText("SEASON COMPLETE", VW/2, 230);
+      ctx.font=ttFont(14); ctx.fillStyle=TTX.neon; ctx.fillText(TOUCH?"TAP TO CONTINUE":"SPACE TO CONTINUE", VW/2, 262);
+      ctx.textAlign="left"; return; }
     const tbl = standings(), mypos = myPosition();
     const fx=CAR.fixtures[CAR.idx], opp=TEAMBY[fx.opp], meName=TEAMBY[CAR.slug].name;
     if (CAR.titleOdds==null) CAR.titleOdds=computeTitleOdds();
-    // ---- header: plain blue bar — SCORDAGOL · CAREER · SEASON N ----
+    // ---- header: plain blue bar — SCORDAGOL · CAREER · SEASON N (+ the bank balance, E8) ----
     const HBY=4, HBH=TOUCH?40:32;
-    careerBar(HBY, HBH, "CAREER", "SEASON "+CAR.season);
+    careerBar(HBY, HBH, "CAREER", "SEASON "+CAR.season+(CAR.monies!=null ? "  ·  "+CAR.monies+" M" : ""));
 
     // ---- Ceefax-style full-height two-column league table + clean info footer ----
     // Shared by desktop and touch (identical 924x520 stage); only the call-to-action
@@ -2282,6 +2454,15 @@
         ctx.fillText("★ TROPHIES", tbX+tbW/2, tbY+tbH/2+1); ctx.textBaseline="alphabetic"; ctx.textAlign="left";
         trophyRoomBtn={x:tbX,y:tbY,w:tbW,h:tbH};
       }
+      // £ THE LIFE button — left of trophies (click/tap; desktop also key L) (E8)
+      lifeHomeBtn=null;
+      if (CAR.monies!=null){ const lbW=110,lbH=26,lbX=VW-116-10-lbW-8,lbY=nbY+nbH+8;
+        ctx.fillStyle="rgba(0,0,10,0.55)"; ctx.fillRect(lbX,lbY,lbW,lbH);
+        ctx.strokeStyle=TTX.neon; ctx.lineWidth=1; ctx.strokeRect(lbX+0.5,lbY+0.5,lbW-1,lbH-1);
+        ctx.font=ttFont(13); ctx.fillStyle=TTX.neon; ctx.textAlign="center"; ctx.textBaseline="middle";
+        ctx.fillText("£ THE LIFE", lbX+lbW/2, lbY+lbH/2+1); ctx.textBaseline="alphabetic"; ctx.textAlign="left";
+        lifeHomeBtn={x:lbX,y:lbY,w:lbW,h:lbH};
+      }
       // ← MENU button (touch only) — bottom-left, clear of the centred CTA and ticker
       if (TOUCH){ const bbW=92,bbH=26,bbX=10,bbY=nbY+nbH+8;
         ctx.fillStyle="rgba(0,0,10,0.55)"; ctx.fillRect(bbX,bbY,bbW,bbH);
@@ -2369,6 +2550,169 @@
     }
     ctx.textAlign="left";
   }
+  // ================= THE LIFE (E8): protein corner, the gym, lifestyle, sponsors =================
+  let lifeBtns=[];            // clickable rects rebuilt each draw: {x,y,w,h,act,arg}
+  let adBoardId=null, adGranted=false;   // the "word from our sponsors" ad break
+  function openLife(){ if (CAR && CAR.monies!=null){ lifeBtns=[]; state=ST.LIFE; } }
+  // where "back" from a career side-screen should land: the tournament hub while the World
+  // Tournament is live, otherwise the league/cup/Euro home
+  function careerHomeState(){ return (CAR && CAR.trn && !CAR.trnDone) ? ST.TRNHUB : ST.TABLE; }
+  function startAdBreak(){
+    if (!CAR || CAR.adSeen) return;
+    adBoardId = ADS.length ? ADS[rnd(ADS.length)].id : null;
+    adGranted=false; state=ST.ADBREAK; stateEnterAt=performance.now();
+  }
+  function lifeBtnDraw(x,y,w,h,label,col,enabled,act,arg,size){
+    ctx.fillStyle = enabled ? "#12233f" : "#0d1015";
+    ctx.fillRect(x,y,w,h);
+    ctx.strokeStyle = enabled ? (col||TTX.cyan) : "rgba(255,255,255,0.15)"; ctx.lineWidth=1.5;
+    ctx.strokeRect(x+0.75,y+0.75,w-1.5,h-1.5);
+    ctx.font=ttFont(size||13); ctx.fillStyle = enabled ? (col||TTX.cyan) : TTX.dim;
+    ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(label, x+w/2, y+h/2+1);
+    ctx.textAlign="left"; ctx.textBaseline="alphabetic";
+    if (enabled) lifeBtns.push({x,y,w,h,act,arg});
+  }
+  function lifeAction(b){
+    audio();
+    if (b.act==="shake"){ if (buyShake(b.arg)) sfx.kick(); }
+    else if (b.act==="gym"){ lifeBtns=[]; state=ST.TRAINERSEL; }
+    else if (b.act==="buy"){ if (buyLifestyle(b.arg)) sfx.kick(); }
+    else if (b.act==="sponsor"){ if (signSponsor()) sfx.whistle(); }
+    else if (b.act==="ad"){ startAdBreak(); }
+    else if (b.act==="hire"){ if (hireTrainer(b.arg)){ sfx.whistle(); flushMsgs(()=>{ lifeBtns=[]; state=ST.TRAINERSEL; }); } }
+  }
+  function drawLife(){
+    if (!CAR || CAR.monies==null){ state=ST.TABLE; return; }
+    lifeBtns=[];
+    const HBY=4, HBH=TOUCH?40:32;
+    careerBar(HBY, HBH, "THE LIFE", CAR.monies+" MONIES");
+    const ht=HBY+HBH, LX=20, LW=420, RX=470, RW=434;
+    // ---- left: PROTEIN CORNER ----
+    ctx.font=ttFont(17); ctx.fillStyle=TTX.green; ctx.fillText("PROTEIN CORNER", LX, ht+26);
+    ctx.font=ttFont(11); ctx.fillStyle=TTX.grey; ctx.fillText("CONDITION", LX, ht+46);
+    { const e=CAR.energy, bw=250, bx=LX+92, by=ht+38;
+      ctx.fillStyle="rgba(255,255,255,0.12)"; ctx.fillRect(bx,by,bw,10);
+      ctx.fillStyle = e>=60?"#1f9d49":(e>=40?"#ff9f1c":"#c43a3a");
+      ctx.fillRect(bx,by,Math.round(bw*e/100),10);
+      ctx.font=ttFont(12); ctx.fillStyle=TTX.white; ctx.fillText(e+"%  "+energyLabel(e), bx+bw+10, ht+47); }
+    const shY0=ht+62, shRH=40;
+    SHAKES.forEach((s,i)=>{
+      const y=shY0+i*shRH, price=shakePrice(s);
+      ctx.font=ttFont(14); ctx.fillStyle=TTX.white; ctx.fillText(s.name, LX, y+18);
+      ctx.font=ttFont(11); ctx.fillStyle=TTX.green; ctx.fillText(s.nrg>=100?"FULL RECOVERY":"+"+s.nrg+" NRG", LX+188, y+18);
+      lifeBtnDraw(LX+290, y, 126, 28, price+" M", TTX.yellow, CAR.monies>=price && CAR.energy<100, "shake", i);
+    });
+    ctx.font=ttFont(10); ctx.fillStyle=TTX.dim;
+    ctx.fillText("97% PROTEIN. 3% GLITTER. ASK YOUR TRAINER.", LX, shY0+3*shRH+8);
+    // ---- left: THE GYM (trainer) ----
+    const trY=shY0+3*shRH+30;
+    ctx.font=ttFont(17); ctx.fillStyle=TTX.green; ctx.fillText("TRAINER", LX, trY+14);
+    const td = (CAR.trainer && CAR.trainer.games>0) ? TRAINERS.find(t=>t.id===CAR.trainer.id) : null;
+    ctx.font=ttFont(13);
+    if (td){ ctx.fillStyle=TTX.white; ctx.fillText(td.name, LX, trY+36);
+      ctx.font=ttFont(11); ctx.fillStyle=TTX.cyan;
+      ctx.fillText("+"+td.rec+" NRG EVERY MATCH  ·  "+CAR.trainer.games+" GAME"+(CAR.trainer.games===1?"":"S")+" LEFT", LX, trY+54); }
+    else { ctx.fillStyle=TTX.grey; ctx.fillText("NO TRAINER. RECOVERY SUFFERS.", LX, trY+36); }
+    lifeBtnDraw(LX+290, trY+22, 126, 28, "THE GYM →", TTX.cyan, true, "gym");
+    // ---- right: LIFESTYLE ----
+    ctx.font=ttFont(17); ctx.fillStyle=TTX.green; ctx.fillText("LIFESTYLE", RX, ht+26);
+    ctx.font=ttFont(12); ctx.textAlign="right"; ctx.fillStyle=TTX.yellow;
+    ctx.fillText("+"+lifeBonus()+" REPUTATION", RX+RW, ht+26); ctx.textAlign="left";
+    const lsY0=ht+40, lsRH=44;
+    LIFESTYLE.forEach((c,i)=>{
+      const y=lsY0+i*lsRH;
+      let owned=null; for (const it of c.items) if (CAR.items && CAR.items[it.id]) owned=it;
+      ctx.font=ttFont(10); ctx.fillStyle=TTX.grey; ctx.fillText(c.cat, RX, y+12);
+      ctx.font=ttFont(13); ctx.fillStyle=owned?TTX.white:TTX.dim;
+      ctx.fillText(owned?owned.name:"NOWT", RX, y+30);
+      const nx=nextLifestyle(c);
+      if (nx) lifeBtnDraw(RX+RW-218, y+8, 218, 28, nx.name+" · "+nx.cost+" M", TTX.yellow, CAR.monies>=nx.cost, "buy", nx.id, 11);
+      else { ctx.font=ttFont(11); ctx.textAlign="right"; ctx.fillStyle=TTX.green; ctx.fillText("MAXED OUT", RX+RW, y+26); ctx.textAlign="left"; }
+    });
+    // ---- right: SPONSOR ----
+    const spY=lsY0+4*lsRH+18;
+    ctx.font=ttFont(17); ctx.fillStyle=TTX.green; ctx.fillText("SPONSOR", RX, spY+14);
+    if (CAR.sponsor && CAR.sponsor.left>0){
+      ctx.font=ttFont(13); ctx.fillStyle=TTX.white; ctx.fillText(CAR.sponsor.name, RX, spY+36);
+      ctx.font=ttFont(11); ctx.fillStyle=TTX.cyan;
+      ctx.fillText(CAR.sponsor.perGoal+" M / GOAL  ·  "+CAR.sponsor.perWin+" M / WIN  ·  "+CAR.sponsor.left+" MATCHES LEFT", RX, spY+54);
+    } else {
+      const d=bestSponsorDeal();
+      if (d){ ctx.font=ttFont(11); ctx.fillStyle=TTX.white;
+        ctx.fillText(d.perGoal+" M / GOAL  ·  "+d.perWin+" M / WIN  ·  "+d.matches+" MATCHES", RX, spY+52);
+        lifeBtnDraw(RX+RW-218, spY+22, 218, 28, "SIGN: "+d.name, TTX.neon, true, "sponsor", null, 11); }
+      else { ctx.font=ttFont(12); ctx.fillStyle=TTX.grey;
+        ctx.fillText(ownedCount()<1 ? "NO INTEREST. SPONSORS WANT A PLAYER" : "NO INTEREST YET. RAISE YOUR PROFILE.", RX, spY+38);
+        if (ownedCount()<1){ ctx.fillText("WITH A LIFESTYLE. BUY SOME CLOBBER.", RX, spY+54); } }
+    }
+    // ---- bottom: the satirical rewarded ad ----
+    const adOk = !CAR.adSeen;
+    lifeBtnDraw(VW/2-210, SH-64, 420, 30,
+      adOk ? "▶ A WORD FROM OUR SPONSORS  ·  +"+AD_MONIES+" M" : "SPONSORS RETURN NEXT MATCHDAY",
+      TTX.neon, adOk, "ad");
+    ctx.textAlign="center"; ctx.font=ttFont(11); ctx.fillStyle=TTX.grey;
+    if (!TOUCH) ctx.fillText("CLICK TO BUY    L / ESC  BACK", VW/2, SH-14);
+    ctx.textAlign="left";
+  }
+  function drawTrainerSel(){
+    if (!CAR || CAR.monies==null){ state=ST.TABLE; return; }
+    lifeBtns=[];
+    const HBY=4, HBH=TOUCH?40:32;
+    careerBar(HBY, HBH, "THE GYM", CAR.monies+" MONIES");
+    const ht=HBY+HBH, cw=280, gap=14, x0=(VW-3*cw-2*gap)/2, cy=ht+22, chh=380;
+    ctx.textAlign="center"; ctx.font=ttFont(13); ctx.fillStyle=TTX.grey;
+    ctx.fillText("A TRAINER TOPS UP YOUR ENERGY AFTER EVERY MATCH. HIRED BY THE 10-GAME BLOCK.", VW/2, ht+14);
+    ctx.textAlign="left";
+    TRAINERS.forEach((t,i)=>{
+      const x=x0+i*(cw+gap), active = CAR.trainer && CAR.trainer.games>0 && CAR.trainer.id===t.id;
+      ctx.fillStyle="#0a1224"; ctx.fillRect(x,cy,cw,chh);
+      ctx.strokeStyle = active ? TTX.neon : TTX.blue; ctx.lineWidth=2; ctx.strokeRect(x+1,cy+1,cw-2,chh-2);
+      drawTrainerPortrait(t.id, x+cw/2-70, cy+14, 140, 156);
+      ctx.strokeStyle="rgba(255,255,255,0.5)"; ctx.lineWidth=1; ctx.strokeRect(x+cw/2-70+0.5, cy+14.5, 139, 155);
+      pxText(t.name, x+cw/2, cy+190, 14, active?TTX.neon:TTX.yellow, 'c', 'm');
+      pxText(t.blurb, x+cw/2, cy+212, 11, TTX.grey, 'c', 'm');
+      pxText("+"+t.rec+" NRG PER MATCH", x+cw/2, cy+240, 14, TTX.green, 'c', 'm');
+      pxText(t.games+" GAMES  ·  "+t.cost+" MONIES", x+cw/2, cy+262, 12, TTX.white, 'c', 'm');
+      if (active) pxText("★ YOUR TRAINER  ·  "+CAR.trainer.games+" GAMES LEFT", x+cw/2, cy+288, 11, TTX.neon, 'c', 'm');
+      lifeBtnDraw(x+cw/2-90, cy+chh-56, 180, 32, (active?"EXTEND":"HIRE")+" · "+t.cost+" M",
+        TTX.yellow, CAR.monies>=t.cost, "hire", t.id);
+    });
+    ctx.textAlign="center"; ctx.font=ttFont(11); ctx.fillStyle=TTX.grey;
+    if (!TOUCH) ctx.fillText("CLICK TO HIRE    ESC  BACK TO THE LIFE", VW/2, SH-14);
+    ctx.textAlign="left";
+  }
+  function drawAdBreak(){
+    ctx.fillStyle="#000000"; ctx.fillRect(0,0,VW,SH);
+    const elapsed=screenAge(), done=elapsed>=AD_SECS;
+    pxText("AND NOW, A WORD FROM OUR SPONSORS", VW/2, 88, 20, TTX.white, 'c', 'm');
+    // the "ad": one of the ground's own hoarding boards, blown up full glory
+    const bw=660, bh=170, bx=VW/2-bw/2, by=150;
+    const im=adBoardId && ADS_IMG[adBoardId];
+    const prev=ctx.imageSmoothingEnabled; ctx.imageSmoothingEnabled=false;
+    if (im && im.complete && im.naturalWidth) ctx.drawImage(im, bx, by, bw, bh);
+    else { ctx.fillStyle="#06070b"; ctx.fillRect(bx,by,bw,bh);
+      ctx.strokeStyle="#e8e8e8"; ctx.lineWidth=2; ctx.strokeRect(bx+2,by+2,bw-4,bh-4);
+      pxText("SCORDAGOL", VW/2, by+bh/2-12, 34, TTX.neon, 'c', 'm');
+      pxText("VOLLEY YOUR WAY TO GREATNESS", VW/2, by+bh/2+26, 14, TTX.grey, 'c', 'm'); }
+    ctx.imageSmoothingEnabled=prev;
+    ctx.strokeStyle="rgba(255,255,255,0.6)"; ctx.lineWidth=1; ctx.strokeRect(bx-0.5,by-0.5,bw+1,bh+1);
+    // progress toward the payout
+    const pw=400, px=VW/2-pw/2, py=by+bh+38;
+    ctx.fillStyle="rgba(255,255,255,0.14)"; ctx.fillRect(px,py,pw,10);
+    ctx.fillStyle=TTX.neon; ctx.fillRect(px,py,Math.round(pw*Math.min(1,elapsed/AD_SECS)),10);
+    if (done){
+      pxText(adGranted ? "+"+AD_MONIES+" MONIES. LOVELY." : "+"+AD_MONIES+" MONIES WAITING", VW/2, py+42, 16, TTX.yellow, 'c', 'm');
+      pxText("(VIC DOESN'T KNOW ABOUT THIS INCOME)", VW/2, py+64, 11, TTX.dim, 'c', 'm');
+      if (ttCursorOn()) pxText(TOUCH?"▶ TAP TO COLLECT":"▶ SPACE TO COLLECT", VW/2, SH-40, 16, TTX.neon, 'c', 'm');
+    } else {
+      pxText("PLEASE ENJOY THESE SCENES OF COMMERCE", VW/2, py+42, 12, TTX.grey, 'c', 'm');
+    }
+  }
+  function adBreakSelect(){   // Space / tap on the ad break: collect once it has played out
+    if (screenAge()<AD_SECS) return;             // no skipping the sponsors
+    if (!adGranted){ adGranted=true; watchAdReward(); }
+    lifeBtns=[]; state=ST.LIFE;
+  }
   // ---- trophy room: Sega-style renders on cabinet shelves ----
   function drawTrophyRoom(){
     ttBar("TROPHY ROOM", 0, 12, VW, 30, TTX.blue, "#ffd700", {size:17});
@@ -2454,6 +2798,14 @@
       ctx.font=ttFont(13); ctx.fillStyle="#ffd700"; ctx.textAlign="center"; ctx.textBaseline="middle";
       ctx.fillText("★ TROPHIES", tbX+tbW/2, tbY+tbH/2+1); ctx.textBaseline="alphabetic";
       trophyRoomBtn={x:tbX,y:tbY,w:tbW,h:tbH}; }
+    lifeHomeBtn=null;                                            // same £ THE LIFE button as the league home (E8)
+    if (CAR && CAR.monies!=null){ const lbW=110,lbH=26,lbX=VW-116-10-lbW-8,lbY=nbY+nbH+8;
+      ctx.fillStyle="rgba(0,0,10,0.55)"; ctx.fillRect(lbX,lbY,lbW,lbH);
+      ctx.strokeStyle=TTX.neon; ctx.lineWidth=1; ctx.strokeRect(lbX+0.5,lbY+0.5,lbW-1,lbH-1);
+      ctx.font=ttFont(13); ctx.fillStyle=TTX.neon; ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.fillText("£ THE LIFE", lbX+lbW/2, lbY+lbH/2+1); ctx.textBaseline="alphabetic"; ctx.textAlign="left";
+      lifeHomeBtn={x:lbX,y:lbY,w:lbW,h:lbH};
+    }
     if (TOUCH){ const bbW=92,bbH=26,bbX=10,bbY=nbY+nbH+8;
       ctx.fillStyle="rgba(0,0,10,0.55)"; ctx.fillRect(bbX,bbY,bbW,bbH);
       ctx.strokeStyle=TTX.yellow; ctx.lineWidth=1; ctx.strokeRect(bbX+0.5,bbY+0.5,bbW-1,bbH-1);
@@ -2765,7 +3117,8 @@
     CAR.trn=null; CAR.trnDone=false;
     CAR.objective = makeObjective();
     CAR.news.unshift("Board expectation: "+CAR.objective.label);
-    saveCareer(); state=ST.TABLE;
+    queueSeasonBrief();                                 // E8: Vic delivers the board's demands (+ his new cut)
+    saveCareer(); flushMsgs(()=>{ state=ST.TABLE; });
   }
 
   // ================= AGENT COMMUNICATION SCREEN — "Slick Vic" =================
@@ -2783,8 +3136,9 @@
     callup: "PACK YER BAGS, SUNSHINE, YOU'RE IN THE NATIONAL SQUAD! I TOLD 'EM YOU WERE THE REAL DEAL AND THEY SNAPPED ME HAND OFF. DON'T LET YER OL' PAL VIC DOWN NOW, EH?",
     nocall: "NO CALL-UP THIS TIME, MY SON. THEIR LOSS, NOT OURS. KEEP BANGING 'EM IN AND THEY'LL COME CRAWLIN' BACK. NOW THEN, LET'S 'AVE A BUTCHER'S AT THESE TRANSFER OFFERS, SHALL WE?"
   };
-  function showAgent(text, onComplete){
-    agentText=(text||"").toUpperCase(); agentSkip=false;
+  let agentWho="vic";   // which character is talking: 'vic' or a trainer id ('beef'|'sven'|'proteina')
+  function showAgent(text, onComplete, who){
+    agentText=(text||"").toUpperCase(); agentSkip=false; agentWho=who||"vic";
     agentNext = typeof onComplete==="function" ? onComplete : null;
     state=ST.AGENT; stateEnterAt=performance.now();   // restart the typewriter reveal
   }
@@ -2873,6 +3227,94 @@
     g.fillStyle=GOLDS; g.fillRect(32,70,2,2);
     return _vicCv=cv;
   }
+  // ---- Trainer portraits (E8). PLACEHOLDERS: primary = optional traced PNGs the owner will
+  // supply later (assets/ui/trainer_<id>.png, same pattern as slick_vic.png); fallback = the
+  // procedural busts below, so the screen is never blank (constraint #5).
+  const trainerImgs={};
+  for (const tid of ["beef","sven","proteina"]){
+    if (typeof Image!=="undefined"){ const im=new Image(); im.src="assets/ui/trainer_"+tid+".png?v=1"; trainerImgs[tid]=im; }
+  }
+  const _trainerCv={};
+  function trainerSprite(id){
+    if (_trainerCv[id]) return _trainerCv[id];
+    if (typeof document==="undefined" || !document.createElement) return null;
+    const W=66, H=76, cv=document.createElement("canvas"); cv.width=W; cv.height=H;
+    const g=cv.getContext("2d"); if(!g) return null;
+    const DK="#1b1310";
+    if (id==="beef"){
+      // Barry 'Beef' Binns: shaved head, red face, bull neck, grey club tracksuit, whistle
+      const SK="#e08a5f", SKH="#eda87f", SKS="#b06038", TRK="#5a5f66", TRKH="#787e86", ZIP="#c9ced4";
+      g.fillStyle=TRK; g.beginPath(); g.moveTo(0,76); g.lineTo(6,55); g.lineTo(60,55); g.lineTo(66,76); g.closePath(); g.fill();
+      g.fillStyle=TRKH; g.fillRect(6,55,54,3);
+      g.fillStyle=ZIP; g.fillRect(32,58,2,18);
+      g.fillStyle=SKS; g.fillRect(24,46,18,12);                                     // bull neck (wider than the head)
+      g.fillStyle=SK; g.beginPath(); g.ellipse(33,28,15,18,0,0,2*Math.PI); g.fill();
+      g.fillStyle=SKH; g.beginPath(); g.ellipse(33,20,11,8,0,0,2*Math.PI); g.fill(); // shining scalp
+      g.fillStyle=SKS; g.beginPath(); g.ellipse(33,40,11,5,0,0,2*Math.PI); g.fill(); // heavy jaw
+      g.fillStyle=DK; g.fillRect(21,24,9,3); g.fillRect(36,24,9,3);                  // flat angry brows
+      g.fillStyle="#fff"; g.fillRect(23,28,6,3); g.fillRect(37,28,6,3);
+      g.fillStyle=DK; g.fillRect(25,28,2,3); g.fillRect(39,28,2,3);
+      g.fillStyle=SKS; g.beginPath(); g.moveTo(33,30); g.lineTo(36,38); g.lineTo(30,38); g.closePath(); g.fill();
+      g.fillStyle=DK; g.fillRect(27,43,12,2);                                        // grim flat mouth
+      g.strokeStyle="#d8d8d8"; g.lineWidth=1.5; g.beginPath(); g.arc(33,62,8,0.15*Math.PI,0.85*Math.PI); g.stroke();
+      g.fillStyle="#c0c6cc"; g.fillRect(30,68,6,7);                                  // whistle
+      g.fillStyle=DK; g.fillRect(31,70,4,3);
+    } else if (id==="sven"){
+      // Sven Nutriblast: blond spikes, orange tan, wraparound shades, white vest, shaker bottle
+      const SK="#e69a52", SKH="#f2b877", VEST="#f2f2ee", VESTS="#cfcfc8", HAIR="#ffd94d", SHD="#101418";
+      g.fillStyle=VEST; g.beginPath(); g.moveTo(2,76); g.lineTo(10,56); g.lineTo(56,56); g.lineTo(64,76); g.closePath(); g.fill();
+      g.fillStyle=VESTS; g.beginPath(); g.moveTo(20,58); g.lineTo(28,76); g.lineTo(14,76); g.closePath(); g.fill();
+      g.fillStyle=SK; g.fillRect(27,47,12,11);
+      g.fillStyle=SK; g.beginPath(); g.ellipse(33,30,14,17,0,0,2*Math.PI); g.fill();
+      g.fillStyle=SKH; g.beginPath(); g.ellipse(33,36,9,7,0,0,2*Math.PI); g.fill();
+      g.fillStyle=HAIR;                                                               // spiked crown
+      for (let i=0;i<6;i++){ const sx=20+i*5; g.beginPath(); g.moveTo(sx,18); g.lineTo(sx+2.5,6+((i%2)*3)); g.lineTo(sx+5,18); g.closePath(); g.fill(); }
+      g.fillRect(19,14,28,7);
+      g.fillStyle=SHD; g.beginPath(); g.roundRect ? g.roundRect(20,25,26,7,3) : g.rect(20,25,26,7); g.fill();   // wraparound shades
+      g.fillStyle="#3b4c60"; g.fillRect(22,27,9,3); g.fillRect(35,27,9,3);
+      g.fillStyle="#fff"; g.beginPath(); g.moveTo(26,42); g.quadraticCurveTo(33,47,40,42); g.lineTo(40,44); g.quadraticCurveTo(33,49,26,44); g.closePath(); g.fill();   // huge white grin
+      g.fillStyle="#7ec8e3"; g.fillRect(50,58,10,15);                                  // shaker bottle
+      g.fillStyle="#5aa8c4"; g.fillRect(50,58,10,4);
+      g.fillStyle="#fff"; g.fillRect(53,54,4,5);
+    } else {
+      // Dr. Proteina: wild grey hair, green goggles, white lab coat, glowing green shake
+      const SK="#d8b08a", SKH="#e8c8a8", COAT="#f4f4f4", COATS="#d0d0d0", HAIR="#cfd2d6", GOG="#37e05a";
+      g.fillStyle=COAT; g.beginPath(); g.moveTo(0,76); g.lineTo(8,54); g.lineTo(58,54); g.lineTo(66,76); g.closePath(); g.fill();
+      g.fillStyle=COATS; g.beginPath(); g.moveTo(26,54); g.lineTo(33,70); g.lineTo(24,76); g.lineTo(16,58); g.closePath(); g.fill();
+      g.beginPath(); g.moveTo(40,54); g.lineTo(33,70); g.lineTo(42,76); g.lineTo(50,58); g.closePath(); g.fill();
+      g.fillStyle="#233"; g.fillRect(30,56,6,20);                                      // dark shirt under the coat
+      g.fillStyle=SK; g.fillRect(28,46,10,10);
+      g.fillStyle=SK; g.beginPath(); g.ellipse(33,29,13,16,0,0,2*Math.PI); g.fill();
+      g.fillStyle=SKH; g.beginPath(); g.ellipse(33,24,9,7,0,0,2*Math.PI); g.fill();
+      g.fillStyle=HAIR;                                                                // wild einstein tufts
+      g.beginPath(); g.ellipse(20,16,8,10,0.6,0,2*Math.PI); g.fill();
+      g.beginPath(); g.ellipse(46,16,8,10,-0.6,0,2*Math.PI); g.fill();
+      g.beginPath(); g.ellipse(33,10,10,7,0,0,2*Math.PI); g.fill();
+      g.fillStyle=GOG; g.beginPath(); g.arc(26,28,5,0,2*Math.PI); g.fill(); g.beginPath(); g.arc(40,28,5,0,2*Math.PI); g.fill();   // goggles
+      g.fillStyle="#0d3316"; g.beginPath(); g.arc(26,28,2.4,0,2*Math.PI); g.fill(); g.beginPath(); g.arc(40,28,2.4,0,2*Math.PI); g.fill();
+      g.strokeStyle="#556"; g.lineWidth=1.5; g.beginPath(); g.moveTo(31,28); g.lineTo(35,28); g.stroke();
+      g.fillStyle=DK; g.fillRect(28,41,10,2); g.fillRect(26,44,14,1.5);               // thin knowing smile + chin line
+      g.fillStyle="#37e05a"; g.fillRect(6,58,9,16);                                   // glowing beaker shake
+      g.fillStyle="#8affab"; g.fillRect(6,58,9,4);
+    }
+    return _trainerCv[id]=cv;
+  }
+  function drawTrainerPortrait(id,x,y,w,h){
+    ctx.fillStyle="#000000"; ctx.fillRect(x,y,w,h);
+    const prev=ctx.imageSmoothingEnabled; ctx.imageSmoothingEnabled=false;
+    const img=trainerImgs[id];
+    if (img && img.complete && img.naturalWidth){               // owner-supplied trace, when it exists
+      const s=Math.min(w/img.naturalWidth, h/img.naturalHeight);
+      const dw=img.naturalWidth*s, dh=img.naturalHeight*s;
+      ctx.drawImage(img, Math.round(x+(w-dw)/2), Math.round(y+(h-dh)/2), Math.round(dw), Math.round(dh));
+    } else {
+      const spr=trainerSprite(id);
+      if (spr){ const pad=Math.round(Math.min(w,h)*0.05), s=Math.max(1, Math.floor(Math.min((w-2*pad)/spr.width, (h-2*pad)/spr.height)));
+        const dw=spr.width*s, dh=spr.height*s;
+        ctx.drawImage(spr, Math.round(x+(w-dw)/2), Math.round(y+(h-dh)/2), dw, dh); }
+    }
+    ctx.imageSmoothingEnabled=prev;
+  }
   function drawVicPortrait(x,y,w,h){
     ctx.fillStyle="#000000"; ctx.fillRect(x,y,w,h);                       // black backing (matches the trace's pure-black bg)
     const prev=ctx.imageSmoothingEnabled; ctx.imageSmoothingEnabled=false;
@@ -2891,10 +3333,15 @@
   function drawAgentScreen(){
     ctx.fillStyle="#000000"; ctx.fillRect(0,0,VW,SH);                     // pure-black page (no header — owner)
     ctx.fillStyle="rgba(0,0,0,0.18)"; for(let yy=0;yy<SH;yy+=3) ctx.fillRect(0,yy,VW,1);   // faint CRT scanlines
-    // left: 1px-framed portrait (no caption — Vic introduces himself)
+    // left: 1px-framed portrait (Vic needs no caption — he introduces himself; trainers get a nameplate)
     const boxX=80, boxY=104, boxW=324, boxH=300;
-    drawVicPortrait(boxX, boxY, boxW, boxH);
+    if (agentWho==="vic") drawVicPortrait(boxX, boxY, boxW, boxH);
+    else drawTrainerPortrait(agentWho, boxX, boxY, boxW, boxH);
     ctx.strokeStyle="#ffffff"; ctx.lineWidth=1; ctx.strokeRect(boxX+0.5, boxY+0.5, boxW-1, boxH-1);
+    if (agentWho!=="vic"){
+      const td=TRAINERS.find(t=>t.id===agentWho);
+      if (td) pxText(td.name+"  ·  TRAINER", boxX+boxW/2, boxY+boxH+22, 14, TTX.cyan, 'c', 'm');
+    }
     // right: typewriter dialogue — white uppercase monospace, word-wrapped, revealed letter-by-letter
     const tx=boxX+boxW+50, tw=VW-tx-50, font=ttFont(18), reveal=agentRevealed();
     const lines=wrapText(agentText.slice(0,reveal), tw, font);            // greedy wrap is prefix-stable
@@ -3478,6 +3925,9 @@
     else if (state===ST.SEASONEND) { ttClear(); drawSeasonEnd(); drawTouchBack("← MENU"); }
     else if (state===ST.INBOX) { ttClear(); drawInbox(); drawTouchBack("← BACK"); }
     else if (state===ST.TROPHY) { ttClear(); drawTrophyRoom(); drawTouchBack("← BACK"); }
+    else if (state===ST.LIFE) { ttClear(); drawLife(); drawTouchBack("← BACK"); }
+    else if (state===ST.TRAINERSEL) { ttClear(); drawTrainerSel(); drawTouchBack("← BACK"); }
+    else if (state===ST.ADBREAK) { drawAdBreak(); touchBackBtn=null; }   // no escape from commerce (ESC still bails without the reward)
     else if (state===ST.EMAIL) { ttClear(); drawEmail(); drawTouchBack("← BACK"); }
     else if (state===ST.DAILYBOARD) { ttClear(); drawDailyBoard(); drawTouchBack("← MENU"); }
     else if (state===ST.HORSESETUP) { ttClear(); drawHorseSetup(); drawTouchBack("← MENU"); }
@@ -3525,7 +3975,10 @@
     else if (state===ST.TRNHUB){ GMODE="career"; state=ST.MENU; menuSel=0; }
     else if (state===ST.EMAIL){ state=ST.INBOX; }
     else if (state===ST.INBOX){ state=ST.SEASONEND; }
-    else if (state===ST.TROPHY){ state=ST.TABLE; }
+    else if (state===ST.TROPHY){ state=careerHomeState(); }
+    else if (state===ST.LIFE){ state=careerHomeState(); }
+    else if (state===ST.TRAINERSEL){ lifeBtns=[]; state=ST.LIFE; }
+    else if (state===ST.ADBREAK){ lifeBtns=[]; state=ST.LIFE; }   // bail early = no reward; the sponsors sulk
     else if (state===ST.TABLE || state===ST.SEASONEND){ GMODE="career"; state=ST.MENU; menuSel=0; }
     else if (state===ST.HORSESETUP){ kbdClose(); state=ST.MPMENU; menuSel=(mpMode==="classic"?0:1); }
     else if (state===ST.MPMENU){ state=ST.MENU; menuSel=0; }
@@ -3573,7 +4026,8 @@
       else startTrnMatch();
     }
     else if (state===ST.TABLE){ startFixture(); }
-    else if (state===ST.TROPHY){ state=ST.TABLE; }
+    else if (state===ST.ADBREAK){ adBreakSelect(); }
+    else if (state===ST.TROPHY){ state=careerHomeState(); }
     else if (state===ST.SEASONEND){ agentCallUp(); }   // State C: call-up check → transfer offers
     else if (state===ST.INBOX){ const n=(CAR.offers||[]).length; if(inboxSel<n) openEmail(inboxSel); else nextSeason(null); }
     else if (state===ST.COUNTDOWN){ countdownT=0; state=ST.SERVE; }   // skip the 3-2-1
@@ -3589,7 +4043,7 @@
     if (state===ST.NAME){ confirmName(); }
     else if (state===ST.MENU||state===ST.TABLE||state===ST.SEASONEND||state===ST.INBOX||state===ST.CLUBSEL||state===ST.NATSEL||state===ST.LEAGUESEL||state===ST.TRNHUB||state===ST.OVER||
              state===ST.MATCHEND||state===ST.DAILYBOARD||state===ST.HORSEPASS||state===ST.HORSEEND||
-             state===ST.MPMENU||state===ST.CLASSICPASS||state===ST.CLASSICEND||state===ST.AGENT) pressSelect();
+             state===ST.MPMENU||state===ST.CLASSICPASS||state===ST.CLASSICEND||state===ST.AGENT||state===ST.ADBREAK) pressSelect();
     else togglePause();                                   // in-match: ENTER = pause
   }
   function moveSel(dx,dy){
@@ -3651,6 +4105,8 @@
     if (k==="KeyM"){ e.preventDefault(); toggleMute(); return; }          // M = mute toggle
     if (state===ST.TABLE && k==="KeyE" && titleClinched()){ e.preventDefault(); endSeasonEarly(); return; }   // skip the run-in
     if (state===ST.TABLE && k==="KeyT"){ e.preventDefault(); state=ST.TROPHY; return; }    // trophy room
+    if (state===ST.TABLE && k==="KeyL"){ e.preventDefault(); openLife(); return; }         // the life (E8)
+    if (state===ST.LIFE && k==="KeyL"){ e.preventDefault(); state=ST.TABLE; return; }      // L toggles back out
     if (state===ST.EMAIL){
       if (k==="KeyA"){ e.preventDefault(); emailAction("accept"); return; }
       if (k==="KeyD"){ e.preventDefault(); emailAction("decline"); return; }
@@ -3773,9 +4229,18 @@
       if(TOUCH){ tableSwipeAnchorY=p.y; tableSwipeAnchorScroll=tableScrollY; }
       else {
         if(trophyRoomBtn && p.x>=trophyRoomBtn.x && p.x<=trophyRoomBtn.x+trophyRoomBtn.w && p.y>=trophyRoomBtn.y && p.y<=trophyRoomBtn.y+trophyRoomBtn.h) state=ST.TROPHY;
+        else if(lifeHomeBtn && p.x>=lifeHomeBtn.x && p.x<=lifeHomeBtn.x+lifeHomeBtn.w && p.y>=lifeHomeBtn.y && p.y<=lifeHomeBtn.y+lifeHomeBtn.h) openLife();
         else if(clinchBtn && p.x>=clinchBtn.x && p.x<=clinchBtn.x+clinchBtn.w && p.y>=clinchBtn.y && p.y<=clinchBtn.y+clinchBtn.h) endSeasonEarly();
         else pressSelect();
       }
+    }
+    else if(state===ST.LIFE || state===ST.TRAINERSEL){
+      for(const b of lifeBtns){ if(p.x>=b.x&&p.x<=b.x+b.w&&p.y>=b.y&&p.y<=b.y+b.h){ lifeAction(b); break; } }
+    }
+    else if(state===ST.TRNHUB){   // tournament hub: the footer buttons work here too
+      if(trophyRoomBtn && p.x>=trophyRoomBtn.x && p.x<=trophyRoomBtn.x+trophyRoomBtn.w && p.y>=trophyRoomBtn.y && p.y<=trophyRoomBtn.y+trophyRoomBtn.h) state=ST.TROPHY;
+      else if(lifeHomeBtn && p.x>=lifeHomeBtn.x && p.x<=lifeHomeBtn.x+lifeHomeBtn.w && p.y>=lifeHomeBtn.y && p.y<=lifeHomeBtn.y+lifeHomeBtn.h) openLife();
+      else pressSelect();
     }
     else if(state===ST.INBOX){ for(const r of inboxRects){ if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h){ inboxSel=r.i; pressSelect(); break; } } }
     else if(state===ST.EMAIL){ for(const b of emailBtns){ if(p.x>=b.x&&p.x<=b.x+b.w&&p.y>=b.y&&p.y<=b.y+b.h){ emailAction(b.k); break; } } }
@@ -3787,6 +4252,7 @@
     if(TOUCH && state===ST.TABLE && tableSwipeAnchorY!==null){
       if(Math.abs(p.y-tableSwipeAnchorY)<10){   // small movement = tap
         if(trophyRoomBtn && p.x>=trophyRoomBtn.x && p.x<=trophyRoomBtn.x+trophyRoomBtn.w && p.y>=trophyRoomBtn.y && p.y<=trophyRoomBtn.y+trophyRoomBtn.h) state=ST.TROPHY;
+        else if(lifeHomeBtn && p.x>=lifeHomeBtn.x && p.x<=lifeHomeBtn.x+lifeHomeBtn.w && p.y>=lifeHomeBtn.y && p.y<=lifeHomeBtn.y+lifeHomeBtn.h) openLife();
         else if(clinchBtn && p.x>=clinchBtn.x && p.x<=clinchBtn.x+clinchBtn.w && p.y>=clinchBtn.y && p.y<=clinchBtn.y+clinchBtn.h) endSeasonEarly();
         else pressSelect();
       }
@@ -3864,12 +4330,16 @@
           const T=CAR.trn;
           if (T.stage==='out'||T.stage==='won'){ CAR.trnDone=true; enterSeasonEnd(); return {trn:T.stage, exited:true, state}; }
           const o=trnSetup(); matchBalls=5; matchTargetBalls=5; matchKO=o.ko; setTargets();
-          M.score = win?M.winTarget:0; M.goals=win?2:0; commitMatch();
+          M.score = win?M.winTarget:0; M.goals=win?2:0;
+          matchEarnings(win?'W':'L');
+          commitMatch();
           return {trn:CAR.trn.stage, state};
         }
         const ev=peekEvent(); if (!ev){ seasonOver(); return {done:true, state}; }
         const o=eventSetup(ev); matchBalls=o.balls; matchTargetBalls=o.targetBalls||o.balls; matchKO=o.ko; setTargets();
-        M.score = win?M.winTarget:0; M.goals=win?2:0; commitMatch();
+        M.score = win?M.winTarget:0; M.goals=win?2:0;
+        matchEarnings(win?'W':'L');                     // autoplay skips endMatch, so pay day lands here
+        commitMatch();
         return {ev:ev.t, state};
       },
       // ---- E7 journey harness ----
@@ -3885,6 +4355,21 @@
       offersSim: function(){ return (CAR.offers||[]).map(o=>({slug:o.slug, rating:o.rating, leagueId:o.leagueId})); },
       loadCareerSim: function(){ CAR=loadCareer(); if(CAR) setActiveLeague(CAR.leagueId);
         return CAR && { rep:CAR.rep, energy:CAR.energy, trust:CAR.trust, leagueId:CAR.leagueId, season:CAR.season }; },
+      // ---- E8 "The Life" harness ----
+      lifeInfo: function(){ return CAR ? { monies:CAR.monies, earned:CAR.earned, vicCut:vicCutPct(),
+        energy:CAR.energy, lastEarn:CAR.lastEarn||null, adSeen:!!CAR.adSeen,
+        trainer:(CAR.trainer&&CAR.trainer.games>0)?{id:CAR.trainer.id, games:CAR.trainer.games, rec:trainerRec()}:null,
+        sponsor:CAR.sponsor?{name:CAR.sponsor.name, left:CAR.sponsor.left}:null,
+        items:CAR.items?Object.keys(CAR.items):[], lifeBonus:lifeBonus(), effRep:effRep(),
+        msgs:(CAR.msgs||[]).map(m=>m.who), agentWho:(state===ST.AGENT?agentWho:null) } : null; },
+      setMonies: function(n){ CAR.monies=n|0; return CAR.monies; },
+      buyShakeSim: function(i){ return buyShake(i|0); },
+      shakePriceSim: function(i){ return shakePrice(SHAKES[i|0]); },
+      hireTrainerSim: function(id){ return hireTrainer(id); },
+      buyItemSim: function(id){ return buyLifestyle(id); },
+      signSponsorSim: function(){ return signSponsor(); },
+      watchAdSim: function(){ return watchAdReward(); },
+      popMsgSim: function(){ const m=(CAR.msgs||[]).shift(); return m||null; },
       resetUnlocksSim: function(){ UNLOCKS={leagues:{}, freestart:false}; saveUnlocks(); return true; },   // audit: stage the locked journey map
       forceUnlocksSim: function(o){ o=o||{}; if(o.freestart) UNLOCKS.freestart=true; for (const id of (o.leagues||[])) UNLOCKS.leagues[id]=true; saveUnlocks(); return true; },
       stageClubSelSim: function(league){ pendingMode="career"; pendingLeague=league||"ENG"; setActiveLeague(pendingLeague); menuSel=0; return TEAMS.length; },
@@ -3896,6 +4381,7 @@
         if (which==='team'){ agentTeamPick(); }
         else if (which==='callup_yes'){ showAgent(VIC_LINES.callup, null); }
         else if (which==='callup_no'){ showAgent(VIC_LINES.nocall, null); }
+        else if (which==='trainer'){ showAgent(TRAINERS[2].hire, null, 'proteina'); }   // longest trainer speech = wrap worst case
         else { agentIntro(); }
         agentSkip=true;   // reveal all text so the layout audit sees the full wrapped block
         return {state, len:agentText.length};

@@ -5,7 +5,7 @@ foreign leagues, cups, European nights, international tournaments, and a light
 management layer — without ever diluting the core: **every fixture is still the
 10-ball volley game.***
 
-**Status:** E0 (calendar) + E1 (domestic cup) + E4 (Europe) + E5 (internationals) + E3 (foreign leagues) + **E7 (the Journey — see §10)** **shipped**. Owner decisions applied: cup/Europe/international matches are **5 balls with halved targets**; knockout ties are win-or-go-home (no draw band); the **World Tournament runs every 2 years, starting season 1** (E7: once your reputation earns a call-up); the career home shows a **tailored view per competition** (league table / cup ladder / group table / flag-themed tournament hub). Remaining phases: E2 is partially in (nationality select shipped with E5), E6 (management economy) open. Builds on the engine as-is
+**Status:** E0 (calendar) + E1 (domestic cup) + E4 (Europe) + E5 (internationals) + E3 (foreign leagues) + **E7 (the Journey — see §10)** + **E8 (the Life — see §11)** **shipped**. Owner decisions applied: cup/Europe/international matches are **5 balls with halved targets**; knockout ties are win-or-go-home (no draw band); the **World Tournament runs every 2 years, starting season 1** (E7: once your reputation earns a call-up); the career home shows a **tailored view per competition** (league table / cup ladder / group table / flag-themed tournament hub). Remaining phases: E2 is partially in (nationality select shipped with E5), E6 (management economy) open. Builds on the engine as-is
 (`index.html`): `CAR` save object, `TEAMS`/`teams.json`, `simRound`/`teamStrength`
 league sim, transfer-offer inbox, seeded matches, the HORSE turn engine.
 
@@ -234,3 +234,46 @@ count toward free start. `vc_unlocks` lives OUTSIDE `vc_career` so it survives n
 Deferred E7 ideas (owner's "unlockables" theme, cosmetic-only): unlockable ball skins /
 boot colours / celebrations tied to milestones; a PROFILE/milestones panel; sacking +
 forced transfer-listing after a FURIOUS season.
+
+## 11. E8 — "The Life" (SHIPPED 2026-07-02, same session as E7 round 2)
+
+Owner brief: replicate the NSS (New Star Soccer) bux economy — energy you replenish with
+consumables, money from wages/sponsors/ads, lifestyle that feeds reputation, a hired
+trainer, an agent who takes his cut — with the satire dialled up (protein-shake culture).
+Research notes: NSS NRG prices scale with star rating; staff are hired per match-block and
+boost post-match recovery; sponsors refuse players with no lifestyle items; wages start tiny.
+
+1. **Monies** (`CAR.monies`). Wage per appearance (tier-2: `10+rating*3`, tier-1:
+   `40+rating*10`) + 60% win bonus + per-goal bonus + sponsor payouts, paid at `endMatch`
+   (`matchEarnings`, shown on the VICTORY/LOSS burst). **Vic's cut** = `10% + 1%/season`
+   (cap 25) off ALL income — he announces the rise in his season brief. Kept deliberately
+   tight early (a Championship kid nets ~25/match) so choices matter.
+2. **Protein shakes** (the satire): HALF SCOOP +25 / DOUBLE SCOOP +55 / MASS GAINER 5000
+   (full), priced `mult × your stars` (NSS NRG rule). Energy now drains ~29 per 10-ball
+   match with only weak natural recovery (14 + housing + trainer) — the E7 tired-legs
+   ball-cut is unchanged, but shakes/trainer/housing are how you manage it. Reset to 100
+   each season; benched players stay fresh (cameos cost little).
+3. **Trainer**: hired by the 10-game block on THE GYM screen; three tiers with
+   personalities and agent-style comms (hire speech, a nag when you dip under 40 energy,
+   a goodbye when the block runs out): Barry 'Beef' Binns (80 M, +8/match), Sven
+   Nutriblast (240 M, +13), Dr. Proteina (550 M, +18). Portraits are procedural
+   PLACEHOLDERS with a PNG-first hook (`assets/ui/trainer_<id>.png`) for the owner's art.
+4. **Lifestyle shop** (THE LIFE screen): CLOTHES / MOTOR / GADGETS / THE GAFF, 3-4 tiers
+   each, buy upward only. Items add a lifestyle bonus to **effective rep**
+   (`effRep = rep + lifeBonus`, used by transfer-offer gating and sponsors); housing also
+   boosts recovery (NSS properties rule).
+5. **Sponsors**: one active deal, gated on effRep AND owning ≥1 lifestyle item (no
+   clobber, no sponsors): TONY'S MEAT VAN (10) → CRISPY NUGGZ (30) → SCORBOOST PRO-TEIN
+   (50) → GALAXY AIRWAYS (70); pay per goal/win for 20 matches, Vic taxed.
+6. **A WORD FROM OUR SPONSORS**: a fake rewarded ad — one of the ground's own hoarding
+   boards full-screen for 4 unskippable seconds → +12 M, once per matchday, Vic-cut-free
+   ("Vic doesn't know about this income"). Future hook for a real rewarded-ad network.
+7. **Comms queue** (`CAR.msgs` → `flushMsgs` on returning to the career home): Vic
+   delivers the board expectation + his cut every season start, on/off-track updates at
+   1/3 and 0.7 of the season, and promotion/benching news (the E7 trust beats); trainers
+   talk in their own voices with their own portraits.
+
+Saves migrate with savings (`100 + 150/season`); `vc_career` gains `monies/earned/items/
+trainer/sponsor/msgs/adSeen`. UI: £ THE LIFE button on every career home (key L), monies
+in the header, THE LIFE + THE GYM + ad-break screens, pay-day line on the match-end burst.
+

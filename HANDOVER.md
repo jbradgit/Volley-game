@@ -11,9 +11,24 @@ The 3D-sprite pipeline (old §3) is **long DONE and deployed**. **Live site:**
 https://jbradgit.github.io/Volley-game/ (GitHub Pages serves `main`).
 
 **Git state right now (2026-07-02, second session):**
-- **IN FLIGHT: branch `claude/career-journey` (this working tree) — E7 "The Journey" career
-  overhaul, UNDEPLOYED, awaiting the owner's eyeball** (visual + gameplay change → owner review
-  before landing on `main`). Full CI green (36/36 + smoke), layout audit clean (24 screens).
+- **IN FLIGHT: branch `claude/career-journey` (this working tree) — E7 "The Journey" + E8 "The
+  Life" career overhaul, UNDEPLOYED, awaiting the owner's eyeball** (visual + gameplay change →
+  owner review before landing on `main`). Full CI green (42/42 + smoke), layout audit clean
+  (29 screens).
+  **E8 "The Life" (owner's NSS-economy brief, same branch, second commit):** `CAR.monies`
+  economy (wages by club size/tier + win/goal bonuses; **Vic's cut 10% +1%/season** off all
+  income, announced in his season brief); **NSS-style energy** (matches drain ~29, weak natural
+  recovery — replenished by satirical **protein shakes** priced by star rating, a **trainer**
+  hired per 10-game block: Beef/Sven/Dr. Proteina, 3 tiers with personalities + procedural
+  placeholder portraits swappable via `assets/ui/trainer_<id>.png`, and better housing);
+  **lifestyle shop** (clothes/motor/gadgets/the gaff) feeding `effRep()` which gates transfer
+  offers AND **sponsor deals** (Tony's Meat Van → Galaxy Airways, per-goal/per-win for 20
+  matches, need ≥1 item); **A WORD FROM OUR SPONSORS** fake rewarded ad (+12 M, once per
+  matchday, unskippable 4s, Vic-cut-free); **comms queue** (`CAR.msgs`/`flushMsgs`): Vic
+  delivers board expectations each season + mid-season on/off-track updates + promotion/benched
+  news; trainers nag/say goodbye in their own voices. New screens: THE LIFE (key L / £ button on
+  every career home incl. cup/Euro/tournament), THE GYM, ad break; pay-day line on the match-end
+  burst; monies in the career header. Design: `docs/CAREER_DESIGN.md` §11.
   What it is (owner brief: "career mode should feel like a journey", NSS-style):
   new **second tier `ENG2`** ("The Championship", 20 clubs, tier 2, no Europe) where every new
   career now STARTS; elite leagues/big clubs **LOCKED** on the select screens until earned

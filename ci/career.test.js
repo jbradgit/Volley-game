@@ -184,7 +184,8 @@ test("journey: wins earn the coach's trust — cameo -> super sub -> starter", a
   assert.equal(roles[0], "cameo");
   assert.ok(roles.includes("sub"), "passes through the super-sub role: " + roles.join(","));
   assert.equal(dbg.journeyInfo().role, "starter", "a winning run earns a starting spot");
-  assert.equal(dbg.matchPlanSim().balls, 10, "a starter gets the full 10 balls");
+  dbg.setJourney({ energy: 100 });   // isolate the ROLE quota from tired legs (E8: matches drain energy)
+  assert.equal(dbg.matchPlanSim().balls, 10, "a fresh starter gets the full 10 balls");
 });
 
 test("journey: tired legs mean fewer balls for the SAME target", async () => {
@@ -214,12 +215,12 @@ test("journey: winning the second tier brings top-flight offers but NO European 
 
 test("journey: reputation gates the elite — and a top-flight title unlocks free start", async () => {
   const { dbg } = await loadGame();
-  // a modest reputation only attracts modest clubs
-  dbg.fakeSeasonEnd(1, 20);
+  // an unknown champion: the title itself bumps rep (~+16), but the gates still hold him to small clubs
+  dbg.fakeSeasonEnd(1, 0);
   let offers = dbg.offersSim();
   assert.ok(offers.length > 0, "a champion still gets offers");
-  assert.ok(offers.every(o => o.rating <= 5), "rep 20 only tempts modest clubs: " + JSON.stringify(offers));
-  assert.ok(!offers.some(o => o.leagueId !== "ENG"), "no foreign interest at rep 20");
+  assert.ok(offers.every(o => o.rating <= 4), "a low-rep champion only tempts modest clubs: " + JSON.stringify(offers));
+  assert.ok(!offers.some(o => o.leagueId !== "ENG"), "no foreign interest at low rep");
 
   // a superstar champion gets the giants and the continent
   const { dbg: dbg2 } = await loadGame();
@@ -240,6 +241,105 @@ test("journey: accepting a foreign offer moves the career abroad with trust to r
   // and the new season plays through without error
   const c = playSeason(dbg, true);
   assert.ok(c.L >= 38, "a full La Liga season plays out");
+});
+
+// ================= E8 "The Life": Monies, protein shakes, the trainer, lifestyle, sponsors =================
+
+test("life: a new career is skint, wages land minus Vic's cut, and the cut rises each season", async () => {
+  const { dbg } = await loadGame();
+  dbg.newCareerSim("England", "ENG2", "Millwall");
+  let l = dbg.lifeInfo();
+  assert.equal(l.monies, 60, "an unknown kid starts skint");
+  assert.equal(l.vicCut, 10, "Vic opens at 10%");
+  assert.ok(l.msgs.includes("vic"), "Vic's season brief (board expectation + his cut) is queued");
+
+  dbg.setJourney({ trust: 100 });    // a full 10-ball match so the energy cost is visible
+  dbg.playNext(true);
+  l = dbg.lifeInfo();
+  assert.ok(l.monies > 60, "an appearance pays wages");
+  assert.ok(l.lastEarn && l.lastEarn.gross > 0);
+  assert.equal(l.lastEarn.cut, Math.round(l.lastEarn.gross * 0.10), "Vic skims exactly his 10%");
+  assert.equal(l.lastEarn.net, l.lastEarn.gross - l.lastEarn.cut);
+  assert.ok(l.energy < 100, "a match costs legs (NSS model)");
+
+  // roll to season 2: the cut goes up
+  let guard = 240, r;
+  while (guard-- > 0){ r = dbg.playNext(true); if (r.done || r.exited || r.state === "seasonend") break; }
+  dbg.nextSeasonSim();
+  assert.equal(dbg.lifeInfo().vicCut, 11, "Vic's cut rises every season");
+  assert.equal(dbg.lifeInfo().energy, 100, "fresh legs every new season");
+});
+
+test("life: protein shakes restore energy for monies, priced by your stars", async () => {
+  const { dbg } = await loadGame();
+  dbg.newCareerSim("England", "ENG2", "Millwall");
+  dbg.setMonies(500);
+  dbg.setJourney({ energy: 40 });
+  const price = dbg.shakePriceSim(0);
+  assert.equal(price, 18, "HALF SCOOP at 1 star = 18 monies");
+  assert.equal(dbg.buyShakeSim(0), true);
+  let l = dbg.lifeInfo();
+  assert.equal(l.energy, 65, "+25 NRG");
+  assert.equal(l.monies, 500 - price);
+  dbg.setJourney({ energy: 100 });
+  assert.equal(dbg.buyShakeSim(0), false, "no shake-hoarding at full energy");
+});
+
+test("life: a trainer is hired by the block, tops up recovery, and says goodbye when it expires", async () => {
+  const { dbg } = await loadGame();
+  dbg.newCareerSim("England", "ENG2", "Millwall");
+  dbg.setMonies(500);
+  assert.equal(dbg.hireTrainerSim("beef"), true);
+  let l = dbg.lifeInfo();
+  assert.equal(l.monies, 420, "Beef costs 80 for the block");
+  assert.deepEqual({ id: l.trainer.id, games: l.trainer.games, rec: l.trainer.rec }, { id: "beef", games: 10, rec: 8 });
+  for (let i = 0; i < 10; i++) dbg.playNext(true);
+  l = dbg.lifeInfo();
+  assert.equal(l.trainer, null, "the 10-game block is used up");
+  // the goodbye is either still queued or already up on screen (the comms flush runs per match)
+  assert.ok(l.msgs.includes("beef") || l.agentWho === "beef", "Beef says goodbye when the block expires");
+});
+
+test("life: no clobber, no sponsors — lifestyle raises effective rep and unlocks deals", async () => {
+  const { dbg } = await loadGame();
+  dbg.newCareerSim("England", "ENG2", "Millwall");
+  dbg.setJourney({ rep: 30 });
+  assert.equal(dbg.signSponsorSim(), false, "sponsors want a player WITH a lifestyle");
+  dbg.setMonies(500);
+  assert.equal(dbg.buyItemSim("trackie"), true);
+  let l = dbg.lifeInfo();
+  assert.equal(l.lifeBonus, 1);
+  assert.equal(l.effRep, 31, "effective rep = earned rep + lifestyle");
+  assert.equal(dbg.signSponsorSim(), true);
+  l = dbg.lifeInfo();
+  assert.equal(l.sponsor.name, "CRISPY NUGGZ", "effRep 31 reaches the tier-2 deal");
+  assert.equal(l.sponsor.left, 20);
+  dbg.playNext(true);
+  assert.equal(dbg.lifeInfo().sponsor.left, 19, "each match burns a sponsor appearance");
+});
+
+test("life: the sponsored ad pays once per matchday, tax-free (Vic doesn't know)", async () => {
+  const { dbg } = await loadGame();
+  dbg.newCareerSim("England", "ENG2", "Millwall");
+  const m0 = dbg.lifeInfo().monies;
+  assert.equal(dbg.watchAdSim(), true);
+  assert.equal(dbg.lifeInfo().monies, m0 + 12, "+12, no cut taken");
+  assert.equal(dbg.watchAdSim(), false, "one word from the sponsors per matchday");
+  dbg.playNext(true);
+  assert.equal(dbg.watchAdSim(), true, "a new matchday brings a new ad");
+});
+
+test("life: a pre-Life save migrates with some savings put by", async () => {
+  const { dbg, sandbox } = await loadGame();
+  dbg.newCareerSim("England", "ENG", "Liverpool");
+  const save = JSON.parse(sandbox.localStorage.getItem("vc_career"));
+  delete save.monies; delete save.items; delete save.trainer; delete save.sponsor; delete save.msgs; delete save.earned;
+  save.season = 3;
+  sandbox.localStorage.setItem("vc_career", JSON.stringify(save));
+  dbg.loadCareerSim();
+  const l = dbg.lifeInfo();
+  assert.equal(l.monies, 400, "season-3 pro migrates with 100 + 2x150 savings");
+  assert.equal(l.vicCut, 12, "Vic's cut tracks the season even for migrated saves");
 });
 
 test("journey: a pre-journey save migrates to an established starter (never a downgrade)", async () => {

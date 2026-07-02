@@ -49,6 +49,12 @@ const SCREENS = [
   { name: 'leaguesel_free',  state: 'LEAGUESEL',   setup: "__dbg.forceUnlocksSim({freestart:true})" },
   { name: 'clubsel_locked',  state: 'CLUBSEL',     setup: "__dbg.resetUnlocksSim();__dbg.stageClubSelSim('ENG')" },
   { name: 'clubsel_eng2',    state: 'CLUBSEL',     setup: "__dbg.stageClubSelSim('ENG2')" },
+  // E8 "The Life": shop/gym/ad-break worst cases (skint vs loaded), plus a trainer monologue
+  { name: 'life_skint',      state: 'LIFE',        setup: "__dbg.newCareerSim('England','ENG2','Millwall');__dbg.setJourney({energy:47})" },
+  { name: 'life_loaded',     state: 'LIFE',        setup: "__dbg.newCareerSim('England','ENG2','Millwall');__dbg.setMonies(20000);__dbg.setJourney({rep:60,energy:35});__dbg.buyItemSim('trackie');__dbg.buyItemSim('saloon');__dbg.buyItemSim('mansion');__dbg.signSponsorSim();__dbg.hireTrainerSim('sven')" },
+  { name: 'trainersel',      state: 'TRAINERSEL',  setup: "__dbg.newCareerSim('England','ENG2','Millwall');__dbg.setMonies(700)" },
+  { name: 'adbreak',         state: 'ADBREAK' },
+  { name: 'agent_trainer',   state: 'AGENT',       setup: "__dbg.agentSim('trainer')" },
   { name: 'name',            state: 'NAME' },
   { name: 'natsel',          state: 'NATSEL' },
   { name: 'clubsel',         state: 'CLUBSEL',     setup: "__dbg.forceUnlocksSim({freestart:true});__dbg.newCareerSim('Brazil','ENG','Liverpool');__dbg.stageClubSelSim('ENG')" },
