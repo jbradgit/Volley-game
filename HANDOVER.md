@@ -38,6 +38,19 @@ https://jbradgit.github.io/Volley-game/ (GitHub Pages serves `main`).
   monies, shop, sponsors) and ALL agent speeches now read **one sentence per screen** (progress
   dots). Starting XI slower to crack (trust threshold 70, gains halved, start trust 20). All
   league AI **×1.1** ("10% harder all around"). Design: `docs/CAREER_DESIGN.md` §11b.
+  **Owner round 15 (fourth commit, same branch) — polish/UX pass (ui-ux-pro-max skill):** UI kit
+  (`SP=8` grid, `uiPanel`, 11 hand-drawn 16x16 pixel icons via `drawIcon`); **£ SHOP is now a HUB**
+  of five full-screen departments (PROTEIN CORNER / THE GYM / LIFESTYLE 2x2 grid with tier pips /
+  SPONSORS ladder with locked tiers / FINANCES) — no more cramming; **CONTRACT ceremony**
+  (`ST.CONTRACT`, club-letterhead paper, terms, signatures, SPACE TO SIGN) at career start and on
+  every transfer; discreet **SKIP ✕** on comms (drains the queue; ESC too); shakes = **SINGLE /
+  DOUBLE SCOOP only**; **S-MAIL** rebrand + avatar/tag-chip inbox + the **dealer** (every email
+  pool dealt without replacement — no two emails alike); **trophies regenerated** (gen_trophies.py:
+  crowned league gold, silver lidded pot, big-eared Euro jug, golden globe; dual glints/rim
+  light/bloom) + **gallery trophy room** (spotlights, glass shelves, reflections, engraved
+  plaques) + **cup-week popup** (first visit per cup round / Euro stage: the trophy at stake +
+  the tie). Audit now 34 screens (hub/departments/contract/full trophy room staged; overlays —
+  tooltip + cup popup — eyeballed via snaps, not linted). CI 47/47 + smoke.
   What it is (owner brief: "career mode should feel like a journey", NSS-style):
   new **second tier `ENG2`** ("The Championship", 20 clubs, tier 2, no Europe) where every new
   career now STARTS; elite leagues/big clubs **LOCKED** on the select screens until earned

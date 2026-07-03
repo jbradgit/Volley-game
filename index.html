@@ -343,7 +343,7 @@
 
   // ---- Game state ----
   const ST = { MENU:"menu", NAME:"name", CLUBSEL:"clubsel", LEAGUESEL:"leaguesel", TABLE:"table", SEASONEND:"seasonend",
-               SHOP:"shop", LEDGER:"ledger", TRAINERSEL:"trainersel", ADBREAK:"adbreak",
+               SHOP:"shop", PROTEIN:"protein", LIFESTYLE:"lifestyle", SPONSOR:"sponsor", LEDGER:"ledger", TRAINERSEL:"trainersel", ADBREAK:"adbreak", CONTRACT:"contract",
                INBOX:"inbox", EMAIL:"email", TROPHY:"trophy", NATSEL:"natsel", TRNHUB:"trnhub",
                TITLE:"title", COUNTDOWN:"countdown", SERVE:"serve", FLIGHT:"flight", RESULT:"result",
                MATCHEND:"matchend", OVER:"over",
@@ -547,16 +547,15 @@
   // (recovery per match), and lifestyle (clothes/motor/gadgets/the gaff) that boosts your
   // EFFECTIVE reputation — which is what big clubs and sponsors look at. Vic takes his cut
   // of everything, and it goes up every season. Prices scale with your star rating (NSS NRG rule).
-  const SHAKES=[
-    { id:'s', name:"HALF SCOOP",       nrg:25,  mult:18 },
-    { id:'m', name:"DOUBLE SCOOP",     nrg:55,  mult:36 },
-    { id:'l', name:"MASS GAINER 5000", nrg:100, mult:60 } ];
+  const SHAKES=[   // sold in single or double scoops only (owner)
+    { id:'s', name:"SINGLE SCOOP", nrg:25, mult:18 },
+    { id:'m', name:"DOUBLE SCOOP", nrg:55, mult:36 } ];
   function shakePrice(s){ return s.mult*Math.max(1, repStars(effRep())); }
   const TRAINERS=[
     { id:'beef', name:"BARRY 'BEEF' BINNS", tier:1, cost:80, rec:8, games:10,
       blurb:"OLD SCHOOL. RAW EGGS. BEEF.",
       hire:"RIGHT THEN, SON. RULE ONE: PROTEIN. RULE TWO: MORE PROTEIN. I'VE BEEN ON THE SHAKES SINCE HALF SIX THIS MORNING AND I'VE NEVER FELT BETTER. TWO SCOOPS A DAY AND YOU'LL BE BUILT LIKE A RIDING SCHOOL. RIGHT, LET'S GRAFT.",
-      nag:"OI OI. LOOK AT THE STATE OF YOUR LEGS, SON. GET A SHAKE DOWN YOU BEFORE THE GAFFER NOTICES. HALF SCOOP MINIMUM. BEEF FLAVOUR IF THEY'VE GOT IT.",
+      nag:"OI OI. LOOK AT THE STATE OF YOUR LEGS, SON. GET A SHAKE DOWN YOU BEFORE THE GAFFER NOTICES. SINGLE SCOOP MINIMUM, DOUBLE IF YOU'RE SERIOUS. BEEF FLAVOUR IF THEY'VE GOT IT.",
       bye:"THAT'S ME DONE, SON. CONTRACT'S UP. RE-SIGN ME DOWN THE SHOP AND WE'LL GET YOU PROPER HENCH. DON'T LEAVE IT TOO LONG. PROTEIN WAITS FOR NO MAN." },
     { id:'sven', name:"SVEN NUTRIBLAST", tier:2, cost:240, rec:13, games:10,
       blurb:"MACROS. ISOLATES. SCIENCE.",
@@ -865,7 +864,13 @@
     "They say the first five yards are in your head. Yours are absolutely rapid.",
     "There are no easy games at this level, yet you make it look like a training session.",
     "Week in, week out, you put it in the mixer and ask serious questions of the keeper. We've run out of answers.",
-    "Our analysts ran your numbers through the computer. The computer asked for your autograph." ];
+    "Our analysts ran your numbers through the computer. The computer asked for your autograph.",
+    "Our club cat has ignored every signing for nine years. It sat on your scouting report.",
+    "The kitman has already printed your name on a shirt. Presumptuous, yes. Wrong, no.",
+    "The tea lady says you remind her of the good years. She has seen everything, son.",
+    "Our under-nines have started celebrating like you. The physio says half of them are volleying indoors.",
+    "The groundsman measured where your shots land. He says the grass grows greener there.",
+    "We showed your highlights in the boardroom. The chairman missed his flight. On purpose." ];
   const OFFER_CLOSE=[
     "At the end of the day, when all's said and done, it's a no-brainer.",
     "Come and write your name into folklore. Early doors, ideally.",
@@ -874,7 +879,12 @@
     "Football, eh? Bloody hell. Just say yes.",
     "No pressure, but the season-ticket waiting list doubled when this leaked.",
     "The ball is in your court. Ideally arriving on the volley.",
-    "We took it one game at a time all season. Now we're taking it one email at a time." ];
+    "We took it one game at a time all season. Now we're taking it one email at a time.",
+    "The shirt is hanging up. The kettle is on. The rest is up to you.",
+    "Sleep on it. But sleep fast, the window doesn't stay open forever.",
+    "Our fax machine is warmed up and frankly so is the whole town.",
+    "PS the chairman says money is no object. The accountant says it is a small object. Come anyway.",
+    "The club parrot has learned your name. There is no going back now, for any of us." ];
   const OFFER_SCEN=[
     { max:1, subj:["Join the Champions","Best signs for best. Simple.","Winners want winners","Champagne football awaits"],
       hook:["As champions we shop in one aisle only: the very top shelf. And there you are.",
@@ -902,14 +912,22 @@
       pitch:["It'll be backs-to-the-wall stuff some weeks, but when our fortress is bouncing there's no place like it.",
              "It's a results business, and our results need you. We can offer mud, passion, and surprisingly good floodlights."] } ];
   function offerScen(fp){ for (const s of OFFER_SCEN) if (fp<=s.max) return s; return OFFER_SCEN[OFFER_SCEN.length-1]; }
-  function offerSubject(fp){ const s=offerScen(fp); return s.subj[rnd(s.subj.length)]; }
-  function offerBody(t, fp, sign){
+  // The DEALER (owner: no two emails the same): every pool is dealt like a shuffled deck for the
+  // whole inbox, so senders/subjects/lines never repeat until a pool is genuinely exhausted.
+  function mkDealer(){
+    const pots={};
+    return (key, arr)=>{ let pot=pots[key];
+      if (!pot || !pot.length) pot=pots[key]=shuffle(arr.slice());
+      return pot.pop(); };
+  }
+  function offerSubject(fp, deal){ const s=offerScen(fp); return deal("subj"+s.max, s.subj); }
+  function offerBody(t, fp, sign, deal){
     const s=offerScen(fp), fill=(x)=>x.replace(/{posth}/g, ord(fp)).replace(/{kit}/g, kitDesc(t.slug));
     return "Dear "+CAR.name+",\n\n"+
-      fill(s.hook[rnd(s.hook.length)])+"\n\n"+
-      OFFER_FLATTER[rnd(OFFER_FLATTER.length)]+"\n\n"+
-      fill(s.pitch[rnd(s.pitch.length)])+"\n\n"+
-      OFFER_CLOSE[rnd(OFFER_CLOSE.length)]+"\n\n"+
+      fill(deal("hook"+s.max, s.hook))+"\n\n"+
+      deal("flatter", OFFER_FLATTER)+"\n\n"+
+      fill(deal("pitch"+s.max, s.pitch))+"\n\n"+
+      deal("close", OFFER_CLOSE)+"\n\n"+
       "Yours in football,\n"+sign[0]+", "+sign[1]+"\n"+t.name;
   }
   // A club only writes to a player whose name is big enough (E7: reputation gates the ladder).
@@ -921,22 +939,29 @@
     const teams=LEAGUES[leagueId]||[];
     return teams.slice().sort((a,b)=>(b.rating-a.rating)||a.name.localeCompare(b.name)).findIndex(x=>x.slug===t.slug)+1;
   }
-  function mkOffer(t, fp, leagueId){
-    const sign=OFFER_SIGN[rnd(OFFER_SIGN.length)];
-    const foreign = leagueId && leagueId!==CAR.leagueId;
-    let body=offerBody(t,fp,sign);
-    if (foreign && LEAGUE_META[leagueId])
-      body=body.replace("\n\nYours in football,", "\n\nP.S. Yes, this one means "+LEAGUE_META[leagueId].name+" football. Your volleys translate to any language.\n\nYours in football,");
+  const OFFER_PS=[   // the cross-border postscripts (dealt, like everything else)
+    "P.S. Yes, this one means {lg} football. Your volleys translate to any language.",
+    "P.S. We know it's a long way from home. The sunshine is included in the package.",
+    "P.S. The {lg} has been crying out for a player like you. It says so in our scouting report. Literally.",
+    "P.S. Don't worry about the language barrier. Football is the language. Also we have an app." ];
+  function mkOffer(t, fp, leagueId, deal, tag){
+    deal = deal || mkDealer();
+    const sign=deal("sign", OFFER_SIGN);
+    const foreign = leagueId && leagueId!==CAR.leagueId && LEAGUE_META[leagueId] &&
+                    LEAGUE_META[leagueId].country!==(LEAGUE_META[CAR.leagueId]||{}).country;
+    let body=offerBody(t,fp,sign,deal);
+    if (foreign)
+      body=body.replace("\n\nYours in football,", "\n\n"+deal("ps", OFFER_PS).replace(/{lg}/g, LEAGUE_META[leagueId].name)+"\n\nYours in football,");
     return { slug:t.slug, name:t.name, rating:TEAMBY[t.slug].rating, pos:fp, leagueId:leagueId||CAR.leagueId,
-             subject:offerSubject(fp), body, read:false,
+             subject:offerSubject(fp, deal), body, read:false, tag:tag||null,
              sign:sign[0]+" · "+sign[1],
-             from:sign[0].toLowerCase().split(" ").join(".")+"@"+t.slug.toLowerCase()+".smail.co.uk" };
+             from:sign[0].toLowerCase().split(" ").join(".")+"@"+t.slug.toLowerCase()+".s-mail.co.uk" };
   }
   function genOffers(){
     // E8: clubs judge your EFFECTIVE reputation — earned rep plus the lifestyle you flaunt
     const pos=myPosition(), rep=CAR.rep==null?100:effRep(), tier=activeLeagueTier(), N=TEAMS.length;
     const nMax = pos===1?4 : pos<=4?3 : pos<=10?2 : pos<=14?1 : 0;
-    const std=standings(), offers=[];
+    const std=standings(), offers=[], deal=mkDealer();
     // 1. the same-league ladder: clubs that finished above you, closest first — if your name is big enough
     if (nMax>0){
       const ok=t=> t.slug!==CAR.slug && rep>=repNeed(TEAMBY[t.slug].rating, tier);
@@ -944,12 +969,12 @@
       let cands=above.slice(-nMax).reverse();
       if (cands.length<nMax){ const below=std.filter(t=>ok(t) && clubFinishPos(t.slug)>pos);
         cands=cands.concat(below.slice(0, nMax-cands.length)); }
-      for (const t of cands) offers.push(mkOffer(t, clubFinishPos(t.slug)));
+      for (const t of cands) offers.push(mkOffer(t, clubFinishPos(t.slug), null, deal, "DOMESTIC"));
     }
     // 2. the step UP a tier: shine in the second tier and top-flight scouts come calling
     if (tier===2 && (pos<=6 || (CAR.cup&&CAR.cup.won) || rep>=30)){
       const pool=(LEAGUES.ENG||[]).filter(t=>rep>=repNeed(t.rating,1)).sort((a,b)=>b.rating-a.rating).slice(0,2);
-      for (const t of pool) offers.push(mkOffer(t, leaguePos(t,"ENG"), "ENG"));
+      for (const t of pool) offers.push(mkOffer(t, leaguePos(t,"ENG"), "ENG", deal, "THE BIG TIME"));
     }
     // 3. abroad: a big name near the top of a top flight draws foreign giants (the E3 headline move)
     if (tier===1 && rep>=45 && pos<=8){
@@ -957,12 +982,12 @@
       const pool=[];
       for (const id of others) for (const t of (LEAGUES[id]||[])) if (rep>=repNeed(t.rating,1)+5) pool.push({t,id});
       shuffle(pool).sort((a,b)=>b.t.rating-a.t.rating);   // the biggest names within reach (shuffle = random tie-break)
-      for (const {t,id} of pool.slice(0,2)) offers.push(mkOffer(t, leaguePos(t,id), id));
+      for (const {t,id} of pool.slice(0,2)) offers.push(mkOffer(t, leaguePos(t,id), id, deal, (LEAGUE_META[id]||{}).name));
     }
     // 4. the lifeline: a bottom-three top-flight season still leaves a road back through the second tier
     if (tier===1 && pos>=N-2 && LEAGUES.ENG2){
       const pool=shuffle(LEAGUES.ENG2.slice()).slice(0,2);
-      for (const t of pool) offers.push(mkOffer(t, leaguePos(t,"ENG2"), "ENG2"));
+      for (const t of pool) offers.push(mkOffer(t, leaguePos(t,"ENG2"), "ENG2", deal, "THE HARD ROAD"));
     }
     return offers;
   }
@@ -2534,7 +2559,7 @@
   }
   // ---- Smail wordmark: multicoloured parody webmail brand, drawn at any size ----
   function drawSmailMark(x, cy, px){
-    const cols=["#5b8cff","#ff5252","#ffce3d","#5b8cff","#4dff7a"], word="Smail";
+    const cols=["#5b8cff","#e8e8e8","#ff5252","#ffce3d","#5b8cff","#4dff7a"], word="S-Mail";
     ctx.font="bold "+px+"px 'Trebuchet MS','Arial',sans-serif"; ctx.textBaseline="middle"; ctx.textAlign="left";
     let gx=x;
     for (let i=0;i<word.length;i++){ ctx.fillStyle=cols[i]; ctx.fillText(word[i], gx, cy+1); gx+=ctx.measureText(word[i]).width; }
@@ -2598,10 +2623,54 @@
       ctx.fillText(n>0 ? ("YOU'VE GOT MAIL:  "+n+" TRANSFER OFFER"+(n>1?"S":"")) : "NO NEW MAIL. A QUIET SUMMER.", pbX+18+mw+22, pbY+pbH/2+5);
       ctx.textAlign="center";
       if (ttCursorOn()){ ctx.fillStyle=TTX.neon; ctx.font=ttFont(18);
-        ctx.fillText(n>0 ? (TOUCH?"TAP  TO  OPEN  SMAIL":"SPACE  TO  OPEN  SMAIL")
+        ctx.fillText(n>0 ? (TOUCH?"TAP  TO  OPEN  S-MAIL":"SPACE  TO  OPEN  S-MAIL")
                          : (TOUCH?"TAP  TO  START  NEXT  SEASON":"SPACE  TO  START  NEXT  SEASON"), VW/2, pbY+pbH+34); }
     }
     ctx.textAlign="left";
+  }
+  // ================= UI kit (round 15): pixel icons + panel component + spacing scale =================
+  // Design discipline (ui-ux-pro-max audit): 8px spacing grid, 24px screen margins, one accent
+  // per role (gold=money, green=titles/positive, cyan=info, red=cost, neon=CTA), drawn pixel
+  // icons instead of glyph clutter, roomy hit targets. All menu chrome goes through uiPanel.
+  const SP=8, MARGIN=24;                      // the grid: multiples of SP; MARGIN from screen edges
+  const ICON_MAPS={                           // 16x16 1-bit-ish icons: X=main colour, o=secondary
+    shake:["......XXXX......",".....X....X.....","....XXXXXXXX....","....X......X....","...XXXXXXXXXX...","...X........X...","...X.oooo...X...","...X.o...o..X...","...X.o...o..X...","...X.oooo...X...","...X.o......X...","...X.o......X...","...X........X...","...XXXXXXXXXX...","................","................"],
+    gym:["................","................","..XX........XX..","..XX........XX..",".XXXX......XXXX.",".XXXX......XXXX.",".XXXXXXXXXXXXXX.",".XXXXXXXXXXXXXX.",".XXXX......XXXX.",".XXXX......XXXX.","..XX........XX..","..XX........XX..","................","................","................","................"],
+    shirt:["................",".XXXX......XXXX.","XXXXXX.oo.XXXXXX","XXXXXXXXXXXXXXXX","XXXXXXXXXXXXXXXX","XX..XXXXXXXX..XX","XX..XXXXXXXX..XX","....XXXXXXXX....","....XXXXXXXX....","....XXXXXXXX....","....XXXXXXXX....","....XXXXXXXX....","....XXXXXXXX....","....XXXXXXXX....","................","................"],
+    horn:["................","..........XX....","........XXXX....","......XXXXXX....","..XXXXXXXXXX....",".XooooooXXXX....",".XooooooXXXXX...",".XooooooXXXX....","..XXXXXXXXXX....","....XX..XXXX....","....XX....XX....","....XXXX........","................","................","................","................"],
+    ledger:["...XXXXXXXXX....","...X.......XX...","...X.......XXX..","...X.........X..","...X...oo....X..","...X..o......X..","...X..ooo....X..","...X..o......X..","...X..o..o...X..","...X...oo....X..","...X.........X..","...X.ooooooo.X..","...X.........X..","...XXXXXXXXXXX..","................","................"],
+    coin:["....XXXXXXXX....","..XX........XX..",".X............X.",".X.....oo.....X.","X.....o........X","X.....ooo......X","X.....o........X","X.....o...o....X","X......ooo.....X",".X............X.",".X............X.","..XX........XX..","....XXXXXXXX....","................","................","................"],
+    trophy:["XXXXXXXXXXXXXXXX","X..XXXXXXXXXX..X","X..XXXXXXXXXX..X","XX.XXXXXXXXXX.XX",".X..XXXXXXXX..X.",".XX.XXXXXXXX.XX.","..X..XXXXXX..X..","..XX..XXXX..XX..","......XXXX......",".......XX.......",".......XX.......","......XXXX......","....XXXXXXXX....","...XXXXXXXXXX...","................","................"],
+    car:["................","................","....XXXXXXXX....","...X..o..o..X...","..X..o....o..X..",".XXXXXXXXXXXXXX.",".XXXXXXXXXXXXXX.",".XXXXXXXXXXXXXX.",".X..XX....XX..X.","....XX....XX....","................","................","................","................","................","................"],
+    house:["................",".......XX.......","......XXXX......",".....XXXXXX.....","....XXXXXXXX....","...XXXXXXXXXX...","..XXXXXXXXXXXX..",".XXXXXXXXXXXXXX.","...X........X...","...X..oo....X...","...X..oo....X...","...X..oo....X...","...X........X...","...XXXXXXXXXX...","................","................"],
+    pad:["................","................","..XXXXXXXXXXXX..",".XXXXXXXXXXXXXX.",".XX.o.XXXX.o.XX.",".Xooo.XXXX.o.oX.",".XX.o.XXXX.o.XX.",".XXXXXXXXXXXXXX.","..XXXX....XXXX..","................","................","................","................","................","................","................"],
+    bolt:["........XX......",".......XXX......","......XXX.......",".....XXX........","....XXXXXXXX....",".....XXXXX......","......XXX.......",".....XXX........","....XXX.........","...XXX..........","..XX............","................","................","................","................","................"] };
+  function drawIcon(id, x, y, size, col, col2){
+    const map=ICON_MAPS[id]; if (!map) return;
+    const u=size/16;
+    for (let r=0;r<16;r++) for (let c=0;c<16;c++){
+      const ch=map[r][c]; if (ch===".") continue;
+      ctx.fillStyle = ch==="X" ? col : (col2||"#06070b");
+      ctx.fillRect(Math.round(x+c*u), Math.round(y+r*u), Math.ceil(u), Math.ceil(u));
+    }
+  }
+  // The one panel: dark card, accent border, optional icon+title bar. Returns the content-top y.
+  function uiPanel(x, y, w, h, opts){
+    opts=opts||{};
+    ctx.fillStyle=opts.bg||"#0a1224"; ctx.fillRect(x,y,w,h);
+    ctx.strokeStyle=opts.accent||TTX.blue; ctx.lineWidth=opts.hot?2.5:1.5;
+    ctx.strokeRect(x+1,y+1,w-2,h-2);
+    if (!opts.title) return y+SP;
+    const th=26;
+    ctx.fillStyle="rgba(255,255,255,0.05)"; ctx.fillRect(x+2,y+2,w-4,th);
+    let tx=x+14;
+    if (opts.icon){ drawIcon(opts.icon, tx, y+6, 18, opts.accent||TTX.cyan); tx+=26; }
+    ctx.font=ttFont(14); ctx.fillStyle=opts.accent||TTX.cyan; ctx.textAlign="left"; ctx.textBaseline="middle";
+    ctx.fillText(opts.title, tx, y+2+th/2+1);
+    if (opts.right){ ctx.textAlign="right"; ctx.fillStyle=opts.rightCol||TTX.grey; ctx.font=ttFont(12);
+      ctx.fillText(opts.right, x+w-12, y+2+th/2+1); ctx.textAlign="left"; }
+    ctx.textBaseline="alphabetic";
+    return y+th+SP;
   }
   // ================= THE LIFE (E8): protein corner, the gym, lifestyle, sponsors =================
   let lifeBtns=[];            // clickable rects rebuilt each draw: {x,y,w,h,act,arg}
@@ -2628,6 +2697,50 @@
   // where "back" from a career side-screen should land: the tournament hub while the World
   // Tournament is live, otherwise the league/cup/Euro home
   function careerHomeState(){ return (CAR && CAR.trn && !CAR.trnDone) ? ST.TRNHUB : ST.TABLE; }
+  // ---- cup-week fanfare (owner): first time you arrive at a cup/Euro week, the trophy at
+  // stake pops up with the fixture. Once per cup round / Euro stage, dismiss with the action key.
+  function euroStageKey(ev){ return ev.k<6 ? "G" : (ev.k===6 ? "SF" : "F"); }
+  function cupPopupActive(){
+    if (!CAR || CAR.rep==null) return false;   // journey saves only (older saves never saw it mid-round)
+    const ev=peekEvent();
+    if (ev && ev.t==='C' && CAR.cup) return CAR.cup.seenR!==CAR.cup.round;
+    if (ev && ev.t==='E' && CAR.euro) return CAR.euro.seenK!==euroStageKey(ev);
+    return false;
+  }
+  function dismissCupPopup(){
+    const ev=peekEvent();
+    if (ev && ev.t==='C') CAR.cup.seenR=CAR.cup.round;
+    else if (ev && ev.t==='E') CAR.euro.seenK=euroStageKey(ev);
+    saveCareer();
+  }
+  function drawCupPopup(ev){
+    const isCup=ev.t==='C';
+    const im = isCup ? IMG.trophyC : IMG.trophyE;
+    const comp = isCup ? "THE CUP" : (CAR.euro.comp==='CT' ? "CHAMPIONS TROPHY" : "CONTINENTAL CUP");
+    const round = isCup ? CUP_ROUNDS[CAR.cup.round]
+                        : (ev.k<6 ? "GROUP MATCH "+(CAR.euro.gIdx+1)+" OF 6" : (ev.k===6 ? "SEMI-FINAL" : "THE FINAL"));
+    let opp, home;
+    if (isCup){ opp=(TEAMBY[CAR.cup.opp]||{name:CAR.cup.opp}).name; home=CAR.cup.home; }
+    else { const o=euroNextOpp(ev); opp=(TEAMBY[o.slug]||{name:o.slug}).name; home=o.home; }
+    const me=TEAMBY[CAR.slug].name;
+    ctx.fillStyle="rgba(3,4,8,0.86)"; ctx.fillRect(0,0,VW,SH);
+    const w=520, h=380, x=VW/2-w/2, y=56;
+    uiPanel(x, y, w, h, {accent:"#ffd700"});
+    pxText(comp, VW/2, y+34, 20, "#ffd700", 'c','m');
+    pxText(round, VW/2, y+60, 13, TTX.white, 'c','m');
+    // the silverware at stake, spotlit
+    { const g=ctx.createRadialGradient(VW/2,y+160,10,VW/2,y+160,120);
+      g.addColorStop(0,"rgba(255,224,120,0.30)"); g.addColorStop(1,"rgba(255,224,120,0)");
+      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(VW/2,y+160,120,0,2*Math.PI); ctx.fill(); }
+    if (im && im.naturalWidth) ctx.drawImage(im, VW/2-60, y+76, 120, 160);
+    const fixtureStr = home ? (me+" (H)  v  "+opp) : (opp+"  v  "+me+" (A)");
+    pxText("THIS WEEK'S TIE", VW/2, y+258, 11, TTX.grey, 'c','m');
+    { let fsz=18; ctx.font=ttFont(fsz);
+      while (ctx.measureText(fixtureStr).width>w-48 && fsz>11){ fsz--; ctx.font=ttFont(fsz); }
+      ctx.textAlign="center"; ctx.fillStyle=TTX.white; ctx.fillText(fixtureStr, VW/2, y+284); ctx.textAlign="left"; }
+    pxText(matchPlan(5).balls+" BALLS  ·  WIN OR GO HOME", VW/2, y+312, 12, "#ff9f1c", 'c','m');
+    if (ttCursorOn()) pxText(TOUCH?"▶ TAP TO CONTINUE":"▶ SPACE TO CONTINUE", VW/2, y+h-26, 15, TTX.neon, 'c','m');
+  }
   function startAdBreak(){
     if (!CAR || CAR.adSeen) return;
     adBoardId = ADS.length ? ADS[rnd(ADS.length)].id : null;
@@ -2646,6 +2759,8 @@
   function lifeAction(b){
     audio();
     if (b.act==="shake"){ if (buyShake(b.arg)) sfx.kick(); }
+    else if (b.act==="sub"){ lifeBtns=[]; hoverTip=null;
+      state = b.arg==='protein'?ST.PROTEIN : b.arg==='gym'?ST.TRAINERSEL : b.arg==='lifestyle'?ST.LIFESTYLE : b.arg==='sponsor'?ST.SPONSOR : ST.LEDGER; }
     else if (b.act==="gym"){ lifeBtns=[]; state=ST.TRAINERSEL; }
     else if (b.act==="ledger"){ lifeBtns=[]; state=ST.LEDGER; }
     else if (b.act==="buy"){ if (buyLifestyle(b.arg)) sfx.kick(); }
@@ -2653,97 +2768,237 @@
     else if (b.act==="ad"){ startAdBreak(); }
     else if (b.act==="hire"){ if (hireTrainer(b.arg)){ sfx.whistle(); flushMsgs(()=>{ lifeBtns=[]; state=ST.TRAINERSEL; }); } }
   }
-  function drawShop(){
+  // ---- £ SHOP hub: five full-screen departments (owner: sub-menus, not one crammed page) ----
+  const SHAKE_TIPS=[
+    "RESTORES 25 ENERGY ON THE SPOT. PRICES RISE WITH YOUR STAR RATING. FAME ISN'T CHEAP.",
+    "RESTORES 55 ENERGY. BETTER VALUE PER SCOOP, SAYS THE LABEL." ];
+  const LS_META=[
+    { icon:'shirt', tip:"CLOBBER. ADDS TO YOUR REPUTATION - CLUBS AND SPONSORS JUDGE THE FULL PACKAGE." },
+    { icon:'car',   tip:"A BETTER MOTOR, A BIGGER NAME. PURE REPUTATION." },
+    { icon:'pad',   tip:"TOYS. PURE REPUTATION, ZERO PRACTICAL USE. PERFECT." },
+    { icon:'house', tip:"A BETTER GAFF ADDS REPUTATION AND HELPS YOU RECOVER BETWEEN MATCHES. PROPERTY, SON. ALWAYS PROPERTY." } ];
+  const SHOP_CARDS=[
+    { id:'protein',  icon:'shake',  title:"PROTEIN CORNER", accent:TTX.green,
+      tip:"PROTEIN SHAKES: TOP YOUR ENERGY BACK UP BETWEEN MATCHES." },
+    { id:'gym',      icon:'gym',    title:"THE GYM",        accent:TTX.cyan,
+      tip:"HIRE A TRAINER: HE RESTORES ENERGY AFTER EVERY MATCH FOR A 10-GAME BLOCK." },
+    { id:'lifestyle',icon:'shirt',  title:"LIFESTYLE",      accent:TTX.yellow,
+      tip:"CLOBBER, MOTORS, TOYS AND THE GAFF: LIFESTYLE ADDS TO YOUR EFFECTIVE REPUTATION." },
+    { id:'sponsor',  icon:'horn',   title:"SPONSORS",       accent:TTX.neon,
+      tip:"SPONSOR DEALS PAY PER GOAL AND PER WIN FOR 20 MATCHES. THEY WANT A NAME AND A LIFESTYLE." },
+    { id:'ledger',   icon:'ledger', title:"FINANCES",       accent:"#ffd700",
+      tip:"YOUR CONTRACT AND THIS SEASON'S BOOKS, VIC'S CUT INCLUDED." } ];
+  function shopCardStatus(id){
+    if (id==='protein') return CAR.energy+"%  "+energyLabel(CAR.energy);
+    if (id==='gym'){ const td=(CAR.trainer&&CAR.trainer.games>0)?TRAINERS.find(t=>t.id===CAR.trainer.id):null;
+      return td ? td.name.split(" ")[0]+" · "+CAR.trainer.games+" GAMES LEFT" : "NO TRAINER"; }
+    if (id==='lifestyle') return "+"+lifeBonus()+" REPUTATION";
+    if (id==='sponsor') return (CAR.sponsor&&CAR.sponsor.left>0) ? CAR.sponsor.name : (bestSponsorDeal()?"A DEAL IS WAITING":"NO DEAL YET");
+    return money(CAR.monies);
+  }
+  function drawShop(){   // the hub
     if (!CAR || CAR.monies==null){ state=ST.TABLE; return; }
     lifeBtns=[]; tipRegions=[];
     const HBY=4, HBH=TOUCH?40:32;
-    careerBar(HBY, HBH, "SHOP", money(CAR.monies));
-    tip(VW-230, HBY, 226, HBH, "YOUR MONIES. WAGES, BONUSES, SPONSORS AND PRIZE MONEY COME IN. SHAKES, TRAINERS, SHOPPING AND VIC'S CUT GO OUT. THE FINANCES PAGE HAS THE FULL BOOKS.");
-    const ht=HBY+HBH, LX=20, LW=420, RX=470, RW=434;
-    // ---- left: PROTEIN CORNER ----
-    ctx.font=ttFont(17); ctx.fillStyle=TTX.green; ctx.fillText("PROTEIN CORNER", LX, ht+26);
-    ctx.font=ttFont(11); ctx.fillStyle=TTX.grey; ctx.fillText("CONDITION", LX, ht+46);
-    { const e=CAR.energy, bw=250, bx=LX+92, by=ht+38;
-      ctx.fillStyle="rgba(255,255,255,0.12)"; ctx.fillRect(bx,by,bw,10);
-      ctx.fillStyle = e>=60?"#1f9d49":(e>=40?"#ff9f1c":"#c43a3a");
-      ctx.fillRect(bx,by,Math.round(bw*e/100),10);
-      ctx.font=ttFont(12); ctx.fillStyle=TTX.white; ctx.fillText(e+"%  "+energyLabel(e), bx+bw+10, ht+47); }
-    tip(LX, ht+32, LW, 20, "YOUR LEGS. EVERY MATCH DRAINS ENERGY. BELOW 60% THE COACH GIVES YOU FEWER BALLS FOR THE SAME TARGET, BELOW 40% FEWER STILL. SHAKES, A TRAINER OR A BETTER GAFF KEEP YOU FRESH.");
-    const SHAKE_TIPS=[
-      "RESTORES 25 ENERGY ON THE SPOT. PRICES RISE WITH YOUR STAR RATING. FAME ISN'T CHEAP.",
-      "RESTORES 55 ENERGY. BETTER VALUE PER SCOOP, SAYS THE LABEL.",
-      "FULL RECOVERY, WHATEVER THE STATE OF YOU. THE BIG TUB." ];
-    const shY0=ht+62, shRH=40;
-    SHAKES.forEach((s,i)=>{
-      const y=shY0+i*shRH, price=shakePrice(s);
-      ctx.font=ttFont(14); ctx.fillStyle=TTX.white; ctx.fillText(s.name, LX, y+18);
-      ctx.font=ttFont(11); ctx.fillStyle=TTX.green; ctx.fillText(s.nrg>=100?"FULL RECOVERY":"+"+s.nrg+" ENERGY", LX+188, y+18);
-      lifeBtnDraw(LX+290, y, 126, 28, money(price), TTX.yellow, CAR.monies>=price && CAR.energy<100, "shake", i);
-      tip(LX, y, LW, 30, SHAKE_TIPS[i]);
+    careerBar(HBY, HBH, "£ SHOP", money(CAR.monies));
+    const ht=HBY+HBH, gap=2*SP;
+    const cw=Math.floor((VW-2*MARGIN-2*gap)/3), chh=168, y0=ht+3*SP;
+    SHOP_CARDS.forEach((c,i)=>{
+      const row=i<3?0:1, col=i<3?i:i-3, rowN=row?2:3;
+      const x0=Math.round((VW-(rowN*cw+(rowN-1)*gap))/2);
+      const x=x0+col*(cw+gap), y=y0+row*(chh+gap);
+      const hot=!TOUCH && hoverX>=x&&hoverX<=x+cw&&hoverY>=y&&hoverY<=y+chh;
+      uiPanel(x,y,cw,chh,{accent:c.accent, hot});
+      drawIcon(c.icon, x+cw/2-24, y+20, 48, c.accent);
+      pxText(c.title, x+cw/2, y+94, 15, hot?TTX.white:c.accent, 'c','m');
+      pxText(shopCardStatus(c.id), x+cw/2, y+118, 11, TTX.grey, 'c','m');
+      if (c.id==='protein'){ const bw=cw-64, bx=x+32, by=y+136;
+        ctx.fillStyle="rgba(255,255,255,0.12)"; ctx.fillRect(bx,by,bw,6);
+        const e=CAR.energy; ctx.fillStyle=e>=60?"#1f9d49":(e>=40?"#ff9f1c":"#c43a3a");
+        ctx.fillRect(bx,by,Math.round(bw*e/100),6); }
+      lifeBtns.push({x,y,w:cw,h:chh,act:'sub',arg:c.id});
+      tip(x,y,cw,chh,c.tip);
     });
-    ctx.font=ttFont(10); ctx.fillStyle=TTX.dim;
-    ctx.fillText("97% PROTEIN. 3% GLITTER. ASK YOUR TRAINER.", LX, shY0+3*shRH+8);
-    // ---- left: THE GYM (trainer) + FINANCES ----
-    const trY=shY0+3*shRH+30;
-    ctx.font=ttFont(17); ctx.fillStyle=TTX.green; ctx.fillText("TRAINER", LX, trY+14);
-    const td = (CAR.trainer && CAR.trainer.games>0) ? TRAINERS.find(t=>t.id===CAR.trainer.id) : null;
-    ctx.font=ttFont(13);
-    if (td){ ctx.fillStyle=TTX.white; ctx.fillText(td.name, LX, trY+36);
-      ctx.font=ttFont(11); ctx.fillStyle=TTX.cyan;
-      ctx.fillText("+"+td.rec+" ENERGY AFTER EVERY MATCH  ·  "+CAR.trainer.games+" GAME"+(CAR.trainer.games===1?"":"S")+" LEFT", LX, trY+54); }
-    else { ctx.fillStyle=TTX.grey; ctx.fillText("NO TRAINER. RECOVERY SUFFERS.", LX, trY+36); }
-    tip(LX, trY, 280, 58, "A TRAINER TOPS UP YOUR ENERGY AFTER EVERY MATCH FOR A 10-GAME BLOCK. THE BETTER THE TRAINER, THE MORE HE COSTS AND THE MORE HE SAVES YOU IN SHAKES.");
-    lifeBtnDraw(LX+290, trY+8, 126, 28, "THE GYM →", TTX.cyan, true, "gym");
-    tip(LX+290, trY+8, 126, 28, "MEET THE THREE TRAINERS FOR HIRE. EACH HAS HIS OWN... METHODS.");
-    lifeBtnDraw(LX+290, trY+44, 126, 28, "FINANCES →", TTX.yellow, true, "ledger");
-    tip(LX+290, trY+44, 126, 28, "YOUR CONTRACT, THIS SEASON'S MONEY IN AND OUT, AND EXACTLY WHAT VIC IS TAKING.");
-    // ---- right: LIFESTYLE ----
-    ctx.font=ttFont(17); ctx.fillStyle=TTX.green; ctx.fillText("LIFESTYLE", RX, ht+26);
-    ctx.font=ttFont(12); ctx.textAlign="right"; ctx.fillStyle=TTX.yellow;
-    ctx.fillText("+"+lifeBonus()+" REPUTATION", RX+RW, ht+26); ctx.textAlign="left";
-    tip(RX+RW-170, ht+12, 170, 18, "YOUR LIFESTYLE BONUS. ADDED TO YOUR EARNED REPUTATION WHENEVER CLUBS AND SPONSORS SIZE YOU UP.");
-    const LS_TIPS=[
-      "CLOBBER. ADDS TO YOUR REPUTATION - CLUBS AND SPONSORS JUDGE THE FULL PACKAGE.",
-      "A BETTER MOTOR, A BIGGER NAME. PURE REPUTATION.",
-      "TOYS. PURE REPUTATION, ZERO PRACTICAL USE. PERFECT.",
-      "A BETTER GAFF ADDS REPUTATION AND HELPS YOU RECOVER BETWEEN MATCHES. PROPERTY, SON. ALWAYS PROPERTY." ];
-    const lsY0=ht+40, lsRH=44;
-    LIFESTYLE.forEach((c,i)=>{
-      const y=lsY0+i*lsRH;
-      let owned=null; for (const it of c.items) if (CAR.items && CAR.items[it.id]) owned=it;
-      ctx.font=ttFont(10); ctx.fillStyle=TTX.grey; ctx.fillText(c.cat, RX, y+12);
-      ctx.font=ttFont(13); ctx.fillStyle=owned?TTX.white:TTX.dim;
-      ctx.fillText(owned?owned.name:"NOWT", RX, y+30);
-      const nx=nextLifestyle(c);
-      if (nx) lifeBtnDraw(RX+RW-218, y+8, 218, 28, nx.name+" · "+money(nx.cost), TTX.yellow, CAR.monies>=nx.cost, "buy", nx.id, 11);
-      else { ctx.font=ttFont(11); ctx.textAlign="right"; ctx.fillStyle=TTX.green; ctx.fillText("MAXED OUT", RX+RW, y+26); ctx.textAlign="left"; }
-      tip(RX, y, RW, 40, LS_TIPS[i]);
-    });
-    // ---- right: SPONSOR ----
-    const spY=lsY0+4*lsRH+18;
-    ctx.font=ttFont(17); ctx.fillStyle=TTX.green; ctx.fillText("SPONSOR", RX, spY+14);
-    tip(RX, spY, RW, 58, "ONE ACTIVE DEAL AT A TIME. SPONSORS PAY PER GOAL AND PER WIN FOR 20 MATCHES. THE BIGGER YOUR REPUTATION AND LIFESTYLE, THE BIGGER THE DEALS ON THE TABLE.");
-    if (CAR.sponsor && CAR.sponsor.left>0){
-      ctx.font=ttFont(13); ctx.fillStyle=TTX.white; ctx.fillText(CAR.sponsor.name, RX, spY+36);
-      ctx.font=ttFont(11); ctx.fillStyle=TTX.cyan;
-      ctx.fillText(money(CAR.sponsor.perGoal)+" / GOAL  ·  "+money(CAR.sponsor.perWin)+" / WIN  ·  "+CAR.sponsor.left+" MATCHES LEFT", RX, spY+54);
-    } else {
-      const d=bestSponsorDeal();
-      if (d){ ctx.font=ttFont(11); ctx.fillStyle=TTX.white;
-        ctx.fillText(money(d.perGoal)+" / GOAL  ·  "+money(d.perWin)+" / WIN  ·  "+d.matches+" MATCHES", RX, spY+52);
-        lifeBtnDraw(RX+RW-218, spY+22, 218, 28, "SIGN: "+d.name, TTX.neon, true, "sponsor", null, 11); }
-      else { ctx.font=ttFont(12); ctx.fillStyle=TTX.grey;
-        ctx.fillText(ownedCount()<1 ? "NO INTEREST. SPONSORS WANT A PLAYER" : "NO INTEREST YET. RAISE YOUR PROFILE.", RX, spY+38);
-        if (ownedCount()<1){ ctx.fillText("WITH A LIFESTYLE. BUY SOME CLOBBER.", RX, spY+54); } }
-    }
-    // ---- bottom: the satirical rewarded ad ----
-    const adOk = !CAR.adSeen;
-    lifeBtnDraw(VW/2-210, SH-64, 420, 30,
+    const adOk=!CAR.adSeen, ay=y0+2*chh+gap+2*SP;
+    lifeBtnDraw(VW/2-230, ay, 460, 34,
       adOk ? "▶ A WORD FROM OUR SPONSORS  ·  +"+money(AD_MONIES) : "SPONSORS RETURN NEXT MATCHDAY",
       TTX.neon, adOk, "ad");
-    tip(VW/2-210, SH-64, 420, 30, "WATCH A WORD FROM OUR SPONSORS FOR A FEW QUID. ONCE PER MATCHDAY. VIC DOESN'T KNOW ABOUT THIS ONE, AND LET'S KEEP IT THAT WAY.");
+    tip(VW/2-230, ay, 460, 34, "WATCH A WORD FROM OUR SPONSORS FOR A FEW QUID. ONCE PER MATCHDAY. VIC DOESN'T KNOW ABOUT THIS ONE.");
     ctx.textAlign="center"; ctx.font=ttFont(11); ctx.fillStyle=TTX.grey;
-    if (!TOUCH) ctx.fillText("CLICK TO BUY    HOVER FOR INFO    L / ESC  BACK", VW/2, SH-14);
+    if (!TOUCH) ctx.fillText("CLICK A DEPARTMENT    HOVER FOR INFO    L / ESC  BACK", VW/2, SH-14);
+    ctx.textAlign="left";
+  }
+  // ---- PROTEIN CORNER: the condition bar, explained, and the two scoops ----
+  function drawProtein(){
+    if (!CAR || CAR.monies==null){ state=ST.TABLE; return; }
+    lifeBtns=[]; tipRegions=[];
+    const HBY=4, HBH=TOUCH?40:32;
+    careerBar(HBY, HBH, "PROTEIN CORNER", money(CAR.monies));
+    const ht=HBY+HBH, W=VW-2*MARGIN;
+    let y=ht+3*SP;
+    const cy0=uiPanel(MARGIN, y, W, 100, {title:"CONDITION", icon:'bolt', accent:TTX.green,
+      right:CAR.energy+"%  "+energyLabel(CAR.energy), rightCol:TTX.white});
+    { const bx=MARGIN+16, bw=W-32, by=cy0+8;
+      ctx.fillStyle="rgba(255,255,255,0.12)"; ctx.fillRect(bx,by,bw,16);
+      const e=CAR.energy; ctx.fillStyle=e>=60?"#1f9d49":(e>=40?"#ff9f1c":"#c43a3a");
+      ctx.fillRect(bx,by,Math.round(bw*e/100),16);
+      for (const t of [40,60]){ ctx.fillStyle="rgba(255,255,255,0.55)"; ctx.fillRect(bx+Math.round(bw*t/100),by-3,1,22); }
+      ctx.font=ttFont(10); ctx.fillStyle=TTX.dim;
+      ctx.textAlign="left";   ctx.fillText("UNDER 40%: TWO BALLS DOWN", bx, by+34);
+      ctx.textAlign="center"; ctx.fillText("UNDER 60%: ONE BALL DOWN", bx+bw*0.5, by+34);
+      ctx.textAlign="right";  ctx.fillText("60%+: FULL QUOTA", bx+bw, by+34);
+      ctx.textAlign="left"; }
+    tip(MARGIN, y, W, 100, "YOUR LEGS. EVERY MATCH DRAINS ENERGY AND NATURAL RECOVERY IS WEAK. SHAKES, A TRAINER OR A BETTER GAFF KEEP YOU FRESH.");
+    y+=100+2*SP;
+    const cw=Math.floor((W-2*SP)/2);
+    SHAKES.forEach((s,i)=>{
+      const x=MARGIN+i*(cw+2*SP);
+      const cy=uiPanel(x, y, cw, 200, {title:s.name, icon:'shake', accent:TTX.green,
+        right:"+"+s.nrg+" ENERGY", rightCol:TTX.green});
+      drawIcon('shake', x+cw/2-28, cy+4, 56, TTX.green, "#0a1224");
+      const price=shakePrice(s), ok=CAR.monies>=price && CAR.energy<100;
+      lifeBtnDraw(x+cw/2-90, cy+72, 180, 36, "BUY · "+money(price), TTX.yellow, ok, "shake", i);
+      pxText(CAR.energy>=100 ? "YOU'RE FULLY FRESH" : (ok ? "DOWN IN ONE" : "CAN'T AFFORD IT YET"),
+        x+cw/2, cy+126, 10, TTX.dim, 'c','m');
+      tip(x, y, cw, 200, SHAKE_TIPS[i]);
+    });
+    y+=200+2*SP;
+    ctx.textAlign="center"; ctx.font=ttFont(10); ctx.fillStyle=TTX.dim;
+    ctx.fillText("97% PROTEIN. 3% GLITTER. ASK YOUR TRAINER.", VW/2, y+8);
+    ctx.font=ttFont(11); ctx.fillStyle=TTX.grey;
+    if (!TOUCH) ctx.fillText("HOVER FOR INFO    ESC  BACK TO SHOP", VW/2, SH-14);
+    ctx.textAlign="left";
+  }
+  // ---- LIFESTYLE: four departments in a 2x2 grid, tier pips, buy upward only ----
+  function drawLifestyleShop(){
+    if (!CAR || CAR.monies==null){ state=ST.TABLE; return; }
+    lifeBtns=[]; tipRegions=[];
+    const HBY=4, HBH=TOUCH?40:32;
+    careerBar(HBY, HBH, "LIFESTYLE", money(CAR.monies));
+    const ht=HBY+HBH, W=VW-2*MARGIN;
+    ctx.font=ttFont(12); ctx.textAlign="center"; ctx.fillStyle=TTX.yellow;
+    ctx.fillText("LIFESTYLE BONUS: +"+lifeBonus()+" REPUTATION  ·  EFFECTIVE REP "+Math.round(effRep()), VW/2, ht+18);
+    ctx.textAlign="left";
+    const cw=Math.floor((W-2*SP)/2), chh=176, y0=ht+4*SP;
+    LIFESTYLE.forEach((c,i)=>{
+      const col=i%2, row=Math.floor(i/2);
+      const x=MARGIN+col*(cw+2*SP), y=y0+row*(chh+2*SP);
+      let owned=null, ownedIdx=-1;
+      c.items.forEach((it,k)=>{ if (CAR.items && CAR.items[it.id]){ owned=it; ownedIdx=k; } });
+      const cy=uiPanel(x, y, cw, chh, {title:c.cat, icon:LS_META[i].icon, accent:TTX.yellow,
+        right:owned?("+"+owned.rep+" REP"):"", rightCol:TTX.yellow});
+      drawIcon(LS_META[i].icon, x+18, cy+10, 44, owned?TTX.yellow:TTX.dim);
+      ctx.font=ttFont(14); ctx.fillStyle=owned?TTX.white:TTX.dim;
+      ctx.fillText(owned?owned.name:"NOWT YET", x+78, cy+26);
+      { let px2=x+78; ctx.font=ttFont(13);   // tier pips: filled up to the owned tier
+        c.items.forEach((it,k)=>{ ctx.fillStyle = k<=ownedIdx ? TTX.yellow : "rgba(255,255,255,0.18)";
+          ctx.fillText("◆", px2, cy+48); px2+=18; }); }
+      if ((c.items[ownedIdx]||{}).rec){ ctx.font=ttFont(10); ctx.fillStyle=TTX.cyan;
+        ctx.fillText("+"+c.items[ownedIdx].rec+" RECOVERY PER MATCH", x+78, cy+66); }
+      const nx=nextLifestyle(c);
+      if (nx) lifeBtnDraw(x+16, y+chh-46, cw-32, 32, "UPGRADE: "+nx.name+" · "+money(nx.cost), TTX.yellow, CAR.monies>=nx.cost, "buy", nx.id, 12);
+      else { ctx.font=ttFont(12); ctx.textAlign="center"; ctx.fillStyle=TTX.green;
+        ctx.fillText("MAXED OUT. LIVING THE DREAM.", x+cw/2, y+chh-28); ctx.textAlign="left"; }
+      tip(x, y, cw, chh, LS_META[i].tip);
+    });
+    ctx.textAlign="center"; ctx.font=ttFont(11); ctx.fillStyle=TTX.grey;
+    if (!TOUCH) ctx.fillText("HOVER FOR INFO    ESC  BACK TO SHOP", VW/2, SH-14);
+    ctx.textAlign="left";
+  }
+  // ---- SPONSORS: the active deal + the full ladder, so the aspiration is visible ----
+  function drawSponsorScreen(){
+    if (!CAR || CAR.monies==null){ state=ST.TABLE; return; }
+    lifeBtns=[]; tipRegions=[];
+    const HBY=4, HBH=TOUCH?40:32;
+    careerBar(HBY, HBH, "SPONSORS", money(CAR.monies));
+    const ht=HBY+HBH, W=VW-2*MARGIN;
+    let y=ht+3*SP;
+    if (CAR.sponsor && CAR.sponsor.left>0){
+      const cy=uiPanel(MARGIN, y, W, 84, {title:"YOUR DEAL", icon:'horn', accent:TTX.neon,
+        right:CAR.sponsor.left+" MATCHES LEFT", rightCol:TTX.white});
+      ctx.font=ttFont(16); ctx.fillStyle=TTX.white; ctx.fillText(CAR.sponsor.name, MARGIN+16, cy+18);
+      ctx.font=ttFont(12); ctx.fillStyle=TTX.cyan;
+      ctx.fillText(money(CAR.sponsor.perGoal)+" PER GOAL   ·   "+money(CAR.sponsor.perWin)+" PER WIN", MARGIN+16, cy+40);
+    } else {
+      const cy=uiPanel(MARGIN, y, W, 84, {title:"YOUR DEAL", icon:'horn', accent:TTX.neon});
+      ctx.font=ttFont(13); ctx.fillStyle=TTX.grey;
+      ctx.fillText(ownedCount()<1 ? "NO DEAL. SPONSORS WANT A PLAYER WITH A LIFESTYLE. BUY SOME CLOBBER FIRST." :
+        (bestSponsorDeal() ? "NO ACTIVE DEAL. THERE'S INK WAITING TO DRY BELOW." : "NO DEAL YET. RAISE YOUR PROFILE AND THEY'LL COME."), MARGIN+16, cy+24);
+    }
+    tip(MARGIN, y, W, 84, "ONE ACTIVE DEAL AT A TIME. SPONSORS PAY PER GOAL AND PER WIN FOR 20 MATCHES, MINUS VIC'S CUT.");
+    y+=84+2*SP;
+    ctx.font=ttFont(12); ctx.fillStyle=TTX.grey; ctx.fillText("THE LADDER", MARGIN, y+10);
+    y+=2*SP+4;
+    const best=bestSponsorDeal(), r=effRep();
+    SPONSORS.forEach((sp,i)=>{
+      const have = CAR.sponsor && CAR.sponsor.name===sp.name && CAR.sponsor.left>0;
+      const avail = best && best.name===sp.name && !have;
+      const reach = ownedCount()>=1 && r>=sp.need;
+      const accent = have ? TTX.neon : (avail ? TTX.yellow : (reach ? TTX.cyan : "rgba(255,255,255,0.2)"));
+      uiPanel(MARGIN, y, W, 58, {accent, hot:avail});
+      if (!reach) ctx.globalAlpha=0.55;
+      ctx.font=ttFont(14); ctx.fillStyle=reach?TTX.white:TTX.dim; ctx.fillText(sp.name, MARGIN+16, y+24);
+      ctx.font=ttFont(11); ctx.fillStyle=reach?TTX.cyan:TTX.dim;
+      ctx.fillText(money(sp.perGoal)+" / GOAL  ·  "+money(sp.perWin)+" / WIN  ·  "+sp.matches+" MATCHES", MARGIN+16, y+42);
+      ctx.globalAlpha=1;
+      ctx.textAlign="right"; ctx.font=ttFont(11);
+      if (have){ ctx.fillStyle=TTX.neon; ctx.fillText("★ SIGNED", MARGIN+W-16, y+34); }
+      else if (avail){ ctx.textAlign="left"; lifeBtnDraw(MARGIN+W-156, y+13, 140, 32, "SIGN HERE", TTX.neon, true, "sponsor"); ctx.textAlign="right"; }
+      else if (reach){ ctx.fillStyle=TTX.dim; ctx.fillText("BENEATH YOU NOW", MARGIN+W-16, y+34); }
+      else { ctx.fillStyle=TTX.dim; ctx.fillText(ownedCount()<1 ? "NEEDS A LIFESTYLE" : "NEEDS EFFECTIVE REP "+sp.need+"+", MARGIN+W-16, y+34); }
+      ctx.textAlign="left";
+      y+=58+SP+2;
+    });
+    ctx.textAlign="center"; ctx.font=ttFont(11); ctx.fillStyle=TTX.grey;
+    if (!TOUCH) ctx.fillText("HOVER FOR INFO    ESC  BACK TO SHOP", VW/2, SH-14);
+    ctx.textAlign="left";
+  }
+  // ---- the CONTRACT ceremony (owner): your terms, on club letterhead, when you sign ----
+  let contractNext=null;
+  function showContract(onDone){ contractNext=onDone||null; state=ST.CONTRACT; stateEnterAt=performance.now(); }
+  function contractSign(){ const fn=contractNext; contractNext=null; sfx.whistle(); if (fn) fn(); else state=careerHomeState(); }
+  function drawContract(){
+    if (!CAR){ state=ST.MENU; return; }
+    const t=TEAMBY[CAR.slug]||{name:"Your Club", shirt:"grey"}, c=playerContract();
+    ctx.fillStyle="#06070b"; ctx.fillRect(0,0,VW,SH);
+    const w=580, h=404, x=VW/2-w/2, y=44;
+    ctx.fillStyle="rgba(0,0,0,0.6)"; ctx.fillRect(x+8,y+10,w,h);        // paper drop shadow
+    ctx.fillStyle="#ece6d4"; ctx.fillRect(x,y,w,h);                     // the paper
+    ctx.fillStyle="#dcd4bc"; ctx.fillRect(x,y+h-10,w,10);
+    const shirtCol=PAL[t.shirt]||"#555", dark=hexLum(shirtCol)<110;     // club letterhead
+    ctx.fillStyle=shirtCol; ctx.fillRect(x,y,w,44);
+    pxText(t.name.toUpperCase()+" FOOTBALL CLUB", x+w/2, y+23, 17, dark?"#ffffff":"#0a0a0a", 'c','m');
+    ctx.textAlign="center"; ctx.font=ttFont(22); ctx.fillStyle="#1c1710";
+    ctx.fillText("PLAYING CONTRACT", x+w/2, y+84);
+    ctx.font=ttFont(11); ctx.fillStyle="#6a6152";
+    ctx.fillText("SEASON "+CAR.season+"  ·  AS ARRANGED BY SLICK VIC MANAGEMENT LTD", x+w/2, y+104);
+    const rows=[["THE CLUB SHALL PAY, PER APPEARANCE", money(c.wage)],
+                ["PLUS, FOR EVERY MATCH WON", money(c.winB)],
+                ["PLUS, FOR EVERY GOAL SCORED", money(c.goalB)],
+                ["AGENT'S COMMISSION, ON ALL EARNINGS", vicCutPct()+"%"]];
+    let ry=y+142;
+    for (const [lbl,val] of rows){
+      ctx.textAlign="left"; ctx.font=ttFont(14); ctx.fillStyle="#2b2418"; ctx.fillText(lbl, x+52, ry);
+      ctx.textAlign="right"; ctx.font=ttFont(15); ctx.fillStyle="#1c1710"; ctx.fillText(val, x+w-52, ry);
+      ry+=32;
+    }
+    // signatures: the player's appears with a beat, the club's ink is already dry
+    const sy=y+300, half=w/2-72;
+    ctx.strokeStyle="#5a5142"; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(x+52, sy); ctx.lineTo(x+w/2-20, sy); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x+w/2+20, sy); ctx.lineTo(x+w-52, sy); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.textAlign="center";
+    if (screenAge()>0.6){ ctx.font="italic 28px VT323, monospace"; ctx.fillStyle="#233a8c";
+      ctx.fillText(CAR.name, x+52+half/2, sy-6); }
+    ctx.font="italic 22px VT323, monospace"; ctx.fillStyle="#233a8c";
+    ctx.fillText("R. Hedgerley", x+w/2+20+half/2, sy-6);
+    ctx.font=ttFont(10); ctx.fillStyle="#6a6152";
+    ctx.fillText("THE PLAYER", x+52+half/2, sy+18);
+    ctx.fillText("FOR THE CLUB", x+w/2+20+half/2, sy+18);
+    ctx.font=ttFont(9); ctx.fillStyle="#8a8172";
+    ctx.fillText("TERMS SUBJECT TO FORM, FITNESS AND THE GAFFER'S MOOD. VIC'S COMMISSION RISES ANNUALLY. DON'T LOOK IT UP.", x+w/2, y+h-22);
+    if (ttCursorOn()) pxText(TOUCH?"▶ TAP TO SIGN":"▶ SPACE TO SIGN", VW/2, y+h+34, 18, TTX.neon, 'c','m');
     ctx.textAlign="left";
   }
   // ---- FINANCES: the contract Vic negotiated + this season's books, itemised ----
@@ -2752,37 +3007,42 @@
     lifeBtns=[]; tipRegions=[];
     const HBY=4, HBH=TOUCH?40:32;
     careerBar(HBY, HBH, "FINANCES", money(CAR.monies));
-    const ht=HBY+HBH, LX=40, RX=500, RW=384, c=playerContract(), L=getLedger();
-    const row=(x,y,label,val,vc,lc)=>{ ctx.font=ttFont(13); ctx.fillStyle=lc||TTX.grey; ctx.fillText(label, x, y);
-      ctx.textAlign="right"; ctx.fillStyle=vc||TTX.white; ctx.fillText(val, x===LX?LX+380:RX+RW, y); ctx.textAlign="left"; };
+    const ht=HBY+HBH, c=playerContract(), L=getLedger();
+    const LW2=Math.floor((VW-2*MARGIN-2*SP)/2), LX=MARGIN, RX=MARGIN+LW2+2*SP;
+    const row=(x,y2,label,val,vc,lc,w)=>{ ctx.font=ttFont(13); ctx.fillStyle=lc||TTX.grey; ctx.fillText(label, x, y2);
+      ctx.textAlign="right"; ctx.fillStyle=vc||TTX.white; ctx.fillText(val, x+w, y2); ctx.textAlign="left"; };
+    let y=ht+3*SP;
     // left: the contract
-    ctx.font=ttFont(17); ctx.fillStyle=TTX.green; ctx.fillText("YOUR CONTRACT", LX, ht+28);
-    ctx.font=ttFont(12); ctx.fillStyle=TTX.grey; ctx.fillText((TEAMBY[CAR.slug]||{}).name||"", LX, ht+48);
-    row(LX, ht+76,  "WAGE, PER APPEARANCE", money(c.wage));
-    row(LX, ht+100, "WIN BONUS", money(c.winB));
-    row(LX, ht+124, "GOAL BONUS", money(c.goalB));
-    row(LX, ht+148, "AGENT'S CUT (SLICK VIC)", vicCutPct()+"%", "#ff8888");
-    tip(LX, ht+60, 380, 96, "VIC NEGOTIATES YOUR TERMS FROM THE CLUB'S SIZE AND YOUR NAME. TRANSFERS BRING A SIGNING-ON FEE AND A NEW CONTRACT; A GROWN REPUTATION EARNS A RAISE AT THE SEASON ROLLOVER.");
-    tip(LX, ht+136, 380, 20, "HIS CUT STARTED AT 10% AND RISES 1% EVERY SEASON. STANDARD INDUSTRY PRACTICE. DON'T LOOK IT UP.");
-    ctx.font=ttFont(17); ctx.fillStyle=TTX.green; ctx.fillText("SPONSOR", LX, ht+192);
-    if (CAR.sponsor && CAR.sponsor.left>0){
-      row(LX, ht+216, CAR.sponsor.name, money(CAR.sponsor.perGoal)+"/GOAL · "+money(CAR.sponsor.perWin)+"/WIN", TTX.cyan, TTX.white);
-      row(LX, ht+240, "MATCHES REMAINING", ""+CAR.sponsor.left);
-    } else row(LX, ht+216, "NO ACTIVE DEAL", "-", TTX.dim);
-    ctx.font=ttFont(17); ctx.fillStyle=TTX.green; ctx.fillText("CAREER", LX, ht+284);
-    row(LX, ht+308, "TOTAL EARNED (AFTER VIC)", money(CAR.earned||0), TTX.yellow);
+    { const cy=uiPanel(LX, y, LW2, 172, {title:"YOUR CONTRACT", icon:'ledger', accent:TTX.cyan,
+        right:(TEAMBY[CAR.slug]||{}).name||"", rightCol:TTX.white});
+      row(LX+16, cy+16, "WAGE, PER APPEARANCE", money(c.wage), TTX.white, null, LW2-32);
+      row(LX+16, cy+40, "WIN BONUS", money(c.winB), TTX.white, null, LW2-32);
+      row(LX+16, cy+64, "GOAL BONUS", money(c.goalB), TTX.white, null, LW2-32);
+      row(LX+16, cy+88, "AGENT'S CUT (SLICK VIC)", vicCutPct()+"%", "#ff8888", null, LW2-32);
+      row(LX+16, cy+112, "SEASON", ""+CAR.season, TTX.grey, null, LW2-32);
+      tip(LX, y, LW2, 172, "VIC NEGOTIATES YOUR TERMS FROM THE CLUB'S SIZE AND YOUR NAME. TRANSFERS BRING A SIGNING-ON FEE AND A NEW CONTRACT; A GROWN REPUTATION EARNS A RAISE AT THE ROLLOVER. HIS CUT STARTED AT 10% AND RISES 1% A SEASON."); }
+    { const sy=y+172+2*SP;
+      const cy=uiPanel(LX, sy, LW2, 96, {title:"SPONSOR", icon:'horn', accent:TTX.neon});
+      if (CAR.sponsor && CAR.sponsor.left>0){
+        row(LX+16, cy+16, CAR.sponsor.name, money(CAR.sponsor.perGoal)+"/GOAL · "+money(CAR.sponsor.perWin)+"/WIN", TTX.cyan, TTX.white, LW2-32);
+        row(LX+16, cy+40, "MATCHES REMAINING", ""+CAR.sponsor.left, TTX.white, null, LW2-32);
+      } else row(LX+16, cy+16, "NO ACTIVE DEAL", "-", TTX.dim, TTX.dim, LW2-32); }
+    { const sy=y+172+96+4*SP;
+      const cy=uiPanel(LX, sy, LW2, 64, {title:"CAREER", icon:'coin', accent:"#ffd700"});
+      row(LX+16, cy+16, "TOTAL EARNED (AFTER VIC)", money(CAR.earned||0), TTX.yellow, null, LW2-32); }
     // right: this season's books
-    ctx.font=ttFont(17); ctx.fillStyle=TTX.green; ctx.fillText("THIS SEASON", RX, ht+28);
-    let y=ht+56, tin=0, tout=0;
-    const IN=[["WAGES",L.wages],["BONUSES",L.bonus],["SPONSOR",L.sponsor],["PRIZE MONEY",L.prize],["SIGNING-ON FEE",L.signing],["SPONSORED ADS",L.ads]];
-    for (const [lbl,v] of IN){ if(!v) continue; row(RX, y, lbl, "+"+money(v), TTX.green); tin+=v; y+=22; }
-    if (!tin){ row(RX, y, "NOTHING EARNED YET", "-", TTX.dim); y+=22; }
-    row(RX, y, "VIC'S CUT", "-"+money(L.vic), "#ff8888"); y+=22;
-    const OUT=[["PROTEIN SHAKES",L.shakes],["TRAINER",L.trainer],["SHOPPING",L.shopping]];
-    for (const [lbl,v] of OUT){ if(!v) continue; row(RX, y, lbl, "-"+money(v), "#ff8888"); tout+=v; y+=22; }
-    ctx.fillStyle="rgba(255,255,255,0.25)"; ctx.fillRect(RX, y-12, RW, 1);
-    row(RX, y+8, "NET THIS SEASON", (tin-L.vic-tout>=0?"+":"")+money(tin-L.vic-tout), TTX.yellow, TTX.white);
-    tip(RX, ht+40, RW, y-ht-20, "EVERY POUND IN AND OUT THIS SEASON. THE LEDGER RESETS EACH SUMMER.");
+    { const bh=172+96+64+4*SP;
+      const cy=uiPanel(RX, y, LW2, bh, {title:"THIS SEASON", icon:'ledger', accent:TTX.green});
+      let y2=cy+16, tin=0, tout=0;
+      const IN=[["WAGES",L.wages],["BONUSES",L.bonus],["SPONSOR",L.sponsor],["PRIZE MONEY",L.prize],["SIGNING-ON FEE",L.signing],["SPONSORED ADS",L.ads]];
+      for (const [lbl,v] of IN){ if(!v) continue; row(RX+16, y2, lbl, "+"+money(v), TTX.green, null, LW2-32); tin+=v; y2+=24; }
+      if (!tin){ row(RX+16, y2, "NOTHING EARNED YET", "-", TTX.dim, TTX.dim, LW2-32); y2+=24; }
+      row(RX+16, y2, "VIC'S CUT", "-"+money(L.vic), "#ff8888", null, LW2-32); y2+=24;
+      const OUT=[["PROTEIN SHAKES",L.shakes],["TRAINER",L.trainer],["SHOPPING",L.shopping]];
+      for (const [lbl,v] of OUT){ if(!v) continue; row(RX+16, y2, lbl, "-"+money(v), "#ff8888", null, LW2-32); tout+=v; y2+=24; }
+      ctx.fillStyle="rgba(255,255,255,0.25)"; ctx.fillRect(RX+16, y2-14, LW2-32, 1);
+      row(RX+16, y2+6, "NET THIS SEASON", (tin-L.vic-tout>=0?"+":"")+money(tin-L.vic-tout), "#ffd700", TTX.white, LW2-32);
+      tip(RX, y, LW2, bh, "EVERY POUND IN AND OUT THIS SEASON. THE LEDGER RESETS EACH SUMMER."); }
     ctx.textAlign="center"; ctx.font=ttFont(11); ctx.fillStyle=TTX.grey;
     if (!TOUCH) ctx.fillText("HOVER FOR INFO    ESC  BACK TO SHOP", VW/2, SH-14);
     ctx.textAlign="left";
@@ -2848,37 +3108,72 @@
     lifeBtns=[]; state=ST.SHOP;
   }
   // ---- trophy room: Sega-style renders on cabinet shelves ----
-  function drawTrophyRoom(){
-    ttBar("TROPHY ROOM", 0, 12, VW, 30, TTX.blue, "#ffd700", {size:17});
+  function drawTrophyRoom(){   // round 15: a spotlit gallery, not a garden-shed shelf
     const tr=(CAR && CAR.trophies)||[];
+    ctx.fillStyle="#050608"; ctx.fillRect(0,0,VW,SH);
+    ttBar("TROPHY ROOM", 0, 12, VW, 30, TTX.blue, "#ffd700", {size:17});
     ctx.textAlign="right"; ctx.font=ttFont(12); ctx.fillStyle=TTX.grey;
     ctx.fillText(tr.length+" TROPH"+(tr.length===1?"Y":"IES"), VW-14, 34); ctx.textAlign="left";
-    // cabinet
-    ctx.fillStyle="#15100c"; ctx.fillRect(40,56,VW-80,SH-104);
-    ctx.strokeStyle="#3a2a18"; ctx.lineWidth=3; ctx.strokeRect(41.5,57.5,VW-83,SH-107);
-    const shelfY=[226,408], shX=72, shW=VW-144;
-    for (const sy of shelfY){
-      ctx.fillStyle="#54381c"; ctx.fillRect(shX,sy,shW,9);
-      ctx.fillStyle="#33220f"; ctx.fillRect(shX,sy+9,shW,4);
+    // the cabinet: dark walnut, glass front, red baize back wall
+    ctx.fillStyle="#191007"; ctx.fillRect(36,52,VW-72,SH-100);
+    ctx.fillStyle="#2a0e10"; ctx.fillRect(48,62,VW-96,SH-120);                   // baize
+    ctx.strokeStyle="#5a3d1c"; ctx.lineWidth=5; ctx.strokeRect(38.5,54.5,VW-77,SH-105);
+    ctx.strokeStyle="#8a6430"; ctx.lineWidth=1.5; ctx.strokeRect(44.75,60.75,VW-89.5,SH-117.5);
+    const shelfY=[224,404], shX=64, shW=VW-128;
+    const TIMG={league:IMG.trophyL, cup:IMG.trophyC, euro:IMG.trophyE, intl:IMG.trophyI};
+    const TLBL={league:"CHAMPIONS", cup:"THE CUP", euro:"EUROPE", intl:"THE WORLD"};
+    const perShelf=7, tw=78, th=104, slot=Math.floor(shW/perShelf);
+    // spotlight cones from the cabinet ceiling, one per occupied slot (or three mood lights when empty)
+    const spots = tr.length ? Math.min(tr.length, perShelf) : 3;
+    for (let i=0;i<spots;i++){
+      const onShelf=Math.min(tr.length||3, perShelf);
+      const x0=VW/2-(onShelf*slot)/2, sx2=x0+i*slot+slot/2;
+      const g=ctx.createLinearGradient(0,64,0,shelfY[0]);
+      g.addColorStop(0,"rgba(255,236,170,0.20)"); g.addColorStop(1,"rgba(255,236,170,0.02)");
+      ctx.fillStyle=g;
+      ctx.beginPath(); ctx.moveTo(sx2-8,64); ctx.lineTo(sx2+8,64);
+      ctx.lineTo(sx2+46,shelfY[0]); ctx.lineTo(sx2-46,shelfY[0]); ctx.closePath(); ctx.fill();
+    }
+    for (const sy of shelfY){                                                    // glass shelves
+      ctx.fillStyle="rgba(180,220,255,0.16)"; ctx.fillRect(shX,sy,shW,5);
+      ctx.fillStyle="rgba(255,255,255,0.35)"; ctx.fillRect(shX,sy,shW,1.5);
+      ctx.fillStyle="rgba(120,160,200,0.10)"; ctx.fillRect(shX,sy+5,shW,10);     // under-shelf haze
     }
     if (!tr.length){
       ctx.textAlign="center";
       ctx.font=ttFont(20); ctx.fillStyle=TTX.grey; ctx.fillText("NOTHING IN THE CABINET YET.", VW/2, 150);
       ctx.font=ttFont(14); ctx.fillStyle=TTX.dim;  ctx.fillText("EARLY DOORS. TAKE EACH GAME AS IT COMES.", VW/2, 178);
     } else {
-      const TIMG={league:IMG.trophyL, cup:IMG.trophyC, euro:IMG.trophyE, intl:IMG.trophyI};
-      const TLBL={league:"LGE", cup:"CUP", euro:"EUR", intl:"WLD"};
-      const perShelf=8, tw=66, th=88, slot=96;
       tr.slice(0,perShelf*2).forEach((tp,i)=>{
         const sh=Math.floor(i/perShelf), onShelf=Math.min(tr.length-sh*perShelf, perShelf);
         const x0=VW/2-(onShelf*slot)/2, x=x0+(i%perShelf)*slot+(slot-tw)/2, yb=shelfY[sh];
-        const im=TIMG[tp.t]||IMG.trophyL;
+        const im=TIMG[tp.t]||IMG.trophyL, cxm=x+tw/2;
+        // radial glow behind each piece
+        { const g=ctx.createRadialGradient(cxm,yb-th/2,6,cxm,yb-th/2,th*0.75);
+          const gold=tp.t==="cup"||tp.t==="euro" ? "200,220,255" : "255,214,90";
+          g.addColorStop(0,"rgba("+gold+",0.30)"); g.addColorStop(1,"rgba("+gold+",0)");
+          ctx.fillStyle=g; ctx.beginPath(); ctx.arc(cxm,yb-th/2,th*0.75,0,2*Math.PI); ctx.fill(); }
         if (im && im.naturalWidth) ctx.drawImage(im, x, yb-th, tw, th);
-        pxText((TLBL[tp.t]||"")+(tp.s?" S"+tp.s:""), x+tw/2, yb+24, 11, "#ffd700", 'c', 'm');
+        // reflection in the glass shelf
+        if (im && im.naturalWidth){ ctx.save(); ctx.globalAlpha=0.16;
+          ctx.translate(0, 2*yb+8); ctx.scale(1,-1);
+          ctx.drawImage(im, x, yb-Math.round(th*0.45), tw, Math.round(th*0.45)); ctx.restore(); }
+        // engraved plaque
+        const pw2=slot-14, px2=cxm-pw2/2, py2=yb+16;
+        ctx.fillStyle="#3a2c12"; ctx.fillRect(px2,py2,pw2,26);
+        ctx.strokeStyle="#8a6d2a"; ctx.lineWidth=1; ctx.strokeRect(px2+0.5,py2+0.5,pw2-1,26-1);
+        pxText(TLBL[tp.t]||"", cxm, py2+9, 9, "#e8cf7a", 'c','m');
+        pxText(tp.s?("SEASON "+tp.s):"", cxm, py2+19, 9, "#b8a05a", 'c','m');
       });
       if (tr.length>perShelf*2){ ctx.textAlign="center"; ctx.font=ttFont(13); ctx.fillStyle=TTX.grey;
-        ctx.fillText("+"+(tr.length-perShelf*2)+" MORE IN STORAGE", VW/2, SH-60); }
+        ctx.fillText("+"+(tr.length-perShelf*2)+" MORE IN THE VAULT", VW/2, SH-60); }
     }
+    // glass-front sheen
+    ctx.save(); ctx.beginPath(); ctx.rect(48,62,VW-96,SH-120); ctx.clip();
+    ctx.fillStyle="rgba(255,255,255,0.045)";
+    ctx.beginPath(); ctx.moveTo(140,62); ctx.lineTo(320,62); ctx.lineTo(80,SH-58); ctx.lineTo(-40,SH-58); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(420,62); ctx.lineTo(470,62); ctx.lineTo(260,SH-58); ctx.lineTo(200,SH-58); ctx.closePath(); ctx.fill();
+    ctx.restore();
     ctx.textAlign="center"; ctx.font=ttFont(12); ctx.fillStyle=TTX.grey;
     if (!TOUCH) ctx.fillText("ESC / SPACE  BACK", VW/2, SH-22);
     ctx.textAlign="left";
@@ -2999,6 +3294,7 @@
     ctx.fillText(matchPlan(5).balls+" BALLS · WIN OR GO HOME", VW/2, y0+5*rowH+8);
     const me=TEAMBY[CAR.slug].name, op=(TEAMBY[c.opp]||{name:c.opp}).name;
     compFooter(c.home? me+"  v  "+op : op+"  v  "+me, "CUP · "+CUP_ROUNDS[c.round], "#b8860b");
+    if (cupPopupActive()) drawCupPopup({t:'C'});          // first visit this round: the silverware at stake
   }
   function drawEuroView(){
     const e=CAR.euro, comp=e.comp==='CT'?"CHAMPIONS TROPHY":"CONTINENTAL CUP";
@@ -3018,6 +3314,7 @@
     }
     compFooter(o.home? me+"  v  "+op : op+"  v  "+me,
       comp+" · "+(ev.k<6 ? "GROUP MATCH "+(e.gIdx+1) : (ev.k===6?"SEMI-FINAL":"FINAL")), "#27408b");
+    if (cupPopupActive()) drawCupPopup(ev);               // first visit this stage: the silverware at stake
   }
   function drawTrnHub(){
     const nat=nationOf(CAR.nation)||{name:CAR.nation, flag:{t:'h',c:['#666','#999','#666']}};
@@ -3157,7 +3454,7 @@
     ctx.font=ttFont(13); ctx.fillStyle=TTX.dim; ctx.fillText("Search mail…", 204, 31);
     ctx.textAlign="right"; ctx.font=ttFont(13); ctx.fillStyle=TTX.cyan; ctx.fillText(rightText, VW-16, 24);
     ctx.font=ttFont(11); ctx.fillStyle=TTX.dim;
-    ctx.fillText((CAR.name||"you").toLowerCase().split(" ").join(".")+"@smail.co.uk", VW-16, 41);
+    ctx.fillText((CAR.name||"you").toLowerCase().split(" ").join(".")+"@s-mail.co.uk", VW-16, 41);
     ctx.textAlign="left";
     ctx.fillStyle="rgba(255,255,255,0.14)"; ctx.fillRect(0,52,VW,1);
   }
@@ -3173,15 +3470,27 @@
       if (i<offers.length){
         const o=offers[i];
         ctx.font=ttFont(14,"bold "); ctx.fillStyle = o.read?TTX.dim:TTX.green;
-        ctx.fillText(o.read?"  ":"●", 18, y+22);
+        ctx.fillText(o.read?"  ":"●", 16, y+24);
+        // sender avatar: initials on a colour hashed from the name (webmail style)
+        const sender = o.sign ? o.sign.split(" · ")[0] : (o.name+" FC");
+        { const hue=(sender.split("").reduce((a,ch)=>a+ch.charCodeAt(0),0)*37)%360;
+          ctx.fillStyle = o.read ? "rgba(255,255,255,0.10)" : "hsl("+hue+",45%,38%)";
+          ctx.beginPath(); ctx.arc(46, y+20, 14, 0, 2*Math.PI); ctx.fill();
+          const ini=sender.split(" ").filter(w=>w[0]&&/[A-Za-z]/.test(w[0])).map(w=>w[0]).slice(0,2).join("");
+          pxText(ini.toUpperCase(), 46, y+21, 11, o.read?TTX.dim:"#ffffff", 'c','m'); }
         ctx.font=ttFont(14); ctx.fillStyle = o.read?TTX.grey:TTX.cyan;
-        ctx.fillText(o.sign ? o.sign.split(" · ")[0] : (o.name+" FC"), 44, y+19);
+        ctx.fillText(sender, 70, y+19);
         ctx.fillStyle = o.read?TTX.grey:TTX.yellow;
-        ctx.fillText(o.subject, 250, y+19);
+        ctx.fillText(o.subject, 280, y+19);
         ctx.font=ttFont(10); ctx.fillStyle=TTX.dim;
         const whence = (o.leagueId && o.leagueId!==CAR.leagueId && LEAGUE_META[o.leagueId])
           ? o.name+" · "+LEAGUE_META[o.leagueId].name : o.name+" finished "+ord(o.pos);
-        ctx.fillText((o.from||("theboard@"+o.slug.toLowerCase()+".smail.co.uk"))+"   ·   "+whence, 44, y+35);
+        ctx.fillText((o.from||("theboard@"+o.slug.toLowerCase()+".s-mail.co.uk"))+"   ·   "+whence, 70, y+35);
+        if (o.tag){   // tag chip, right-aligned (DOMESTIC / THE BIG TIME / LA LIGA / THE HARD ROAD)
+          ctx.font=ttFont(10); const tw2=ctx.measureText(o.tag).width+14;
+          const chX=VW-24-tw2, chCol = o.tag==="THE HARD ROAD" ? "#8a2f2f" : (o.tag==="DOMESTIC" ? "#3a4a63" : "#8a6d1a");
+          ctx.fillStyle=chCol; ctx.fillRect(chX, y+8, tw2, 16);
+          pxText(o.tag, chX+tw2/2, y+17, 10, "#ffffff", 'c','m'); }
       } else {
         ctx.font=ttFont(14,"bold "); ctx.fillStyle=TTX.neon;
         ctx.fillText("» NO THANKS, STAY AT "+(TEAMBY[CAR.slug]?TEAMBY[CAR.slug].name.toUpperCase():"YOUR CLUB")+" & START NEXT SEASON", 24, y+27);
@@ -3198,7 +3507,7 @@
     ctx.textAlign="left";
     ctx.font=ttFont(12); ctx.fillStyle=TTX.dim;  ctx.fillText("FROM:", 24, 72);
     ctx.font=ttFont(13,"bold "); ctx.fillStyle=TTX.cyan;
-    ctx.fillText((o.sign||("The Board · "+o.name))+"   <"+(o.from||("theboard@"+o.slug.toLowerCase()+".smail.co.uk"))+">", 92, 72);
+    ctx.fillText((o.sign||("The Board · "+o.name))+"   <"+(o.from||("theboard@"+o.slug.toLowerCase()+".s-mail.co.uk"))+">", 92, 72);
     ctx.font=ttFont(12); ctx.fillStyle=TTX.dim;  ctx.fillText("SUBJECT:", 24, 92);
     ctx.font=ttFont(14,"bold "); ctx.fillStyle=TTX.yellow; ctx.fillText(o.subject, 118, 92);
     ctx.strokeStyle=TTX.dim; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(16,102); ctx.lineTo(VW-16,102); ctx.stroke();
@@ -3269,7 +3578,9 @@
       }
     }
     queueSeasonBrief();                                 // E8: Vic delivers the board's demands (+ his new cut)
-    saveCareer(); flushMsgs(()=>{ state=ST.TABLE; });
+    saveCareer();
+    if (moved && CAR.monies!=null) showContract(()=>flushMsgs(()=>{ state=ST.TABLE; }));   // new club, new paper
+    else flushMsgs(()=>{ state=ST.TABLE; });
   }
 
   // ================= AGENT COMMUNICATION SCREEN — "Slick Vic" =================
@@ -3318,6 +3629,12 @@
       stateEnterAt=performance.now(); return;
     }
     const fn=agentNext; agentNext=null; if (fn) fn();
+  }
+  let agentSkipBtn=null;   // discreet corner SKIP (owner): drops the whole comms queue, not just this speech
+  function skipComms(){
+    if (CAR && CAR.msgs && CAR.msgs.length){ CAR.msgs=[]; saveCareer(); }
+    const fn=agentNext; agentNext=null;
+    if (fn) fn(); else if (state===ST.AGENT) state = CAR ? careerHomeState() : ST.MENU;
   }
   // ---- the three career scenarios (State A / B / C) ----
   function agentIntro(){    // A — career intro → Select Nationality (or Select League when there's no nations file)
@@ -3532,6 +3849,11 @@
     }
     if (!typing){ if (ttCursorOn()) pxText(TOUCH?"▶ TAP TO CONTINUE":"▶ PRESS SPACE TO CONTINUE", VW/2, SH-34, 18, TTX.yellow, 'c','m'); }
     else pxText(TOUCH?"TAP TO SKIP":"SPACE TO SKIP", VW/2, SH-34, 13, TTX.dim, 'c','m');
+    // discreet corner SKIP (owner): quietly drops the whole comms queue
+    { const bw=92, bh=24, bx=VW-bw-12, by=10;
+      ctx.strokeStyle="rgba(255,255,255,0.28)"; ctx.lineWidth=1; ctx.strokeRect(bx+0.5,by+0.5,bw-1,bh-1);
+      pxText("SKIP ✕", bx+bw/2, by+bh/2+1, 12, "rgba(255,255,255,0.45)", 'c','m');
+      agentSkipBtn={x:bx,y:by,w:bw,h:bh}; }
   }
 
   // ================= DAILY CHALLENGE (seeded match + local leaderboard) =================
@@ -4103,9 +4425,13 @@
     else if (state===ST.INBOX) { ttClear(); drawInbox(); drawTouchBack("← BACK"); }
     else if (state===ST.TROPHY) { ttClear(); drawTrophyRoom(); drawTouchBack("← BACK"); }
     else if (state===ST.SHOP) { ttClear(); drawShop(); drawTouchBack("← BACK"); drawTooltip(); }
+    else if (state===ST.PROTEIN) { ttClear(); drawProtein(); drawTouchBack("← BACK"); drawTooltip(); }
+    else if (state===ST.LIFESTYLE) { ttClear(); drawLifestyleShop(); drawTouchBack("← BACK"); drawTooltip(); }
+    else if (state===ST.SPONSOR) { ttClear(); drawSponsorScreen(); drawTouchBack("← BACK"); drawTooltip(); }
     else if (state===ST.TRAINERSEL) { ttClear(); drawTrainerSel(); drawTouchBack("← BACK"); drawTooltip(); }
     else if (state===ST.LEDGER) { ttClear(); drawLedger(); drawTouchBack("← BACK"); drawTooltip(); }
-    else if (state===ST.ADBREAK) { drawAdBreak(); touchBackBtn=null; }   // no escape from commerce (ESC still bails without the reward)
+    else if (state===ST.ADBREAK) { drawAdBreak(); touchBackBtn=null; }
+    else if (state===ST.CONTRACT) { drawContract(); touchBackBtn=null; }   // no escape from commerce (ESC still bails without the reward)
     else if (state===ST.EMAIL) { ttClear(); drawEmail(); drawTouchBack("← BACK"); }
     else if (state===ST.DAILYBOARD) { ttClear(); drawDailyBoard(); drawTouchBack("← MENU"); }
     else if (state===ST.HORSESETUP) { ttClear(); drawHorseSetup(); drawTouchBack("← MENU"); }
@@ -4146,6 +4472,7 @@
     // trophy / future actions — placeholder, no-op until screens are built
   }
   function goBack(){             // ESC = back / forfeit
+    if (state===ST.AGENT){ skipComms(); return; }   // ESC = the discreet skip
     if (state===ST.NAME){ kbdClose(); state=ST.MENU; menuSel=0; }
     else if (state===ST.NATSEL){ state=ST.NAME; kbdOpen(nameBuf); menuSel=0; }
     else if (state===ST.LEAGUESEL){ state=WORLD&&WORLD.nations?ST.NATSEL:ST.NAME; if(state===ST.NAME) kbdOpen(nameBuf); menuSel=0; }
@@ -4155,8 +4482,8 @@
     else if (state===ST.INBOX){ state=ST.SEASONEND; }
     else if (state===ST.TROPHY){ state=careerHomeState(); }
     else if (state===ST.SHOP){ state=careerHomeState(); }
-    else if (state===ST.TRAINERSEL){ lifeBtns=[]; state=ST.SHOP; }
-    else if (state===ST.LEDGER){ lifeBtns=[]; state=ST.SHOP; }
+    else if (state===ST.PROTEIN || state===ST.LIFESTYLE || state===ST.SPONSOR ||
+             state===ST.TRAINERSEL || state===ST.LEDGER){ lifeBtns=[]; hoverTip=null; state=ST.SHOP; }
     else if (state===ST.ADBREAK){ lifeBtns=[]; state=ST.SHOP; }   // bail early = no reward; the sponsors sulk
     else if (state===ST.TABLE || state===ST.SEASONEND){ GMODE="career"; state=ST.MENU; menuSel=0; }
     else if (state===ST.HORSESETUP){ kbdClose(); state=ST.MPMENU; menuSel=(mpMode==="classic"?0:1); }
@@ -4198,15 +4525,16 @@
       const t=TEAMS[menuSel];
       if (pendingMode==="career" && !clubStartAllowed(t, pendingLeague)) return;   // E7: locked club — too big for an unknown
       GMODE="career"; newCareer(nameBuf.trim()||"You", t.slug, pendingNation, pendingLeague);
-      flushMsgs(()=>{ state=ST.TABLE; });   // Vic's tutorial + season brief play before the career home
+      showContract(()=>flushMsgs(()=>{ state=ST.TABLE; }));   // sign, then Vic's tour + season brief
     } }
     else if (state===ST.TRNHUB){
       const T=CAR&&CAR.trn; if(!T) { state=ST.MENU; }
       else if (T.stage==='out'||T.stage==='won'){ CAR.trnDone=true; saveCareer(); enterSeasonEnd(); }
       else startTrnMatch();
     }
-    else if (state===ST.TABLE){ startFixture(); }
+    else if (state===ST.TABLE){ if (cupPopupActive()) dismissCupPopup(); else startFixture(); }
     else if (state===ST.ADBREAK){ adBreakSelect(); }
+    else if (state===ST.CONTRACT){ contractSign(); }
     else if (state===ST.TROPHY){ state=careerHomeState(); }
     else if (state===ST.SEASONEND){ agentCallUp(); }   // State C: call-up check → transfer offers
     else if (state===ST.INBOX){ const n=(CAR.offers||[]).length; if(inboxSel<n) openEmail(inboxSel); else nextSeason(null); }
@@ -4223,7 +4551,7 @@
     if (state===ST.NAME){ confirmName(); }
     else if (state===ST.MENU||state===ST.TABLE||state===ST.SEASONEND||state===ST.INBOX||state===ST.CLUBSEL||state===ST.NATSEL||state===ST.LEAGUESEL||state===ST.TRNHUB||state===ST.OVER||
              state===ST.MATCHEND||state===ST.DAILYBOARD||state===ST.HORSEPASS||state===ST.HORSEEND||
-             state===ST.MPMENU||state===ST.CLASSICPASS||state===ST.CLASSICEND||state===ST.AGENT||state===ST.ADBREAK) pressSelect();
+             state===ST.MPMENU||state===ST.CLASSICPASS||state===ST.CLASSICEND||state===ST.AGENT||state===ST.ADBREAK||state===ST.CONTRACT) pressSelect();
     else togglePause();                                   // in-match: ENTER = pause
   }
   function moveSel(dx,dy){
@@ -4344,7 +4672,8 @@
   const inPlay = (s)=> s===ST.SERVE||s===ST.FLIGHT||s===ST.COUNTDOWN;
   canvas.addEventListener("pointermove",(e)=>{
     const p=evToLogical(e);
-    if(!TOUCH && (state===ST.SHOP || state===ST.TRAINERSEL || state===ST.LEDGER)){   // hover help (E8.2)
+    if(!TOUCH && (state===ST.SHOP || state===ST.PROTEIN || state===ST.LIFESTYLE || state===ST.SPONSOR ||
+                  state===ST.TRAINERSEL || state===ST.LEDGER)){   // hover help (E8.2)
       hoverX=p.x; hoverY=p.y; hoverTip=null;
       for(const r of tipRegions){ if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h){ hoverTip=r.tip; break; } }
     } else hoverTip=null;
@@ -4418,8 +4747,13 @@
         else pressSelect();
       }
     }
-    else if(state===ST.SHOP || state===ST.TRAINERSEL || state===ST.LEDGER){
+    else if(state===ST.SHOP || state===ST.PROTEIN || state===ST.LIFESTYLE || state===ST.SPONSOR ||
+            state===ST.TRAINERSEL || state===ST.LEDGER){
       for(const b of lifeBtns){ if(p.x>=b.x&&p.x<=b.x+b.w&&p.y>=b.y&&p.y<=b.y+b.h){ lifeAction(b); break; } }
+    }
+    else if(state===ST.AGENT){    // corner SKIP drops the queue; anywhere else advances
+      if(agentSkipBtn && p.x>=agentSkipBtn.x && p.x<=agentSkipBtn.x+agentSkipBtn.w && p.y>=agentSkipBtn.y && p.y<=agentSkipBtn.y+agentSkipBtn.h) skipComms();
+      else pressSelect();
     }
     else if(state===ST.TRNHUB){   // tournament hub: the footer buttons work here too
       if(trophyRoomBtn && p.x>=trophyRoomBtn.x && p.x<=trophyRoomBtn.x+trophyRoomBtn.w && p.y>=trophyRoomBtn.y && p.y<=trophyRoomBtn.y+trophyRoomBtn.h) state=ST.TROPHY;
@@ -4558,6 +4892,10 @@
       signSponsorSim: function(){ return signSponsor(); },
       watchAdSim: function(){ return watchAdReward(); },
       popMsgSim: function(){ const m=(CAR.msgs||[]).shift(); return m||null; },
+      contractSim: function(){ showContract(null); return {state}; },   // audit: stage the signing ceremony
+      trophySim: function(n){ CAR.trophies=[]; const kinds=["league","cup","euro","intl"];   // audit: fill the cabinet
+        for (let i=0;i<(n||6);i++) CAR.trophies.push({t:kinds[i%4], s:i+1, club:CAR.slug});
+        return CAR.trophies.length; },
       resetUnlocksSim: function(){ UNLOCKS={leagues:{}, freestart:false}; saveUnlocks(); return true; },   // audit: stage the locked journey map
       forceUnlocksSim: function(o){ o=o||{}; if(o.freestart) UNLOCKS.freestart=true; for (const id of (o.leagues||[])) UNLOCKS.leagues[id]=true; saveUnlocks(); return true; },
       stageClubSelSim: function(league){ pendingMode="career"; pendingLeague=league||"ENG"; setActiveLeague(pendingLeague); menuSel=0; return TEAMS.length; },

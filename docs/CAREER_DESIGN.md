@@ -299,3 +299,26 @@ in the header, THE LIFE + THE GYM + ad-break screens, pay-day line on the match-
   the eleven; a poor one 20+).
 - **Difficulty:** all league AI strength ×1.1 (owner: "10% harder all around").
 
+### 11c. Owner round 15 (same session) — polish/UX pass
+
+- **UI kit** (per the ui-ux-pro-max audit): 8px spacing grid + 24px margins, `uiPanel`
+  card component, hand-drawn 16x16 pixel icons (shake/dumbbell/shirt/car/house/gamepad/
+  megaphone/ledger/coin/trophy/bolt), one accent colour per role.
+- **£ SHOP = a hub of five departments**, each a full screen: PROTEIN CORNER (condition
+  bar with threshold ticks + the two scoops), THE GYM, LIFESTYLE (2x2 category grid,
+  tier pips, upgrade-only buttons), SPONSORS (the deal + the full ladder with lock
+  reasons), FINANCES. Hover tooltips throughout.
+- **Contract ceremony** (`ST.CONTRACT`): club-letterhead document with the negotiated
+  terms and Vic's commission, signed at career start and after every transfer.
+- **Comms**: discreet corner SKIP ✕ (drops the whole queue; ESC does the same).
+- **Shakes**: SINGLE SCOOP +25 / DOUBLE SCOOP +55 only (owner).
+- **S-MAIL** (was Smail): avatar initials + tag chips (DOMESTIC / THE BIG TIME / league
+  name / THE HARD ROAD) in the inbox; the offer generator deals every pool (senders,
+  subjects, hooks, flattery, closes, foreign PS lines) without replacement, so **no two
+  emails in an inbox are ever the same**; pools enlarged.
+- **Trophies**: regenerated real-inspired silverware (crowned league gold, silver lidded
+  pot, big-eared European jug, golden globe on a swirl) with dual glints, rim light,
+  specular pips and baked bloom; **gallery trophy room** (spotlight cones, glass shelves,
+  radial glow, reflections, engraved season plaques); **cup-week popup** shows the trophy
+  at stake + the tie, once per cup round / Euro stage (`cup.seenR` / `euro.seenK`).
+
