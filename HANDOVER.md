@@ -13,8 +13,22 @@ https://jbradgit.github.io/Volley-game/ (GitHub Pages serves `main`).
 **Git state right now (2026-07-02, second session):**
 - **IN FLIGHT: branch `claude/career-journey` (this working tree) — E7 "The Journey" + E8 "The
   Life" career overhaul, UNDEPLOYED, awaiting the owner's eyeball** (visual + gameplay change →
-  owner review before landing on `main`). Full CI green (42/42 + smoke), layout audit clean
-  (29 screens).
+  owner review before landing on `main`). Full CI green (50/50 + smoke), layout audit clean
+  (~37 screens).
+- **Owner round 16 (COMMITTED on the branch) — economy depth + energy realism + PAY DAY:**
+  (1) **bank balance consistent + labelled** — `bankRight()` stamps `BANK £x` top-right on every
+  career header (home top-bar is now `CAREER · SEASON N` centred, bank right); exceptions: S-MAIL
+  client + contract paper (own identities). (2) **career-home hover explainers** (form / position /
+  odds / reputation / condition / next-match / bank). (3) **energy = NSS rest-day model**
+  (`restDaysFor` league 7d / cup 4d / Euro 3d / intl 5d × `ENERGY_REC_PER_DAY 3`; drain
+  `4 + 3.6×role-target-balls`; helpless starter exhausted in ~5 games, congested weeks bite,
+  subs stay fresh); tiredness harsher (**−2 under 60%, −4 under 40%**). (4) **trainers mirror NSS
+  staff** — dearer = far longer contract (Beef £70/8g, Sven £220/24g, Proteina £520/60g). (5)
+  **economy slowed** (wages −30%, goal bonus 5%-of-wage, sponsors weighted to WIN money, ad
+  £12→£4, prize ~−45%, signing fee 6×→3×, lifestyle +45%). (6) **PAY DAY screen** (`ST.PAYDAY`)
+  after each real match: itemised wage slip + Vic's cut + new balance + the energy toll/rest days
+  (autoplay skips it). Design: `docs/CAREER_DESIGN.md` §11d. Tuning probe:
+  `scratchpad/econ_probe.js` pattern (debut spender ends near-broke, miser hoards less).
   **E8 "The Life" (owner's NSS-economy brief, same branch, second commit):** `CAR.monies`
   economy (wages by club size/tier + win/goal bonuses; **Vic's cut 10% +1%/season** off all
   income, announced in his season brief); **NSS-style energy** (matches drain ~29, weak natural

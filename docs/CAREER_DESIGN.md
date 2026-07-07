@@ -322,3 +322,29 @@ in the header, THE LIFE + THE GYM + ad-break screens, pay-day line on the match-
   radial glow, reflections, engraved season plaques); **cup-week popup** shows the trophy
   at stake + the tie, once per cup round / Euro stage (`cup.seenR` / `euro.seenK`).
 
+
+### 11d. Owner round 16 (economy depth + energy realism + pay day)
+
+- **Bank balance consistent + labelled.** `bankRight()` returns `"BANK £x"`, stamped
+  top-right on every career-management header (home, cup, Europe, tournament hub, shop
+  hub + all departments, gym, finances, trophy room, season review). The home top-bar now
+  reads `CAREER · SEASON N` centred with the bank on the right. Deliberate exceptions: the
+  S-MAIL client (own email identity) and the contract paper (own letterhead).
+- **Career-home hover explainers** on the FORM / POSITION / TITLE-ODDS footer, the
+  REPUTATION and CONDITION panels, the NEXT MATCH panel and the bank readout.
+- **Energy → NSS rest-day model.** A match drains by *workload* (`ENERGY_DRAIN_BASE 4 +
+  3.6 × role target balls` → starter ≈ 40, sub ≈ 26, cameo ≈ 15) and you recover by
+  *resting between fixtures* (`restDaysFor`: league 7d, cup 4d, Europe 3d, intl 5d ×
+  `ENERGY_REC_PER_DAY 3`, plus trainer + property). So a helpless starter is exhausted in
+  ~5 games, congested cup/Euro weeks bite hardest, and subs/cameos naturally stay fresher.
+  Thresholds harsher (owner): **under 60% = −2 balls, under 40% = −4 balls** (same target).
+- **Trainers mirror NSS staff.** Dearer = far longer contract (the value is fewer
+  renewals): Beef £70/8 games/+7, Sven £220/24/+11, Dr Proteina £520/60/+16.
+- **Economy slowed (NSS grind).** Wages −30% (`tier2 5+r×2`, `tier1 24+r×6`), goal bonus
+  tiny (`5% of wage`, min 1) and sponsors weighted onto WIN money (per-goal shrunk) so a
+  10-ball haul can't explode; rewarded ad £12→£4; prize money ~−45%; signing fee 6×→3×
+  wage; lifestyle costs +~45% (aspirational). Probe: a debut spender ends a season near
+  broke after real investment; a do-nothing miser hoards less and plays exhausted.
+- **PAY DAY screen** (`ST.PAYDAY`) after the result burst: an itemised wage slip
+  (appearance fee, win bonus, goals × bonus, sponsor, gross, Vic's cut, in-the-bank, new
+  balance) plus the match's energy toll and rest days. Real play only; autoplay skips it.

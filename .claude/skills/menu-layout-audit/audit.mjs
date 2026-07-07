@@ -56,6 +56,8 @@ const SCREENS = [
   { name: 'sponsor_screen',  state: 'SPONSOR',     setup: "__dbg.newCareerSim('England','ENG2','Millwall');__dbg.setMonies(500);__dbg.setJourney({rep:32});__dbg.buyItemSim('trackie');__dbg.signSponsorSim()" },
   { name: 'contract',        state: 'CONTRACT',    setup: "__dbg.newCareerSim('England','ENG2','Millwall');__dbg.contractSim()" },
   { name: 'trophyroom_full', state: 'TROPHY',      setup: "__dbg.newCareerSim('England','ENG2','Millwall');__dbg.trophySim(9)" },
+  { name: 'payday',          state: 'PAYDAY',      setup: "__dbg.newCareerSim('England','ENG2','Millwall');__dbg.setMonies(430);__dbg.paydaySim()" },
+  { name: 'protein_r16',     state: 'PROTEIN',     setup: "__dbg.newCareerSim('England','ENG2','Millwall');__dbg.setJourney({energy:38})" },
   // NB: the hover tooltip is an OVERLAY (it floats over content by design) — the linter would flag
   // it as OVERLAP, so it isn't staged here; eyeball it via tools/journey_snaps.mjs instead.
   { name: 'ledger',          state: 'LEDGER',      setup: "__dbg.newCareerSim('England','ENG2','Millwall');__dbg.setMonies(500);__dbg.buyItemSim('trackie');__dbg.hireTrainerSim('beef');__dbg.watchAdSim();__dbg.playNext(true)" },

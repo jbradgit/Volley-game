@@ -194,10 +194,10 @@ test("journey: tired legs mean fewer balls for the SAME target", async () => {
   dbg.setJourney({ trust: 100, energy: 50 });
   let plan = dbg.matchPlanSim();
   assert.equal(plan.targetBalls, 10, "the target still assumes 10 balls");
-  assert.equal(plan.balls, 9, "TIRED (40-59) costs one ball");
+  assert.equal(plan.balls, 8, "TIRED (40-59) costs two balls");
   dbg.setJourney({ energy: 30 });
   plan = dbg.matchPlanSim();
-  assert.equal(plan.balls, 8, "EXHAUSTED (<40) costs two");
+  assert.equal(plan.balls, 6, "EXHAUSTED (<40) costs four balls");
   dbg.setJourney({ energy: 95 });
   assert.equal(dbg.matchPlanSim().balls, 10, "fresh legs = full quota");
 });
@@ -291,13 +291,50 @@ test("life: a trainer is hired by the block, tops up recovery, and says goodbye 
   dbg.setMonies(500);
   assert.equal(dbg.hireTrainerSim("beef"), true);
   let l = dbg.lifeInfo();
-  assert.equal(l.monies, 420, "Beef costs 80 for the block");
-  assert.deepEqual({ id: l.trainer.id, games: l.trainer.games, rec: l.trainer.rec }, { id: "beef", games: 10, rec: 8 });
-  for (let i = 0; i < 10; i++) dbg.playNext(true);
+  assert.equal(l.monies, 430, "Beef costs 70 for the block");
+  assert.deepEqual({ id: l.trainer.id, games: l.trainer.games, rec: l.trainer.rec }, { id: "beef", games: 8, rec: 7 });
+  for (let i = 0; i < 8; i++) dbg.playNext(true);
   l = dbg.lifeInfo();
-  assert.equal(l.trainer, null, "the 10-game block is used up");
+  assert.equal(l.trainer, null, "the 8-game block is used up");
   // the goodbye is either still queued or already up on screen (the comms flush runs per match)
   assert.ok(l.msgs.includes("beef") || l.agentWho === "beef", "Beef says goodbye when the block expires");
+});
+
+test("life v3 (round 16): dearer trainers last far more games (NSS staff model)", async () => {
+  const { dbg } = await loadGame();
+  dbg.newCareerSim("England", "ENG2", "Millwall");
+  dbg.setMonies(2000);
+  const lens = {};
+  for (const id of ["beef", "sven", "proteina"]) {
+    dbg.hireTrainerSim(id);
+    lens[id] = dbg.lifeInfo().trainer.games;
+  }
+  assert.ok(lens.beef < lens.sven && lens.sven < lens.proteina,
+    "contract length climbs with price: " + JSON.stringify(lens));
+  assert.ok(lens.proteina >= 40, "the elite trainer lasts most of a season (" + lens.proteina + ")");
+});
+
+test("life v3 (round 16): a full match drains a starter's legs; rest is recorded", async () => {
+  const { dbg } = await loadGame();
+  dbg.newCareerSim("England", "ENG2", "Millwall");
+  dbg.setJourney({ trust: 100, energy: 100 });   // force a full-quota starter, fresh legs
+  dbg.playNext(true);
+  const en = dbg.lifeInfo().lastEnergy;
+  assert.ok(en, "the match records an energy change");
+  assert.ok(en.delta < 0, "a full match nets a drain even after a week's rest: " + JSON.stringify(en));
+  assert.ok(en.rest >= 1, "rest days are recorded for the fixture");
+  assert.ok(dbg.lifeInfo().energy < 100, "legs are lighter than before the match");
+});
+
+test("life v3 (round 16): the pay-day breakdown itemises the wage slip", async () => {
+  const { dbg } = await loadGame();
+  dbg.newCareerSim("England", "ENG2", "Millwall");
+  dbg.setJourney({ trust: 100, energy: 100 });
+  dbg.playNext(true);   // a win with 2 goals (autoplay standard)
+  const e = dbg.lifeInfo().lastEarn;
+  assert.ok(e.wage > 0, "an appearance fee");
+  assert.equal(e.gross, e.wage + e.win + e.goalPay + e.spons, "gross = the itemised lines");
+  assert.equal(e.net, e.gross - e.cut, "net = gross minus Vic's cut");
 });
 
 test("life: no clobber, no sponsors — lifestyle raises effective rep and unlocks deals", async () => {
@@ -323,7 +360,7 @@ test("life: the sponsored ad pays once per matchday, tax-free (Vic doesn't know)
   dbg.newCareerSim("England", "ENG2", "Millwall");
   const m0 = dbg.lifeInfo().monies;
   assert.equal(dbg.watchAdSim(), true);
-  assert.equal(dbg.lifeInfo().monies, m0 + 12, "+12, no cut taken");
+  assert.equal(dbg.lifeInfo().monies, m0 + 4, "+4, no cut taken");
   assert.equal(dbg.watchAdSim(), false, "one word from the sponsors per matchday");
   dbg.playNext(true);
   assert.equal(dbg.watchAdSim(), true, "a new matchday brings a new ad");

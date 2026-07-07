@@ -343,7 +343,7 @@
 
   // ---- Game state ----
   const ST = { MENU:"menu", NAME:"name", CLUBSEL:"clubsel", LEAGUESEL:"leaguesel", TABLE:"table", SEASONEND:"seasonend",
-               SHOP:"shop", PROTEIN:"protein", LIFESTYLE:"lifestyle", SPONSOR:"sponsor", LEDGER:"ledger", TRAINERSEL:"trainersel", ADBREAK:"adbreak", CONTRACT:"contract",
+               SHOP:"shop", PROTEIN:"protein", LIFESTYLE:"lifestyle", SPONSOR:"sponsor", LEDGER:"ledger", TRAINERSEL:"trainersel", ADBREAK:"adbreak", CONTRACT:"contract", PAYDAY:"payday",
                INBOX:"inbox", EMAIL:"email", TROPHY:"trophy", NATSEL:"natsel", TRNHUB:"trnhub",
                TITLE:"title", COUNTDOWN:"countdown", SERVE:"serve", FLIGHT:"flight", RESULT:"result",
                MATCHEND:"matchend", OVER:"over",
@@ -469,8 +469,11 @@
     if (role==="sub") return base===10 ? 6 : 4;
     return 3;
   }
-  function energyBallCut(e){ return e>=60 ? 0 : (e>=40 ? 1 : 2); }   // tired legs = fewer balls, SAME target
+  function energyBallCut(e){ return e>=60 ? 0 : (e>=40 ? 2 : 4); }   // tired legs bite HARD (owner): -2 under 60%, -4 under 40%, SAME target
   function energyLabel(e){ return e>=80 ? "FRESH" : (e>=60 ? "GOOD" : (e>=40 ? "TIRED" : "EXHAUSTED")); }
+  // NSS-style rest-day energy (round 16): drain by workload, recover by resting between fixtures.
+  const ENERGY_DRAIN_BASE=4, ENERGY_DRAIN_PER_BALL=3.6, ENERGY_REC_PER_DAY=3;
+  function restDaysFor(ev){ return ev && ev.t==='L' ? 7 : (ev && ev.t==='C' ? 4 : (ev && ev.t==='E' ? 3 : 5)); }
   // The plan for a career match: the ROLE scales the target with the balls (a fair cameo);
   // TIREDNESS removes balls without touching the target (the owner's fatigue rule).
   function matchPlan(base){
@@ -508,12 +511,16 @@
     if (tier===2 && ev.t!=='I') dRep*=0.7;                // second-tier football moves the needle less
     bumpRep(dRep);
     if (sim) return;
-    // ---- energy (E8, NSS model): every match drains the legs and natural recovery is WEAK —
-    // protein shakes, a hired trainer and a better gaff are how you stay fresh.
+    // ---- energy (round 16, NSS rest-day model): a match drains the legs by its WORKLOAD (the
+    // role's full ball count), and you recover by RESTING between fixtures. A league week is a
+    // proper week off; midweek cup/European ties give barely any rest, so congested runs grind
+    // you down. Shakes, a trainer and a better gaff stack on top of the rest days.
     const before_e=CAR.energy;
-    const rec = 14 + houseRec() + trainerRec() + (rnd(5)-2);
-    const cost = 3 + 2.6*matchBalls;
+    const rest = restDaysFor(ev);
+    const rec = rest*ENERGY_REC_PER_DAY + houseRec() + trainerRec() + (rnd(5)-2);
+    const cost = ENERGY_DRAIN_BASE + ENERGY_DRAIN_PER_BALL*matchTargetBalls;
     CAR.energy = clamp(Math.round(CAR.energy + rec - cost), 5, 100);
+    CAR.lastEnergy = { before:before_e, after:CAR.energy, delta:CAR.energy-before_e, rest };
     if (CAR.trainer && CAR.trainer.games>0 && before_e>=40 && CAR.energy<40){   // the trainer notices you flagging
       const td=TRAINERS.find(t=>t.id===CAR.trainer.id); if (td) queueMsg(td.id, td.nag);
     }
@@ -552,32 +559,33 @@
     { id:'m', name:"DOUBLE SCOOP", nrg:55, mult:36 } ];
   function shakePrice(s){ return s.mult*Math.max(1, repStars(effRep())); }
   const TRAINERS=[
-    { id:'beef', name:"BARRY 'BEEF' BINNS", tier:1, cost:80, rec:8, games:10,
+    { id:'beef', name:"BARRY 'BEEF' BINNS", tier:1, cost:70, rec:7, games:8,
       blurb:"OLD SCHOOL. RAW EGGS. BEEF.",
       hire:"RIGHT THEN, SON. RULE ONE: PROTEIN. RULE TWO: MORE PROTEIN. I'VE BEEN ON THE SHAKES SINCE HALF SIX THIS MORNING AND I'VE NEVER FELT BETTER. TWO SCOOPS A DAY AND YOU'LL BE BUILT LIKE A RIDING SCHOOL. RIGHT, LET'S GRAFT.",
       nag:"OI OI. LOOK AT THE STATE OF YOUR LEGS, SON. GET A SHAKE DOWN YOU BEFORE THE GAFFER NOTICES. SINGLE SCOOP MINIMUM, DOUBLE IF YOU'RE SERIOUS. BEEF FLAVOUR IF THEY'VE GOT IT.",
       bye:"THAT'S ME DONE, SON. CONTRACT'S UP. RE-SIGN ME DOWN THE SHOP AND WE'LL GET YOU PROPER HENCH. DON'T LEAVE IT TOO LONG. PROTEIN WAITS FOR NO MAN." },
-    { id:'sven', name:"SVEN NUTRIBLAST", tier:2, cost:240, rec:13, games:10,
+    { id:'sven', name:"SVEN NUTRIBLAST", tier:2, cost:220, rec:11, games:24,
       blurb:"MACROS. ISOLATES. SCIENCE.",
       hire:"GREETINGS. I HAVE ANALYSED YOUR MACROS AND FRANKLY I AM DISTURBED. FROM TODAY WE OPTIMISE: WHEY ISOLATE AT DAWN, CASEIN AT NIGHT, AND A RECOVERY WINDOW OF PRECISELY 27 MINUTES. YOUR BODY IS A LABORATORY AND I AM THE SCIENTIST.",
       nag:"YOUR GLYCOGEN LEVELS ARE A TRAGEDY. DRINK A SHAKE. THE ANABOLIC WINDOW IS CLOSING AS WE SPEAK. TICK TOCK. TICK TOCK.",
       bye:"MY CONTRACT EXPIRES TODAY, AND SO, STATISTICALLY, WILL YOUR GAINS. RE-HIRE ME IN THE SHOP. THE SPREADSHEET DEMANDS IT." },
-    { id:'proteina', name:"DR. PROTEINA", tier:3, cost:550, rec:18, games:10,
+    { id:'proteina', name:"DR. PROTEINA", tier:3, cost:520, rec:16, games:60,
       blurb:"ELITE. UNHINGED. 97% PROTEIN.",
       hire:"AH. MY NEW SPECIMEN. I HAVE TRAINED TWO BALLON D'OR WINNERS AND, BRIEFLY, A RACEHORSE. MY METHODS ARE BEYOND SCIENCE: PROTEIN AIR. PROTEIN LIGHT. COLLAGEN MOONSHAKES. YOU WILL RECOVER FASTER THAN YOUR OWN SHADOW. WE BEGIN AT DAWN.",
       nag:"I SENSE FATIGUE IN YOUR AURA. HYDROLYSED PEPTIDES. IMMEDIATELY. DO NOT MAKE ME PRESCRIBE THE 3AM YOLK RITUAL.",
       bye:"OUR TIME TOGETHER CONCLUDES. YOUR MITOCHONDRIA WILL WEEP. SUMMON ME AGAIN IN THE SHOP, WHEN YOUR WALLET HAS RECOVERED." } ];
   const LIFESTYLE=[   // own the best item per category; each adds reputation, the gaff also aids recovery
-    { cat:"CLOTHES", items:[ {id:'trackie',name:"FRESH TRACKIE",cost:60,rep:1}, {id:'suit',name:"CLUB SUIT",cost:300,rep:2}, {id:'fit',name:"DESIGNER FIT",cost:1500,rep:4} ] },
-    { cat:"MOTOR",   items:[ {id:'hatch',name:"HOT HATCH",cost:250,rep:1}, {id:'saloon',name:"EXEC SALOON",cost:1200,rep:3}, {id:'super',name:"SUPERCAR",cost:6000,rep:6} ] },
-    { cat:"GADGETS", items:[ {id:'console',name:"GAMES CONSOLE",cost:120,rep:1}, {id:'watch',name:"DIAMOND WATCH",cost:900,rep:2}, {id:'jetski',name:"JET SKI",cost:3500,rep:4} ] },
-    { cat:"THE GAFF",items:[ {id:'flat',name:"FLATSHARE",cost:200,rep:1,rec:2}, {id:'semi',name:"SEMI-DETACHED",cost:1000,rep:2,rec:4}, {id:'pent',name:"PENTHOUSE",cost:4500,rep:4,rec:6}, {id:'mansion',name:"MANSION",cost:12000,rep:6,rec:8} ] } ];
-  const SPONSORS=[   // gated on EFFECTIVE rep + owning at least one lifestyle item (NSS rule)
-    { need:10, name:"TONY'S MEAT VAN",     perGoal:4,  perWin:6,  matches:20 },
-    { need:30, name:"CRISPY NUGGZ",        perGoal:10, perWin:15, matches:20 },
-    { need:50, name:"SCORBOOST PRO-TEIN",  perGoal:25, perWin:35, matches:20 },
-    { need:70, name:"GALAXY AIRWAYS",      perGoal:60, perWin:80, matches:20 } ];
-  const AD_MONIES=12, AD_SECS=4;                 // "a word from our sponsors": once per matchday, Vic-cut-free
+    { cat:"CLOTHES", items:[ {id:'trackie',name:"FRESH TRACKIE",cost:90,rep:1}, {id:'suit',name:"CLUB SUIT",cost:450,rep:2}, {id:'fit',name:"DESIGNER FIT",cost:2200,rep:4} ] },
+    { cat:"MOTOR",   items:[ {id:'hatch',name:"HOT HATCH",cost:400,rep:1}, {id:'saloon',name:"EXEC SALOON",cost:1800,rep:3}, {id:'super',name:"SUPERCAR",cost:8500,rep:6} ] },
+    { cat:"GADGETS", items:[ {id:'console',name:"GAMES CONSOLE",cost:180,rep:1}, {id:'watch',name:"DIAMOND WATCH",cost:1300,rep:2}, {id:'jetski',name:"JET SKI",cost:5000,rep:4} ] },
+    { cat:"THE GAFF",items:[ {id:'flat',name:"FLATSHARE",cost:300,rep:1,rec:2}, {id:'semi',name:"SEMI-DETACHED",cost:1500,rep:2,rec:4}, {id:'pent',name:"PENTHOUSE",cost:6500,rep:4,rec:6}, {id:'mansion',name:"MANSION",cost:16000,rep:6,rec:8} ] } ];
+  const SPONSORS=[   // gated on EFFECTIVE rep + owning at least one lifestyle item (NSS rule).
+    // Weight sits on the WIN money: a hot volley game can produce 8+ goals, so per-goal stays small.
+    { need:10, name:"TONY'S MEAT VAN",     perGoal:1,  perWin:8,   matches:20 },
+    { need:30, name:"CRISPY NUGGZ",        perGoal:3,  perWin:20,  matches:20 },
+    { need:50, name:"SCORBOOST PRO-TEIN",  perGoal:6,  perWin:45,  matches:20 },
+    { need:70, name:"GALAXY AIRWAYS",      perGoal:15, perWin:100, matches:20 } ];
+  const AD_MONIES=4, AD_SECS=4;                 // "a word from our sponsors": once per matchday, Vic-cut-free
   function lifeBonus(){ if (!CAR || !CAR.items) return 0; let b=0;
     for (const c of LIFESTYLE){ let best=0; for (const it of c.items) if (CAR.items[it.id]) best=Math.max(best, it.rep); b+=best; }
     return b; }
@@ -594,6 +602,7 @@
     const r=effRep(); let best=null; for (const s of SPONSORS) if (r>=s.need) best=s; return best; }
   function money(n){ n=Math.round(n||0); const neg=n<0; if(neg)n=-n;
     return (neg?"-£":"£")+String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ","); }
+  function bankRight(){ return (CAR && CAR.monies!=null) ? "BANK  "+money(CAR.monies) : ""; }   // round 16: one labelled bank readout for every career header
   function vicCutPct(){ return Math.min(25, 10+((CAR&&CAR.season||1)-1)); }
   function freshLedger(){ return { wages:0, bonus:0, sponsor:0, prize:0, signing:0, ads:0, vic:0, shakes:0, trainer:0, shopping:0 }; }
   function getLedger(){ return CAR.ledger=(CAR.ledger||freshLedger()); }
@@ -602,9 +611,9 @@
   // earns a raise at the season rollover. The FINANCES page lays it all out.
   function negotiateContract(){
     const t=TEAMBY[CAR.slug]||{rating:3}, tier=activeLeagueTier();
-    const base = tier===2 ? 8+t.rating*3 : 35+t.rating*9;
+    const base = tier===2 ? 5+t.rating*2 : 24+t.rating*6;
     const wage = Math.round(base*(1+effRep()/150));
-    return { wage, winB:Math.round(wage*0.6), goalB:(tier===2?4:12)+Math.round(effRep()/12) };
+    return { wage, winB:Math.round(wage*0.5), goalB:Math.max(1, Math.round(wage*0.05)) };   // per-goal stays tiny: 10-ball games can produce 8+ goals
   }
   function playerContract(){ return CAR.contract || (CAR.contract=negotiateContract()); }   // lazy: migrated saves get terms on first use
   // every pound in and out flows through these two, so the season ledger is always honest
@@ -625,23 +634,26 @@
   function matchEarnings(res, sim){
     if (!CAR || CAR.monies==null) return;
     const c=playerContract();
-    let bonus = res==="W" ? c.winB : 0, spons=0;
-    if (!sim){
-      bonus += M.goals*c.goalB;
-      if (CAR.sponsor && CAR.sponsor.left>0){
-        spons = M.goals*CAR.sponsor.perGoal + (res==="W"?CAR.sponsor.perWin:0);
-        CAR.sponsor.left--;
-        if (CAR.sponsor.left<=0){
-          queueMsg('vic', "THAT "+CAR.sponsor.name+" DEAL IS ALL PAID UP, SUNSHINE. LOVELY BIT OF BUSINESS. GET DOWN THE SHOP AND WE'LL SIGN ANOTHER ONE.");
-          CAR.sponsor=null;
-        }
+    const win = res==="W" ? c.winB : 0;
+    const goalPay = sim ? 0 : M.goals*c.goalB;
+    let spons=0, sponsorName=null, sponsorGoal=0, sponsorWin=0;
+    if (!sim && CAR.sponsor && CAR.sponsor.left>0){
+      sponsorName=CAR.sponsor.name;
+      sponsorGoal=M.goals*CAR.sponsor.perGoal;
+      sponsorWin=(res==="W"?CAR.sponsor.perWin:0);
+      spons=sponsorGoal+sponsorWin;
+      CAR.sponsor.left--;
+      if (CAR.sponsor.left<=0){
+        queueMsg('vic', "THAT "+sponsorName+" DEAL IS ALL PAID UP, SUNSHINE. LOVELY BIT OF BUSINESS. GET DOWN THE SHOP AND WE'LL SIGN ANOTHER ONE.");
+        CAR.sponsor=null;
       }
     }
-    const gross=c.wage+bonus+spons;
+    const gross=c.wage+win+goalPay+spons;
     const cut=Math.round(gross*vicCutPct()/100);
-    const L=getLedger(); L.wages+=c.wage; L.bonus+=bonus; L.sponsor+=spons; L.vic+=cut;
+    const L=getLedger(); L.wages+=c.wage; L.bonus+=win+goalPay; L.sponsor+=spons; L.vic+=cut;
     CAR.monies+=gross-cut; CAR.earned=(CAR.earned||0)+gross-cut;
-    CAR.lastEarn={ gross, cut, net:gross-cut };
+    CAR.lastEarn={ wage:c.wage, win, goals:M.goals, goalPay, sponsorName, sponsorGoal, sponsorWin,
+                   spons, gross, cut, net:gross-cut, res };
     CAR.adSeen=false;                                  // a new matchday: the sponsors have a new word for you
   }
   function buyShake(i){
@@ -1006,10 +1018,10 @@
       // E8.2 prize money: the season's cheques land with the review (league finish + cup run + Europe)
       if (CAR.monies!=null){
         const tm=activeLeagueTier()===2?0.5:1, N=TEAMS.length;
-        let prize=Math.round((pos===1?1200 : pos<=4?700 : pos<=7?400 : pos<=Math.ceil(N/2)?200 : 80)*tm);
-        if (CAR.cup) prize+=Math.round((CAR.cup.won ? 500 : CAR.cup.round*60)*tm);
+        let prize=Math.round((pos===1?650 : pos<=4?380 : pos<=7?210 : pos<=Math.ceil(N/2)?110 : 45)*tm);
+        if (CAR.cup) prize+=Math.round((CAR.cup.won ? 280 : CAR.cup.round*35)*tm);
         if (CAR.euro){ const b=CAR.euro.best;
-          prize += b==='won' ? 900 : (b==='F' ? 500 : (b==='SF' ? 300 : 150)); }
+          prize += b==='won' ? 520 : (b==='F' ? 300 : (b==='SF' ? 170 : 90)); }
         CAR.prize={ gross:prize, net:earn(prize, 'prize') };
       }
     }
@@ -1089,6 +1101,7 @@
 
   // ---- calendar-driven fixture setup (league / cup / Europe) ----
   let pendingEv=null;       // the calendar event the in-progress match belongs to
+  let paydayPending=false;  // round 16: show the PAY DAY breakdown after a REAL match (not autoplay)
   function cupDraw(){       // draw the next cup opponent: minnows early, league clubs late
     const c=CAR.cup, r=c.round;
     let pool;
@@ -1138,7 +1151,8 @@
     if (GMODE==="classic"){ classicTurnDone(); return; } // classic: record this player's score, pass on
     if (GMODE==="daily"){ dailyDone();    return; }     // daily: record to leaderboard
     const res = matchResult();                          // career: VICTORY/DRAW/LOSS burst
-    matchEarnings(res);                                 // E8: pay day (shown on the burst)
+    matchEarnings(res);                                 // E8: pay day (itemised on the PAY DAY screen)
+    paydayPending = (CAR!=null);                         // real play → show the PAY DAY breakdown after commit
     matchEndText  = res==="W" ? "VICTORY" : (res==="D" ? "DRAW" : "LOSS");
     matchEndColor = res==="W" ? "#46e36b" : (res==="D" ? "#c7d0da" : "#ff5d5d");
     if (res==="W") sfx.goal(); else if (res==="L") sfx.boos(); else sfx.whistle();
@@ -1176,6 +1190,11 @@
     else commitEuro(res, ev);
     CAR.calIdx++;
     saveCareer();
+    // real play shows the PAY DAY breakdown first; autoplay (playNext) skips straight to the next event
+    if (paydayPending){ paydayPending=false; state=ST.PAYDAY; stateEnterAt=performance.now(); return; }
+    afterMatch();
+  }
+  function afterMatch(){   // post-commit routing, shared by commitMatch + the PAY DAY dismiss
     if (!peekEvent()) seasonOver(); else flushMsgs(()=>{ state=ST.TABLE; });   // E8: Vic/trainer comms first
   }
   function commitLeague(res){
@@ -1969,16 +1988,57 @@
     ctx.fillStyle=matchEndColor; ctx.fillText(word,0,0);                               // solid colour fill
     if (elapsed>0.06 && elapsed<0.30){ ctx.globalAlpha=alpha*Math.max(0,0.55-(elapsed-0.06)*2.6); ctx.fillStyle="#fff"; ctx.fillText(word,0,0); }  // slam flash
     ctx.restore();
-    // E8 pay day: the takings (and Vic's slice) land with the result
-    if (GMODE==="career" && CAR && CAR.lastEarn && elapsed>0.36){
-      const a=Math.min(1, (elapsed-0.36)*4) * (elapsed>1.25 ? Math.max(0,(1.6-elapsed)/0.35) : 1);
-      ctx.globalAlpha=a; ctx.textAlign="center"; ctx.textBaseline="middle";
-      ctx.font=ttFont(18); ctx.fillStyle=TTX.yellow;
-      ctx.fillText("+"+money(CAR.lastEarn.net), SW/2, SH/2+92);
-      ctx.font=ttFont(12); ctx.fillStyle=TTX.grey;
-      ctx.fillText("(VIC'S CUT: "+money(CAR.lastEarn.cut)+". HE SAYS CHEERS.)", SW/2, SH/2+114);
-    }
+    // (the takings now get their own PAY DAY breakdown screen after the burst — round 16)
     ctx.globalAlpha=1; ctx.textBaseline="alphabetic"; ctx.textAlign="left";
+  }
+  // ---- PAY DAY (round 16): an itemised post-match earnings breakdown, dismissed with the action key ----
+  function paydayContinue(){ afterMatch(); }
+  function drawPayday(){
+    if (!CAR || !CAR.lastEarn){ afterMatch(); return; }
+    const e=CAR.lastEarn, en=CAR.lastEnergy;
+    ctx.fillStyle="#06070b"; ctx.fillRect(0,0,VW,SH);
+    ctx.fillStyle="rgba(0,0,0,0.18)"; for(let yy=0;yy<SH;yy+=3) ctx.fillRect(0,yy,VW,1);   // faint CRT lines
+    const w=560, x=VW/2-w/2, y0=40;
+    // header
+    const resCol = e.res==="W"?"#46e36b":(e.res==="D"?"#c7d0da":"#ff5d5d");
+    pxText("PAY DAY", VW/2, y0+6, 30, "#ffd700", 'c','m');
+    pxText(e.res==="W"?"MATCH WON":(e.res==="D"?"MATCH DRAWN":"MATCH LOST"), VW/2, y0+34, 14, resCol, 'c','m');
+    // the payslip panel
+    const py=y0+56, ph=284;
+    uiPanel(x, py, w, ph, {title:"WAGE SLIP · "+(TEAMBY[CAR.slug]||{}).name, icon:'coin', accent:"#ffd700",
+      right:"SEASON "+CAR.season, rightCol:TTX.grey});
+    let ry=py+52; const lx=x+28, rx=x+w-28;
+    const line=(label,val,col,strong)=>{
+      ctx.font=ttFont(strong?15:14); ctx.textAlign="left"; ctx.fillStyle=col||TTX.grey; ctx.fillText(label, lx, ry);
+      ctx.textAlign="right"; ctx.fillStyle=col||TTX.white; ctx.fillText(val, rx, ry); ctx.textAlign="left"; ry+=28;
+    };
+    line("APPEARANCE FEE", "+"+money(e.wage), TTX.white);
+    if (e.win>0) line("WIN BONUS", "+"+money(e.win), TTX.green);
+    if (e.goals>0) line(e.goals+" GOAL"+(e.goals>1?"S":"")+" @ "+money(playerContract().goalB), "+"+money(e.goalPay), TTX.green);
+    if (e.sponsorName){
+      const sp=e.sponsorGoal+e.sponsorWin;
+      line("SPONSOR ("+e.sponsorName+")", "+"+money(sp), TTX.cyan);
+    }
+    ctx.strokeStyle="rgba(255,255,255,0.18)"; ctx.beginPath(); ctx.moveTo(lx,ry-14); ctx.lineTo(rx,ry-14); ctx.stroke();
+    line("GROSS", "+"+money(e.gross), TTX.white, true);
+    line("SLICK VIC'S CUT ("+vicCutPct()+"%)", "-"+money(e.cut), "#ff8888");
+    ctx.strokeStyle="rgba(255,210,0,0.5)"; ctx.beginPath(); ctx.moveTo(lx,ry-14); ctx.lineTo(rx,ry-14); ctx.stroke();
+    ctx.font=ttFont(18); ctx.textAlign="left"; ctx.fillStyle="#ffd700"; ctx.fillText("IN THE BANK", lx, ry+4);
+    ctx.textAlign="right"; ctx.fillText("+"+money(e.net), rx, ry+4); ctx.textAlign="left"; ry+=34;
+    ctx.font=ttFont(12); ctx.fillStyle=TTX.grey; ctx.textAlign="left";
+    ctx.fillText("NEW BALANCE", lx, ry); ctx.textAlign="right"; ctx.fillStyle=TTX.yellow;
+    ctx.fillText(money(CAR.monies), rx, ry); ctx.textAlign="left";
+    // energy footer (round 16): the match's toll on the legs
+    if (en){ const ey=py+ph+20;
+      ctx.font=ttFont(13); ctx.textAlign="center"; ctx.fillStyle=TTX.grey;
+      const restTxt = en.rest>=7?"A FULL WEEK'S REST":(en.rest+" DAYS' REST");
+      ctx.fillText("LEGS: "+en.before+"% → "+en.after+"%  ("+(en.delta>=0?"+":"")+en.delta+", "+restTxt+")",
+        VW/2, ey);
+      if (en.after<40) ctx.fillStyle="#ff8888", ctx.fillText("EXHAUSTED. GET A SHAKE OR A TRAINER IN THE £ SHOP.", VW/2, ey+20);
+      else if (en.after<60) ctx.fillStyle="#ff9f1c", ctx.fillText("TIRED LEGS. THE SHOP CAN HELP.", VW/2, ey+20);
+      ctx.textAlign="left";
+    }
+    if (ttCursorOn()) pxText(TOUCH?"▶ TAP TO CONTINUE":"▶ SPACE TO CONTINUE", VW/2, SH-30, 16, TTX.neon, 'c','m');
   }
   function drawResultText() {
     if (state===ST.RESULT && resultText) {
@@ -2386,9 +2446,10 @@
     const tbl = standings(), mypos = myPosition();
     const fx=CAR.fixtures[CAR.idx], opp=TEAMBY[fx.opp], meName=TEAMBY[CAR.slug].name;
     if (CAR.titleOdds==null) CAR.titleOdds=computeTitleOdds();
-    // ---- header: plain blue bar — SCORDAGOL · CAREER · SEASON N (+ the bank balance, E8) ----
+    // ---- header: SCORDAGOL · CAREER · SEASON N · labelled BANK balance (owner round 16) ----
     const HBY=4, HBH=TOUCH?40:32;
-    careerBar(HBY, HBH, "CAREER", "SEASON "+CAR.season+(CAR.monies!=null ? "  ·  "+money(CAR.monies) : ""));
+    careerBar(HBY, HBH, "CAREER  ·  SEASON "+CAR.season, bankRight());
+    if (CAR.monies!=null) tip(VW-240, HBY, 236, HBH, "YOUR MONIES IN THE BANK. EVERY WAGE, BONUS, PRIZE AND DEAL LANDS HERE, AFTER VIC'S CUT. SPEND IT IN THE £ SHOP.");
 
     // ---- Ceefax-style full-height two-column league table + clean info footer ----
     // Shared by desktop and touch (identical 924x520 stage); only the call-to-action
@@ -2454,6 +2515,9 @@
       ctx.fillStyle="rgba(255,255,255,0.12)";
       ctx.fillRect(VW*0.375,hY-10,1,(vY-hY)+22); ctx.fillRect(VW*0.625,hY-10,1,(vY-hY)+22);
       ctx.textBaseline="middle"; ctx.textAlign="center";
+      tip(20, hY-14, VW*0.375-30, (vY-hY)+30, "YOUR LAST FIVE RESULTS, NEWEST ON THE RIGHT.");
+      tip(VW*0.375+6, hY-14, VW*0.25-12, (vY-hY)+30, "WHERE YOU SIT IN THE TABLE. THE BOARD'S TARGET SITS NEXT TO IT - GREEN MEANS ON COURSE, RED MEANS THE SUITS ARE SHUFFLING PAPERS.");
+      tip(VW*0.625+6, hY-14, VW*0.375-30, (vY-hY)+30, "THE BOOKIES' LIVE CHANCE OF YOU WINNING THE LEAGUE, RECALCULATED AFTER EVERY MATCHDAY.");
       const obj=CAR.objective;   // E7: the board's target frames your position
       const goalShort = obj ? (obj.pos===1 ? "WIN IT" : (obj.pos>=TEAMS.length-3 ? "STAY UP" : "TOP "+obj.pos)) : null;
       ctx.font=ttFont(13); ctx.fillStyle=TTX.grey;
@@ -2481,6 +2545,7 @@
       ctx.fillStyle="#0a1224"; ctx.fillRect(nbX,nbY,nbW,nbH);
       ctx.strokeStyle=TTX.blue; ctx.lineWidth=2; ctx.strokeRect(nbX+1,nbY+1,nbW-2,nbH-2);
       ttBar("NEXT MATCH", nbX, nbY, nbW, 18, TTX.blue, TTX.white, {center:true, size:13});
+      tip(nbX, nbY, nbW, nbH, "YOUR NEXT FIXTURE. THE BADGE TOP-RIGHT IS YOUR SQUAD ROLE AND HOW MANY BALLS THE GAFFER IS GIVING YOU.");
       const tag = fx.home ? " (H)" : " (A)";
       const fixtureStr = fx.home ? (meName+tag+"  v  "+opp.name) : (opp.name+"  v  "+meName+tag);
       let fsz=22; ctx.textAlign="center"; ctx.font=ttFont(fsz);
@@ -2496,10 +2561,12 @@
           ttBar(title, px, nbY, 142, 16, TTX.blue, TTX.white, {center:true, size:11}); };
         // reputation: stars + tier
         pnl(10, "REPUTATION");
+        tip(10, nbY, 142, nbH, "YOUR NAME IN THE GAME, OUT OF FIVE STARS. GROWN BY RESULTS AND TROPHIES, TOPPED UP BY LIFESTYLE. BIG CLUBS, SPONSORS AND THE NATIONAL SIDE ONLY CALL WHEN IT'S BIG ENOUGH.");
         pxText(repStarStr(CAR.rep), 10+71, nbY+27, 14, "#ffd700", 'c', 'm');
         pxText(repTier(CAR.rep), 10+71, nbY+41, 10, TTX.grey, 'c', 'm');
         // condition: energy bar + status
         const ex=VW-152; pnl(ex, "CONDITION");
+        tip(ex, nbY, 142, nbH, "YOUR LEGS. UNDER 60% COSTS YOU TWO BALLS, UNDER 40% FOUR - SAME TARGET. SHAKES AND A TRAINER IN THE £ SHOP KEEP YOU FRESH.");
         const e=CAR.energy, bw=110, bx2=ex+16, by2=nbY+23;
         ctx.fillStyle="rgba(255,255,255,0.12)"; ctx.fillRect(bx2,by2,bw,7);
         ctx.fillStyle = e>=60?"#1f9d49":(e>=40?"#ff9f1c":"#c43a3a");
@@ -2570,7 +2637,7 @@
     const pos=myPosition(), champ=standings()[0], r=CAR.table[CAR.slug];
     // header row matches the career home: plain blue bar — SCORDAGOL · SEASON N REVIEW · FULL TIME
     const HBY=4, HBH=TOUCH?40:32;
-    careerBar(HBY, HBH, "SEASON "+CAR.season+" REVIEW", "FULL TIME");
+    careerBar(HBY, HBH, "SEASON "+CAR.season+" REVIEW", bankRight()||"FULL TIME");
     const ht=HBY+HBH;
     const medal = pos===1?"#ffd700":(pos===2?"#cfd6dd":(pos===3?"#cd8a4b":(pos<=4?TTX.cyan:(pos>=18?TTX.red:TTX.white))));
     ctx.textAlign="center";
@@ -2781,7 +2848,7 @@
     { id:'protein',  icon:'shake',  title:"PROTEIN CORNER", accent:TTX.green,
       tip:"PROTEIN SHAKES: TOP YOUR ENERGY BACK UP BETWEEN MATCHES." },
     { id:'gym',      icon:'gym',    title:"THE GYM",        accent:TTX.cyan,
-      tip:"HIRE A TRAINER: HE RESTORES ENERGY AFTER EVERY MATCH FOR A 10-GAME BLOCK." },
+      tip:"HIRE A TRAINER: HE RESTORES ENERGY AFTER EVERY MATCH. DEARER TRAINERS LAST FAR MORE GAMES." },
     { id:'lifestyle',icon:'shirt',  title:"LIFESTYLE",      accent:TTX.yellow,
       tip:"CLOBBER, MOTORS, TOYS AND THE GAFF: LIFESTYLE ADDS TO YOUR EFFECTIVE REPUTATION." },
     { id:'sponsor',  icon:'horn',   title:"SPONSORS",       accent:TTX.neon,
@@ -2800,7 +2867,7 @@
     if (!CAR || CAR.monies==null){ state=ST.TABLE; return; }
     lifeBtns=[]; tipRegions=[];
     const HBY=4, HBH=TOUCH?40:32;
-    careerBar(HBY, HBH, "£ SHOP", money(CAR.monies));
+    careerBar(HBY, HBH, "£ SHOP", bankRight());
     const ht=HBY+HBH, gap=2*SP;
     const cw=Math.floor((VW-2*MARGIN-2*gap)/3), chh=168, y0=ht+3*SP;
     SHOP_CARDS.forEach((c,i)=>{
@@ -2833,7 +2900,7 @@
     if (!CAR || CAR.monies==null){ state=ST.TABLE; return; }
     lifeBtns=[]; tipRegions=[];
     const HBY=4, HBH=TOUCH?40:32;
-    careerBar(HBY, HBH, "PROTEIN CORNER", money(CAR.monies));
+    careerBar(HBY, HBH, "PROTEIN CORNER", bankRight());
     const ht=HBY+HBH, W=VW-2*MARGIN;
     let y=ht+3*SP;
     const cy0=uiPanel(MARGIN, y, W, 100, {title:"CONDITION", icon:'bolt', accent:TTX.green,
@@ -2844,8 +2911,8 @@
       ctx.fillRect(bx,by,Math.round(bw*e/100),16);
       for (const t of [40,60]){ ctx.fillStyle="rgba(255,255,255,0.55)"; ctx.fillRect(bx+Math.round(bw*t/100),by-3,1,22); }
       ctx.font=ttFont(10); ctx.fillStyle=TTX.dim;
-      ctx.textAlign="left";   ctx.fillText("UNDER 40%: TWO BALLS DOWN", bx, by+34);
-      ctx.textAlign="center"; ctx.fillText("UNDER 60%: ONE BALL DOWN", bx+bw*0.5, by+34);
+      ctx.textAlign="left";   ctx.fillText("UNDER 40%: FOUR BALLS DOWN", bx, by+34);
+      ctx.textAlign="center"; ctx.fillText("UNDER 60%: TWO BALLS DOWN", bx+bw*0.5, by+34);
       ctx.textAlign="right";  ctx.fillText("60%+: FULL QUOTA", bx+bw, by+34);
       ctx.textAlign="left"; }
     tip(MARGIN, y, W, 100, "YOUR LEGS. EVERY MATCH DRAINS ENERGY AND NATURAL RECOVERY IS WEAK. SHAKES, A TRAINER OR A BETTER GAFF KEEP YOU FRESH.");
@@ -2874,7 +2941,7 @@
     if (!CAR || CAR.monies==null){ state=ST.TABLE; return; }
     lifeBtns=[]; tipRegions=[];
     const HBY=4, HBH=TOUCH?40:32;
-    careerBar(HBY, HBH, "LIFESTYLE", money(CAR.monies));
+    careerBar(HBY, HBH, "LIFESTYLE", bankRight());
     const ht=HBY+HBH, W=VW-2*MARGIN;
     ctx.font=ttFont(12); ctx.textAlign="center"; ctx.fillStyle=TTX.yellow;
     ctx.fillText("LIFESTYLE BONUS: +"+lifeBonus()+" REPUTATION  ·  EFFECTIVE REP "+Math.round(effRep()), VW/2, ht+18);
@@ -2910,7 +2977,7 @@
     if (!CAR || CAR.monies==null){ state=ST.TABLE; return; }
     lifeBtns=[]; tipRegions=[];
     const HBY=4, HBH=TOUCH?40:32;
-    careerBar(HBY, HBH, "SPONSORS", money(CAR.monies));
+    careerBar(HBY, HBH, "SPONSORS", bankRight());
     const ht=HBY+HBH, W=VW-2*MARGIN;
     let y=ht+3*SP;
     if (CAR.sponsor && CAR.sponsor.left>0){
@@ -3006,7 +3073,7 @@
     if (!CAR || CAR.monies==null){ state=ST.TABLE; return; }
     lifeBtns=[]; tipRegions=[];
     const HBY=4, HBH=TOUCH?40:32;
-    careerBar(HBY, HBH, "FINANCES", money(CAR.monies));
+    careerBar(HBY, HBH, "FINANCES", bankRight());
     const ht=HBY+HBH, c=playerContract(), L=getLedger();
     const LW2=Math.floor((VW-2*MARGIN-2*SP)/2), LX=MARGIN, RX=MARGIN+LW2+2*SP;
     const row=(x,y2,label,val,vc,lc,w)=>{ ctx.font=ttFont(13); ctx.fillStyle=lc||TTX.grey; ctx.fillText(label, x, y2);
@@ -3051,10 +3118,10 @@
     if (!CAR || CAR.monies==null){ state=ST.TABLE; return; }
     lifeBtns=[]; tipRegions=[];
     const HBY=4, HBH=TOUCH?40:32;
-    careerBar(HBY, HBH, "THE GYM", money(CAR.monies));
+    careerBar(HBY, HBH, "THE GYM", bankRight());
     const ht=HBY+HBH, cw=280, gap=14, x0=(VW-3*cw-2*gap)/2, cy=ht+22, chh=380;
     ctx.textAlign="center"; ctx.font=ttFont(13); ctx.fillStyle=TTX.grey;
-    ctx.fillText("A TRAINER TOPS UP YOUR ENERGY AFTER EVERY MATCH. HIRED BY THE 10-GAME BLOCK.", VW/2, ht+14);
+    ctx.fillText("A TRAINER TOPS UP YOUR ENERGY AFTER EVERY MATCH. DEARER TRAINERS LAST FAR MORE GAMES.", VW/2, ht+14);
     ctx.textAlign="left";
     TRAINERS.forEach((t,i)=>{
       const x=x0+i*(cw+gap), active = CAR.trainer && CAR.trainer.games>0 && CAR.trainer.id===t.id;
@@ -3065,11 +3132,11 @@
       pxText(t.name, x+cw/2, cy+190, 14, active?TTX.neon:TTX.yellow, 'c', 'm');
       pxText(t.blurb, x+cw/2, cy+212, 11, TTX.grey, 'c', 'm');
       pxText("+"+t.rec+" ENERGY PER MATCH", x+cw/2, cy+240, 14, TTX.green, 'c', 'm');
-      pxText(t.games+" GAMES  ·  "+money(t.cost), x+cw/2, cy+262, 12, TTX.white, 'c', 'm');
+      pxText(t.games+"-GAME CONTRACT  ·  "+money(t.cost), x+cw/2, cy+262, 12, TTX.white, 'c', 'm');
       if (active) pxText("★ YOUR TRAINER  ·  "+CAR.trainer.games+" GAMES LEFT", x+cw/2, cy+288, 11, TTX.neon, 'c', 'm');
       lifeBtnDraw(x+cw/2-90, cy+chh-56, 180, 32, (active?"EXTEND":"HIRE")+" · "+money(t.cost),
         TTX.yellow, CAR.monies>=t.cost, "hire", t.id);
-      tip(x, cy, cw, chh, money(t.cost)+" BUYS A 10-GAME BLOCK. HE RESTORES +"+t.rec+" ENERGY AFTER EVERY MATCH WHILE HIRED"+(active?" (EXTENDING STACKS THE GAMES).":".")+" "+t.blurb);
+      tip(x, cy, cw, chh, money(t.cost)+" BUYS A "+t.games+"-GAME CONTRACT ("+(t.cost/t.games).toFixed(0)+" A GAME). HE RESTORES +"+t.rec+" ENERGY AFTER EVERY MATCH WHILE HIRED"+(active?" (EXTENDING STACKS THE GAMES).":". DEARER TRAINERS LAST LONGER, SO YOU RENEW LESS OFTEN.")+" "+t.blurb);
     });
     ctx.textAlign="center"; ctx.font=ttFont(11); ctx.fillStyle=TTX.grey;
     if (!TOUCH) ctx.fillText("CLICK TO HIRE    ESC  BACK TO SHOP", VW/2, SH-14);
@@ -3112,8 +3179,12 @@
     const tr=(CAR && CAR.trophies)||[];
     ctx.fillStyle="#050608"; ctx.fillRect(0,0,VW,SH);
     ttBar("TROPHY ROOM", 0, 12, VW, 30, TTX.blue, "#ffd700", {size:17});
-    ctx.textAlign="right"; ctx.font=ttFont(12); ctx.fillStyle=TTX.grey;
-    ctx.fillText(tr.length+" TROPH"+(tr.length===1?"Y":"IES"), VW-14, 34); ctx.textAlign="left";
+    ctx.textAlign="right"; ctx.font=ttFont(12); ctx.textBaseline="alphabetic";
+    const cntTxt=tr.length+" TROPH"+(tr.length===1?"Y":"IES");
+    if (CAR && CAR.monies!=null){ ctx.fillStyle=TTX.yellow; ctx.fillText(bankRight(), VW-14, 34);
+      ctx.fillStyle=TTX.grey; ctx.fillText(cntTxt+"    ·", VW-14-ctx.measureText("  "+bankRight()).width-14, 34); }
+    else { ctx.fillStyle=TTX.grey; ctx.fillText(cntTxt, VW-14, 34); }
+    ctx.textAlign="left";
     // the cabinet: dark walnut, glass front, red baize back wall
     ctx.fillStyle="#191007"; ctx.fillRect(36,52,VW-72,SH-100);
     ctx.fillStyle="#2a0e10"; ctx.fillRect(48,62,VW-96,SH-120);                   // baize
@@ -3271,7 +3342,7 @@
     return y0+18+order.length*rowH;
   }
   function drawCupView(){
-    const ht=compHeader("THE CUP", "SEASON "+CAR.season);
+    const ht=compHeader("THE CUP  ·  SEASON "+CAR.season, bankRight());
     const c=CAR.cup; if (!c.opp) cupDraw();
     pxText("ROAD TO THE FINAL", VW/2, ht+24, 15, "#cfd6dd", 'c','m');
     const y0=ht+44, rowH=44;
@@ -3298,7 +3369,7 @@
   }
   function drawEuroView(){
     const e=CAR.euro, comp=e.comp==='CT'?"CHAMPIONS TROPHY":"CONTINENTAL CUP";
-    const ht=compHeader(comp, "SEASON "+CAR.season);
+    const ht=compHeader(comp+"  ·  SEASON "+CAR.season, bankRight());
     const ev=peekEvent(), o=euroNextOpp(ev);
     const me=TEAMBY[CAR.slug].name, op=(TEAMBY[o.slug]||{name:o.slug}).name;
     if (e.stage==='G'){
@@ -3325,7 +3396,7 @@
     ctx.fillStyle=fc[2]||fc[1]||"#fff"; ctx.fillRect(0,HBY+HBH-4,VW,4);
     drawFlag(10, HBY+4, 54, HBH-8, nat.flag);
     pxText(nat.name.toUpperCase()+"  ·  WORLD TOURNAMENT", 78, HBY+HBH/2+1, TOUCH?20:17, dark?"#ffffff":"#06070b", 'l','m');
-    pxText("CAPS "+(CAR.caps||0), VW-14, HBY+HBH/2+1, 14, dark?"#ffffff":"#06070b", 'r','m');
+    pxText("CAPS "+(CAR.caps||0)+(CAR.monies!=null?"   ·   BANK "+money(CAR.monies):""), VW-14, HBY+HBH/2+1, 14, dark?"#ffffff":"#06070b", 'r','m');
     const ht=HBY+HBH;
     if (T.stage==='G'){
       pxText("GROUP STAGE  ·  MATCH "+(T.gIdx+1)+" OF 3", VW/2, ht+24, 14, "#cfd6dd", 'c','m');
@@ -3566,7 +3637,7 @@
       const prevWage=(CAR.contract&&CAR.contract.wage)||0;
       if (moved){
         CAR.contract=negotiateContract();
-        const fee=CAR.contract.wage*6;
+        const fee=CAR.contract.wage*3;
         earn(fee, 'signing');
         queueMsg('vic', "DONE DEAL, SUNSHINE! I SQUEEZED THEM FOR A SIGNING-ON FEE OF "+money(fee)+", PLUS "
           +money(CAR.contract.wage)+" AN APPEARANCE WITH WIN AND GOAL BONUSES ON TOP. MY SLICE CAME OFF THE FEE, NATURALLY. DON'T SPEND IT ALL ON TRACKSUITS.");
@@ -4432,6 +4503,7 @@
     else if (state===ST.LEDGER) { ttClear(); drawLedger(); drawTouchBack("← BACK"); drawTooltip(); }
     else if (state===ST.ADBREAK) { drawAdBreak(); touchBackBtn=null; }
     else if (state===ST.CONTRACT) { drawContract(); touchBackBtn=null; }   // no escape from commerce (ESC still bails without the reward)
+    else if (state===ST.PAYDAY) { drawPayday(); touchBackBtn=null; }
     else if (state===ST.EMAIL) { ttClear(); drawEmail(); drawTouchBack("← BACK"); }
     else if (state===ST.DAILYBOARD) { ttClear(); drawDailyBoard(); drawTouchBack("← MENU"); }
     else if (state===ST.HORSESETUP) { ttClear(); drawHorseSetup(); drawTouchBack("← MENU"); }
@@ -4535,6 +4607,7 @@
     else if (state===ST.TABLE){ if (cupPopupActive()) dismissCupPopup(); else startFixture(); }
     else if (state===ST.ADBREAK){ adBreakSelect(); }
     else if (state===ST.CONTRACT){ contractSign(); }
+    else if (state===ST.PAYDAY){ paydayContinue(); }
     else if (state===ST.TROPHY){ state=careerHomeState(); }
     else if (state===ST.SEASONEND){ agentCallUp(); }   // State C: call-up check → transfer offers
     else if (state===ST.INBOX){ const n=(CAR.offers||[]).length; if(inboxSel<n) openEmail(inboxSel); else nextSeason(null); }
@@ -4551,7 +4624,7 @@
     if (state===ST.NAME){ confirmName(); }
     else if (state===ST.MENU||state===ST.TABLE||state===ST.SEASONEND||state===ST.INBOX||state===ST.CLUBSEL||state===ST.NATSEL||state===ST.LEAGUESEL||state===ST.TRNHUB||state===ST.OVER||
              state===ST.MATCHEND||state===ST.DAILYBOARD||state===ST.HORSEPASS||state===ST.HORSEEND||
-             state===ST.MPMENU||state===ST.CLASSICPASS||state===ST.CLASSICEND||state===ST.AGENT||state===ST.ADBREAK||state===ST.CONTRACT) pressSelect();
+             state===ST.MPMENU||state===ST.CLASSICPASS||state===ST.CLASSICEND||state===ST.AGENT||state===ST.ADBREAK||state===ST.CONTRACT||state===ST.PAYDAY) pressSelect();
     else togglePause();                                   // in-match: ENTER = pause
   }
   function moveSel(dx,dy){
@@ -4876,7 +4949,7 @@
         return CAR && { rep:CAR.rep, energy:CAR.energy, trust:CAR.trust, leagueId:CAR.leagueId, season:CAR.season }; },
       // ---- E8 "The Life" harness ----
       lifeInfo: function(){ return CAR ? { monies:CAR.monies, earned:CAR.earned, vicCut:vicCutPct(),
-        energy:CAR.energy, lastEarn:CAR.lastEarn||null, adSeen:!!CAR.adSeen,
+        energy:CAR.energy, lastEarn:CAR.lastEarn||null, lastEnergy:CAR.lastEnergy||null, adSeen:!!CAR.adSeen,
         trainer:(CAR.trainer&&CAR.trainer.games>0)?{id:CAR.trainer.id, games:CAR.trainer.games, rec:trainerRec()}:null,
         sponsor:CAR.sponsor?{name:CAR.sponsor.name, left:CAR.sponsor.left}:null,
         items:CAR.items?Object.keys(CAR.items):[], lifeBonus:lifeBonus(), effRep:effRep(),
@@ -4893,6 +4966,11 @@
       watchAdSim: function(){ return watchAdReward(); },
       popMsgSim: function(){ const m=(CAR.msgs||[]).shift(); return m||null; },
       contractSim: function(){ showContract(null); return {state}; },   // audit: stage the signing ceremony
+      paydaySim: function(){   // audit: stage the PAY DAY breakdown with a rich sample slip
+        CAR.sponsor={ name:"CRISPY NUGGZ", perGoal:3, perWin:20, left:12 };
+        M.goals=3; matchEarnings('W');
+        CAR.lastEnergy={ before:78, after:52, delta:-26, rest:4 };
+        state=ST.PAYDAY; stateEnterAt=performance.now()-9e5; return {state, net:CAR.lastEarn.net}; },
       trophySim: function(n){ CAR.trophies=[]; const kinds=["league","cup","euro","intl"];   // audit: fill the cabinet
         for (let i=0;i<(n||6);i++) CAR.trophies.push({t:kinds[i%4], s:i+1, club:CAR.slug});
         return CAR.trophies.length; },
