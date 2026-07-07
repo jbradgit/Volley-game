@@ -355,6 +355,8 @@
   let clinchBtn = null;                // clickable "end season" button rect on the career home (when title clinched)
   let trophyRoomBtn = null;            // clickable "trophies" button rect on the career home
   let lifeHomeBtn = null;              // clickable "£ SHOP" button rect on the career home (E8)
+  let workRateBtn = null;              // clickable CONDITION panel: cycles CONSERVE/NORMAL/ALL OUT (round 17)
+  function cycleWorkRate(){ if(!CAR||CAR.rep==null) return; CAR.workRate=((CAR.workRate||2)%3)+1; saveCareer(); }
   let nameBuf = "";         // player-name entry buffer
   let pendingMode = "career";  // 'quick' or 'career' — what the club-select confirms into
   let GMODE = "career";     // active game mode: 'career' | 'daily' | 'horse'
@@ -393,6 +395,8 @@
         c.monies = 100 + ((c.season||1)-1)*150;
         c.earned = 0; c.items = {}; c.trainer = null; c.sponsor = null; c.msgs = []; c.adSeen = false;
       }
+      if (c && c.workRate==null) c.workRate = 2;                          // migrate pre-work-rate saves
+
       return c;
     } catch(e){ return null; }
   }
@@ -469,19 +473,33 @@
     if (role==="sub") return base===10 ? 6 : 4;
     return 3;
   }
-  function energyBallCut(e){ return e>=60 ? 0 : (e>=40 ? 2 : 4); }   // tired legs bite HARD (owner): -2 under 60%, -4 under 40%, SAME target
   function energyLabel(e){ return e>=80 ? "FRESH" : (e>=60 ? "GOOD" : (e>=40 ? "TIRED" : "EXHAUSTED")); }
-  // NSS-style rest-day energy (round 16): drain by workload, recover by resting between fixtures.
-  const ENERGY_DRAIN_BASE=4, ENERGY_DRAIN_PER_BALL=3.6, ENERGY_REC_PER_DAY=3;
-  function restDaysFor(ev){ return ev && ev.t==='L' ? 7 : (ev && ev.t==='C' ? 4 : (ev && ev.t==='E' ? 3 : 5)); }
+  // ---- Energy as a % state-machine, faithful to New Star Soccer (round 17) ----
+  // A match burns a chunk of your 100% bar by WORK RATE (the 3-heart toggle): CONSERVE / NORMAL /
+  // ALL OUT. Natural recovery per week is deliberately WEAK, so you spiral into the subs unless
+  // you buy recovery: a better gaff stacks weekly %, a trainer refunds % the instant the match
+  // ends, and a protein shake is an on-the-spot top-up. Numbers lifted from NSS: normal ~48%,
+  // base rest ~12%, property +5..+35, trainer +10..+15, shake +50/+100.
+  const WR_COST = { 1:22, 2:48, 3:78 };                    // % of the bar a full match burns, by work rate
+  const WR_LABEL = { 1:"CONSERVE", 2:"NORMAL", 3:"ALL OUT" };
+  const WR_HEARTS = { 1:"\u2665\u2661\u2661", 2:"\u2665\u2665\u2661", 3:"\u2665\u2665\u2665" };
+  const ROLE_ENERGY = { cameo:0.4, sub:0.6, starter:1.0 };  // fewer minutes off the bench = less burned
+  const RECOVER_BASE = 14;                                 // weak natural weekly recovery (NSS: 10-15%)
+  function restFracFor(ev){ return ev && ev.t==='L' ? 1.0 : (ev && ev.t==='C' ? 0.55 : (ev && ev.t==='E' ? 0.45 : 0.7)); }
+  function maxWorkRate(e){ e=(e==null?100:e); return e>=60 ? 3 : (e>=28 ? 2 : 1); }   // can't sprint on empty
+  function effectiveWorkRate(){ return Math.min(CAR.workRate||2, maxWorkRate(CAR.energy)); }
+  function matchEnergyCost(role, wr){ return Math.round(WR_COST[wr]*(ROLE_ENERGY[role]||1)); }
+  function matchRecovery(ev){ return Math.round(restFracFor(ev)*(RECOVER_BASE+houseRec()) + trainerRec()); }
   // The plan for a career match: the ROLE scales the target with the balls (a fair cameo);
   // TIREDNESS removes balls without touching the target (the owner's fatigue rule).
   function matchPlan(base){
-    if (!CAR || CAR.rep==null) return { role:"starter", balls:base, targetBalls:base };
+    if (!CAR || CAR.rep==null) return { role:"starter", balls:base, targetBalls:base, workRate:2, energyCost:0 };
     const role=roleFor(CAR.trust==null?100:CAR.trust);
     const tb=roleBalls(role, base);
-    const balls=Math.max(2, tb - energyBallCut(CAR.energy==null?100:CAR.energy));
-    return { role, balls, targetBalls:tb };
+    const wr=effectiveWorkRate();
+    let balls=clamp(tb + (wr-2)*2, 1, tb+2);               // ALL OUT +2 balls, CONSERVE -2 (fewer chances, less energy)
+    if ((CAR.energy==null?100:CAR.energy)<12) balls=Math.max(1, balls-2);   // running on fumes
+    return { role, balls, targetBalls:tb, workRate:wr, energyCost:matchEnergyCost(role, wr) };
   }
   // Board expectation for the season: judged against the club's standing in this league.
   function makeObjective(){
@@ -516,11 +534,10 @@
     // proper week off; midweek cup/European ties give barely any rest, so congested runs grind
     // you down. Shakes, a trainer and a better gaff stack on top of the rest days.
     const before_e=CAR.energy;
-    const rest = restDaysFor(ev);
-    const rec = rest*ENERGY_REC_PER_DAY + houseRec() + trainerRec() + (rnd(5)-2);
-    const cost = ENERGY_DRAIN_BASE + ENERGY_DRAIN_PER_BALL*matchTargetBalls;
-    CAR.energy = clamp(Math.round(CAR.energy + rec - cost), 5, 100);
-    CAR.lastEnergy = { before:before_e, after:CAR.energy, delta:CAR.energy-before_e, rest };
+    const role=roleFor(CAR.trust==null?100:CAR.trust), wr=effectiveWorkRate();
+    const cost=matchEnergyCost(role, wr), rec=matchRecovery(ev);
+    CAR.energy = clamp(CAR.energy + rec - cost, 0, 100);
+    CAR.lastEnergy = { before:before_e, after:CAR.energy, delta:CAR.energy-before_e, cost, rec, workRate:wr, rest:restFracFor(ev) };
     if (CAR.trainer && CAR.trainer.games>0 && before_e>=40 && CAR.energy<40){   // the trainer notices you flagging
       const td=TRAINERS.find(t=>t.id===CAR.trainer.id); if (td) queueMsg(td.id, td.nag);
     }
@@ -554,37 +571,39 @@
   // (recovery per match), and lifestyle (clothes/motor/gadgets/the gaff) that boosts your
   // EFFECTIVE reputation — which is what big clubs and sponsors look at. Vic takes his cut
   // of everything, and it goes up every season. Prices scale with your star rating (NSS NRG rule).
-  const SHAKES=[   // sold in single or double scoops only (owner)
-    { id:'s', name:"SINGLE SCOOP", nrg:25, mult:18 },
-    { id:'m', name:"DOUBLE SCOOP", nrg:55, mult:36 } ];
+  const SHAKES=[   // sold in single or double scoops only (owner). NSS can values: +50 / +100.
+    { id:'s', name:"SINGLE SCOOP", nrg:50,  mult:16 },
+    { id:'m', name:"DOUBLE SCOOP", nrg:100, mult:30 } ];
   function shakePrice(s){ return s.mult*Math.max(1, repStars(effRep())); }
   const TRAINERS=[
-    { id:'beef', name:"BARRY 'BEEF' BINNS", tier:1, cost:70, rec:7, games:8,
+    { id:'beef', name:"BARRY 'BEEF' BINNS", tier:1, cost:55, rec:10, games:8,
       blurb:"OLD SCHOOL. RAW EGGS. BEEF.",
       hire:"RIGHT THEN, SON. RULE ONE: PROTEIN. RULE TWO: MORE PROTEIN. I'VE BEEN ON THE SHAKES SINCE HALF SIX THIS MORNING AND I'VE NEVER FELT BETTER. TWO SCOOPS A DAY AND YOU'LL BE BUILT LIKE A RIDING SCHOOL. RIGHT, LET'S GRAFT.",
       nag:"OI OI. LOOK AT THE STATE OF YOUR LEGS, SON. GET A SHAKE DOWN YOU BEFORE THE GAFFER NOTICES. SINGLE SCOOP MINIMUM, DOUBLE IF YOU'RE SERIOUS. BEEF FLAVOUR IF THEY'VE GOT IT.",
       bye:"THAT'S ME DONE, SON. CONTRACT'S UP. RE-SIGN ME DOWN THE SHOP AND WE'LL GET YOU PROPER HENCH. DON'T LEAVE IT TOO LONG. PROTEIN WAITS FOR NO MAN." },
-    { id:'sven', name:"SVEN NUTRIBLAST", tier:2, cost:220, rec:11, games:24,
+    { id:'sven', name:"SVEN NUTRIBLAST", tier:2, cost:220, rec:12, games:24,
       blurb:"MACROS. ISOLATES. SCIENCE.",
       hire:"GREETINGS. I HAVE ANALYSED YOUR MACROS AND FRANKLY I AM DISTURBED. FROM TODAY WE OPTIMISE: WHEY ISOLATE AT DAWN, CASEIN AT NIGHT, AND A RECOVERY WINDOW OF PRECISELY 27 MINUTES. YOUR BODY IS A LABORATORY AND I AM THE SCIENTIST.",
       nag:"YOUR GLYCOGEN LEVELS ARE A TRAGEDY. DRINK A SHAKE. THE ANABOLIC WINDOW IS CLOSING AS WE SPEAK. TICK TOCK. TICK TOCK.",
       bye:"MY CONTRACT EXPIRES TODAY, AND SO, STATISTICALLY, WILL YOUR GAINS. RE-HIRE ME IN THE SHOP. THE SPREADSHEET DEMANDS IT." },
-    { id:'proteina', name:"DR. PROTEINA", tier:3, cost:520, rec:16, games:60,
+    { id:'proteina', name:"DR. PROTEINA", tier:3, cost:520, rec:15, games:60,
       blurb:"ELITE. UNHINGED. 97% PROTEIN.",
       hire:"AH. MY NEW SPECIMEN. I HAVE TRAINED TWO BALLON D'OR WINNERS AND, BRIEFLY, A RACEHORSE. MY METHODS ARE BEYOND SCIENCE: PROTEIN AIR. PROTEIN LIGHT. COLLAGEN MOONSHAKES. YOU WILL RECOVER FASTER THAN YOUR OWN SHADOW. WE BEGIN AT DAWN.",
       nag:"I SENSE FATIGUE IN YOUR AURA. HYDROLYSED PEPTIDES. IMMEDIATELY. DO NOT MAKE ME PRESCRIBE THE 3AM YOLK RITUAL.",
       bye:"OUR TIME TOGETHER CONCLUDES. YOUR MITOCHONDRIA WILL WEEP. SUMMON ME AGAIN IN THE SHOP, WHEN YOUR WALLET HAS RECOVERED." } ];
   const LIFESTYLE=[   // own the best item per category; each adds reputation, the gaff also aids recovery
-    { cat:"CLOTHES", items:[ {id:'trackie',name:"FRESH TRACKIE",cost:90,rep:1}, {id:'suit',name:"CLUB SUIT",cost:450,rep:2}, {id:'fit',name:"DESIGNER FIT",cost:2200,rep:4} ] },
-    { cat:"MOTOR",   items:[ {id:'hatch',name:"HOT HATCH",cost:400,rep:1}, {id:'saloon',name:"EXEC SALOON",cost:1800,rep:3}, {id:'super',name:"SUPERCAR",cost:8500,rep:6} ] },
-    { cat:"GADGETS", items:[ {id:'console',name:"GAMES CONSOLE",cost:180,rep:1}, {id:'watch',name:"DIAMOND WATCH",cost:1300,rep:2}, {id:'jetski',name:"JET SKI",cost:5000,rep:4} ] },
-    { cat:"THE GAFF",items:[ {id:'flat',name:"FLATSHARE",cost:300,rep:1,rec:2}, {id:'semi',name:"SEMI-DETACHED",cost:1500,rep:2,rec:4}, {id:'pent',name:"PENTHOUSE",cost:6500,rep:4,rec:6}, {id:'mansion',name:"MANSION",cost:16000,rep:6,rec:8} ] } ];
+    { cat:"CLOTHES", items:[ {id:'trackie',name:"FRESH TRACKIE",cost:90,rep:1}, {id:'suit',name:"CLUB SUIT",cost:450,rep:2}, {id:'fit',name:"DESIGNER FIT",cost:2200,rep:4}, {id:'couture',name:"COUTURE HOUSE",cost:9000,rep:7} ] },
+    { cat:"MOTOR",   items:[ {id:'hatch',name:"HOT HATCH",cost:400,rep:1}, {id:'saloon',name:"EXEC SALOON",cost:1800,rep:3}, {id:'super',name:"SUPERCAR",cost:8500,rep:6}, {id:'hyper',name:"HYPERCAR",cost:32000,rep:10} ] },
+    { cat:"GADGETS", items:[ {id:'console',name:"GAMES CONSOLE",cost:180,rep:1}, {id:'watch',name:"DIAMOND WATCH",cost:1300,rep:2}, {id:'jetski',name:"JET SKI",cost:5000,rep:4}, {id:'yacht',name:"SUPERYACHT",cost:48000,rep:9} ] },
+    { cat:"THE GAFF",items:[ {id:'flat',name:"FLATSHARE",cost:300,rep:1,rec:5}, {id:'semi',name:"SEMI-DETACHED",cost:1500,rep:2,rec:15}, {id:'pent',name:"PENTHOUSE",cost:6500,rep:4,rec:25}, {id:'mansion',name:"MANSION",cost:16000,rep:6,rec:35} ] } ];
   const SPONSORS=[   // gated on EFFECTIVE rep + owning at least one lifestyle item (NSS rule).
     // Weight sits on the WIN money: a hot volley game can produce 8+ goals, so per-goal stays small.
-    { need:10, name:"TONY'S MEAT VAN",     perGoal:1,  perWin:8,   matches:20 },
-    { need:30, name:"CRISPY NUGGZ",        perGoal:3,  perWin:20,  matches:20 },
-    { need:50, name:"SCORBOOST PRO-TEIN",  perGoal:6,  perWin:45,  matches:20 },
-    { need:70, name:"GALAXY AIRWAYS",      perGoal:15, perWin:100, matches:20 } ];
+    { need:10,  name:"TONY'S MEAT VAN",       perGoal:1,  perWin:8,   matches:20 },
+    { need:25,  name:"CRISPY NUGGZ",          perGoal:2,  perWin:16,  matches:20 },
+    { need:40,  name:"SCORBOOST PRO-TEIN",    perGoal:4,  perWin:32,  matches:20 },
+    { need:55,  name:"RAPIDA TRAINERS",       perGoal:7,  perWin:55,  matches:20 },
+    { need:70,  name:"GALAXY AIRWAYS",        perGoal:12, perWin:90,  matches:20 },
+    { need:85,  name:"SCORDACOIN CRYPTO",     perGoal:22, perWin:150, matches:20 } ];
   const AD_MONIES=4, AD_SECS=4;                 // "a word from our sponsors": once per matchday, Vic-cut-free
   function lifeBonus(){ if (!CAR || !CAR.items) return 0; let b=0;
     for (const c of LIFESTYLE){ let best=0; for (const it of c.items) if (CAR.items[it.id]) best=Math.max(best, it.rep); b+=best; }
@@ -611,9 +630,9 @@
   // earns a raise at the season rollover. The FINANCES page lays it all out.
   function negotiateContract(){
     const t=TEAMBY[CAR.slug]||{rating:3}, tier=activeLeagueTier();
-    const base = tier===2 ? 5+t.rating*2 : 24+t.rating*6;
-    const wage = Math.round(base*(1+effRep()/150));
-    return { wage, winB:Math.round(wage*0.5), goalB:Math.max(1, Math.round(wage*0.05)) };   // per-goal stays tiny: 10-ball games can produce 8+ goals
+    const clubBase = tier===2 ? t.rating*1.3 : 5+t.rating*2.2;
+    const wage = Math.max(2, Math.round(clubBase*(0.5+effRep()/70)));   // an unknown debut starts on ~£2 a game
+    return { wage, winB:Math.max(2, Math.round(wage*0.9)), goalB:0 };   // owner: a win bonus, but NO goal bonus
   }
   function playerContract(){ return CAR.contract || (CAR.contract=negotiateContract()); }   // lazy: migrated saves get terms on first use
   // every pound in and out flows through these two, so the season ledger is always honest
@@ -723,7 +742,7 @@
             cup:initCup(), euro:null, nextEuro:null, cal:buildCalendar(false, leagueMatchdays()), calIdx:0,
             trn:null, trnDone:false,
             rep:5, energy:100, trust:20, verdict:null,     // the journey: an unknown kid fighting for minutes
-            monies:60, earned:0, items:{}, trainer:null, sponsor:null, msgs:[], adSeen:false };   // the life: skint
+            monies:10, earned:0, items:{}, trainer:null, sponsor:null, msgs:[], adSeen:false, workRate:2 };   // the life: near-skint
     CAR.objective = makeObjective();
     CAR.contract = negotiateContract(); CAR.ledger = freshLedger(); CAR.prize = null;
     unlockLeague(CAR.leagueId);
@@ -1131,11 +1150,12 @@
     else { const o=euroNextOpp(ev); oppSlug=o.slug; home=o.home; balls=5; ko=o.ko; }
     const ot=TEAMBY[oppSlug]||{name:oppSlug, rating:5};
     OPPONENT={ slug:oppSlug, name:ot.name, rating:ot.rating, home:home };
-    // E7: the coach decides your minutes (role) and your legs decide the rest (energy)
+    // E7/round 17: the coach decides your minutes (role); your work rate + legs decide the balls
     const plan=matchPlan(balls);
     let note="";
-    if (plan.targetBalls<balls) note=(plan.role==="cameo"?"CAMEO OFF THE BENCH: ":"SUPER SUB: ")+plan.balls+" BALLS";
-    else if (plan.balls<plan.targetBalls) note="TIRED LEGS: "+plan.balls+" BALLS, FULL TARGET";
+    const roleLbl = plan.role==="cameo" ? "CAMEO OFF THE BENCH" : (plan.role==="sub" ? "SUPER SUB" : "");
+    if (roleLbl) note=roleLbl+": "+plan.balls+" BALLS";
+    else if (plan.workRate!==2) note=WR_LABEL[plan.workRate]+": "+plan.balls+" BALLS";   // CONSERVE / ALL OUT
     return { balls:plan.balls, targetBalls:plan.targetBalls, note, ko, role:plan.role, strikerSlug:CAR.slug, oppSlug };
   }
   function startFixture() {
@@ -1308,9 +1328,12 @@
   }
   function startTrnMatch(){
     const o=trnSetup();
-    // For your country you always start — but a long club season leaves its mark on the legs (E7)
-    const cut=(CAR&&CAR.rep!=null) ? energyBallCut(CAR.energy) : 0, balls=Math.max(2, 5-cut);
-    loadKits(o.strikerSlug, OPPONENT.slug, ()=>startMatch({balls, targetBalls:5, note:cut>0?("TIRED LEGS: "+balls+" BALLS, FULL TARGET"):"", ko:o.ko}));
+    // You always start for your country, but your chosen work rate (and tired legs) still bite
+    const wr=(CAR&&CAR.rep!=null) ? effectiveWorkRate() : 2;
+    let balls=clamp(5 + (wr-2)*2, 1, 7);
+    if (CAR && CAR.energy!=null && CAR.energy<12) balls=Math.max(1, balls-2);
+    const note = balls!==5 ? (WR_LABEL[wr]+" · "+balls+" BALLS") : "";
+    loadKits(o.strikerSlug, OPPONENT.slug, ()=>startMatch({balls, targetBalls:5, note, ko:o.ko}));
   }
   function commitIntl(res){
     const T=CAR.trn;
@@ -2014,7 +2037,7 @@
     };
     line("APPEARANCE FEE", "+"+money(e.wage), TTX.white);
     if (e.win>0) line("WIN BONUS", "+"+money(e.win), TTX.green);
-    if (e.goals>0) line(e.goals+" GOAL"+(e.goals>1?"S":"")+" @ "+money(playerContract().goalB), "+"+money(e.goalPay), TTX.green);
+    if (e.goalPay>0) line(e.goals+" GOAL"+(e.goals>1?"S":"")+" @ "+money(playerContract().goalB), "+"+money(e.goalPay), TTX.green);
     if (e.sponsorName){
       const sp=e.sponsorGoal+e.sponsorWin;
       line("SPONSOR ("+e.sponsorName+")", "+"+money(sp), TTX.cyan);
@@ -2552,10 +2575,12 @@
       while (ctx.measureText(fixtureStr).width > nbW-28 && fsz>12){ fsz--; ctx.font=ttFont(fsz); }
       ctx.fillStyle=TTX.white; ctx.fillText(fixtureStr, VW/2, nbY+40);
       // ---- E7 journey: your role in the NEXT MATCH bar + REPUTATION / CONDITION side panels ----
+      workRateBtn=null;
       if (CAR.rep!=null){
         const plan=matchPlan(10);
-        const reduced=plan.balls<10;
-        pxText(ROLE_LABEL[plan.role]+" · "+plan.balls+" BALLS", nbX+nbW-8, nbY+9, 11, reduced?"#ff9f1c":"#cfd6dd", 'r', 'm');
+        const reduced=plan.balls<plan.targetBalls, boosted=plan.balls>plan.targetBalls;
+        pxText(ROLE_LABEL[plan.role]+" · "+plan.balls+" BALLS", nbX+nbW-8, nbY+9, 11,
+          reduced?"#ff9f1c":(boosted?"#7dff8a":"#cfd6dd"), 'r', 'm');
         const pnl=(px,title)=>{ ctx.fillStyle="#0a1224"; ctx.fillRect(px,nbY,142,nbH);
           ctx.strokeStyle=TTX.blue; ctx.lineWidth=2; ctx.strokeRect(px+1,nbY+1,140,nbH-2);
           ttBar(title, px, nbY, 142, 16, TTX.blue, TTX.white, {center:true, size:11}); };
@@ -2564,15 +2589,16 @@
         tip(10, nbY, 142, nbH, "YOUR NAME IN THE GAME, OUT OF FIVE STARS. GROWN BY RESULTS AND TROPHIES, TOPPED UP BY LIFESTYLE. BIG CLUBS, SPONSORS AND THE NATIONAL SIDE ONLY CALL WHEN IT'S BIG ENOUGH.");
         pxText(repStarStr(CAR.rep), 10+71, nbY+27, 14, "#ffd700", 'c', 'm');
         pxText(repTier(CAR.rep), 10+71, nbY+41, 10, TTX.grey, 'c', 'm');
-        // condition: energy bar + status
+        // condition + WORK RATE picker (round 17): click to cycle CONSERVE / NORMAL / ALL OUT
         const ex=VW-152; pnl(ex, "CONDITION");
-        tip(ex, nbY, 142, nbH, "YOUR LEGS. UNDER 60% COSTS YOU TWO BALLS, UNDER 40% FOUR - SAME TARGET. SHAKES AND A TRAINER IN THE £ SHOP KEEP YOU FRESH.");
-        const e=CAR.energy, bw=110, bx2=ex+16, by2=nbY+23;
-        ctx.fillStyle="rgba(255,255,255,0.12)"; ctx.fillRect(bx2,by2,bw,7);
-        ctx.fillStyle = e>=60?"#1f9d49":(e>=40?"#ff9f1c":"#c43a3a");
-        ctx.fillRect(bx2,by2,Math.round(bw*e/100),7);
-        const cut=energyBallCut(e);
-        pxText(energyLabel(e)+(cut>0?" · -"+cut+" BALL"+(cut>1?"S":""):""), ex+71, nbY+41, 10, cut>0?"#ff9f1c":TTX.grey, 'c', 'm');
+        const e=CAR.energy, wr=effectiveWorkRate();
+        pxText(e+"%", ex+142-12, nbY+8, 10, e>=40?TTX.cyan:"#ff8888", 'r', 'm');   // % in the title bar
+        const bw=110, bx2=ex+16, by2=nbY+22;
+        ctx.fillStyle="rgba(255,255,255,0.12)"; ctx.fillRect(bx2,by2,bw,6);
+        ctx.fillStyle = e>=60?"#1f9d49":(e>=40?"#ff9f1c":"#c43a3a"); ctx.fillRect(bx2,by2,Math.round(bw*e/100),6);
+        pxText(WR_HEARTS[wr]+"  "+WR_LABEL[wr], ex+71, nbY+40, 11, wr===3?"#7dff8a":(wr===1?"#ff9f1c":"#ff5d7a"), 'c', 'm');
+        workRateBtn={x:ex, y:nbY, w:142, h:nbH};
+        tip(ex, nbY, 142, nbH, "YOUR LEGS ("+e+"%) AND YOUR WORK RATE. CLICK TO CYCLE CONSERVE / NORMAL / ALL OUT: HIGHER RATE = MORE BALLS BUT BURNS MORE ENERGY. UNDER 60% YOU CAN'T GO ALL OUT, UNDER 28% ONLY CONSERVE. SHAKES, A TRAINER AND A BETTER GAFF KEEP YOU FRESH.");
       }
 
       // call-to-action / clinch button — touch taps, desktop uses keyboard
@@ -2909,13 +2935,13 @@
       ctx.fillStyle="rgba(255,255,255,0.12)"; ctx.fillRect(bx,by,bw,16);
       const e=CAR.energy; ctx.fillStyle=e>=60?"#1f9d49":(e>=40?"#ff9f1c":"#c43a3a");
       ctx.fillRect(bx,by,Math.round(bw*e/100),16);
-      for (const t of [40,60]){ ctx.fillStyle="rgba(255,255,255,0.55)"; ctx.fillRect(bx+Math.round(bw*t/100),by-3,1,22); }
+      for (const t of [28,60]){ ctx.fillStyle="rgba(255,255,255,0.55)"; ctx.fillRect(bx+Math.round(bw*t/100),by-3,1,22); }
       ctx.font=ttFont(10); ctx.fillStyle=TTX.dim;
-      ctx.textAlign="left";   ctx.fillText("UNDER 40%: FOUR BALLS DOWN", bx, by+34);
-      ctx.textAlign="center"; ctx.fillText("UNDER 60%: TWO BALLS DOWN", bx+bw*0.5, by+34);
-      ctx.textAlign="right";  ctx.fillText("60%+: FULL QUOTA", bx+bw, by+34);
+      ctx.textAlign="left";   ctx.fillText("UNDER 28%: CONSERVE ONLY", bx, by+34);
+      ctx.textAlign="center"; ctx.fillText("UNDER 60%: NO ALL-OUT", bx+bw*0.28, by+34);
+      ctx.textAlign="right";  ctx.fillText("60%+: FULL WORK-RATE CHOICE", bx+bw, by+34);
       ctx.textAlign="left"; }
-    tip(MARGIN, y, W, 100, "YOUR LEGS. EVERY MATCH DRAINS ENERGY AND NATURAL RECOVERY IS WEAK. SHAKES, A TRAINER OR A BETTER GAFF KEEP YOU FRESH.");
+    tip(MARGIN, y, W, 100, "YOUR LEGS. A NORMAL MATCH BURNS ABOUT HALF YOUR BAR AND NATURAL REST BARELY REFILLS IT. A HIGHER WORK RATE BURNS MORE; SHAKES, A TRAINER AND A BETTER GAFF ARE HOW YOU STAY FRESH.");
     y+=100+2*SP;
     const cw=Math.floor((W-2*SP)/2);
     SHAKES.forEach((s,i)=>{
@@ -3002,19 +3028,19 @@
       const avail = best && best.name===sp.name && !have;
       const reach = ownedCount()>=1 && r>=sp.need;
       const accent = have ? TTX.neon : (avail ? TTX.yellow : (reach ? TTX.cyan : "rgba(255,255,255,0.2)"));
-      uiPanel(MARGIN, y, W, 58, {accent, hot:avail});
+      uiPanel(MARGIN, y, W, 44, {accent, hot:avail});
       if (!reach) ctx.globalAlpha=0.55;
-      ctx.font=ttFont(14); ctx.fillStyle=reach?TTX.white:TTX.dim; ctx.fillText(sp.name, MARGIN+16, y+24);
+      ctx.font=ttFont(14); ctx.fillStyle=reach?TTX.white:TTX.dim; ctx.fillText(sp.name, MARGIN+16, y+19);
       ctx.font=ttFont(11); ctx.fillStyle=reach?TTX.cyan:TTX.dim;
-      ctx.fillText(money(sp.perGoal)+" / GOAL  ·  "+money(sp.perWin)+" / WIN  ·  "+sp.matches+" MATCHES", MARGIN+16, y+42);
+      ctx.fillText(money(sp.perGoal)+" / GOAL  ·  "+money(sp.perWin)+" / WIN  ·  "+sp.matches+" MATCHES", MARGIN+16, y+35);
       ctx.globalAlpha=1;
       ctx.textAlign="right"; ctx.font=ttFont(11);
-      if (have){ ctx.fillStyle=TTX.neon; ctx.fillText("★ SIGNED", MARGIN+W-16, y+34); }
-      else if (avail){ ctx.textAlign="left"; lifeBtnDraw(MARGIN+W-156, y+13, 140, 32, "SIGN HERE", TTX.neon, true, "sponsor"); ctx.textAlign="right"; }
-      else if (reach){ ctx.fillStyle=TTX.dim; ctx.fillText("BENEATH YOU NOW", MARGIN+W-16, y+34); }
-      else { ctx.fillStyle=TTX.dim; ctx.fillText(ownedCount()<1 ? "NEEDS A LIFESTYLE" : "NEEDS EFFECTIVE REP "+sp.need+"+", MARGIN+W-16, y+34); }
+      if (have){ ctx.fillStyle=TTX.neon; ctx.fillText("★ SIGNED", MARGIN+W-16, y+27); }
+      else if (avail){ ctx.textAlign="left"; lifeBtnDraw(MARGIN+W-150, y+7, 134, 30, "SIGN HERE", TTX.neon, true, "sponsor"); ctx.textAlign="right"; }
+      else if (reach){ ctx.fillStyle=TTX.dim; ctx.fillText("BENEATH YOU NOW", MARGIN+W-16, y+27); }
+      else { ctx.fillStyle=TTX.dim; ctx.fillText(ownedCount()<1 ? "NEEDS A LIFESTYLE" : "NEEDS EFFECTIVE REP "+sp.need+"+", MARGIN+W-16, y+27); }
       ctx.textAlign="left";
-      y+=58+SP+2;
+      y+=44+SP;
     });
     ctx.textAlign="center"; ctx.font=ttFont(11); ctx.fillStyle=TTX.grey;
     if (!TOUCH) ctx.fillText("HOVER FOR INFO    ESC  BACK TO SHOP", VW/2, SH-14);
@@ -4687,6 +4713,9 @@
     if (state===ST.TABLE && k==="KeyE" && titleClinched()){ e.preventDefault(); endSeasonEarly(); return; }   // skip the run-in
     if (state===ST.TABLE && k==="KeyT"){ e.preventDefault(); state=ST.TROPHY; return; }    // trophy room
     if (state===ST.TABLE && k==="KeyL"){ e.preventDefault(); openShop(); return; }         // the life (E8)
+    if (state===ST.TABLE && CAR && CAR.rep!=null && (k==="Digit1"||k==="Digit2"||k==="Digit3")){   // work rate (round 17)
+      e.preventDefault(); CAR.workRate=parseInt(k.slice(5),10); saveCareer(); return; }
+    if (state===ST.TABLE && k==="KeyW"){ e.preventDefault(); cycleWorkRate(); return; }     // W cycles work rate
     if (state===ST.SHOP && k==="KeyL"){ e.preventDefault(); state=ST.TABLE; return; }      // L toggles back out
     if (state===ST.EMAIL){
       if (k==="KeyA"){ e.preventDefault(); emailAction("accept"); return; }
@@ -4816,6 +4845,7 @@
       else {
         if(trophyRoomBtn && p.x>=trophyRoomBtn.x && p.x<=trophyRoomBtn.x+trophyRoomBtn.w && p.y>=trophyRoomBtn.y && p.y<=trophyRoomBtn.y+trophyRoomBtn.h) state=ST.TROPHY;
         else if(lifeHomeBtn && p.x>=lifeHomeBtn.x && p.x<=lifeHomeBtn.x+lifeHomeBtn.w && p.y>=lifeHomeBtn.y && p.y<=lifeHomeBtn.y+lifeHomeBtn.h) openShop();
+        else if(workRateBtn && p.x>=workRateBtn.x && p.x<=workRateBtn.x+workRateBtn.w && p.y>=workRateBtn.y && p.y<=workRateBtn.y+workRateBtn.h) cycleWorkRate();
         else if(clinchBtn && p.x>=clinchBtn.x && p.x<=clinchBtn.x+clinchBtn.w && p.y>=clinchBtn.y && p.y<=clinchBtn.y+clinchBtn.h) endSeasonEarly();
         else pressSelect();
       }
@@ -4844,6 +4874,7 @@
       if(Math.abs(p.y-tableSwipeAnchorY)<10){   // small movement = tap
         if(trophyRoomBtn && p.x>=trophyRoomBtn.x && p.x<=trophyRoomBtn.x+trophyRoomBtn.w && p.y>=trophyRoomBtn.y && p.y<=trophyRoomBtn.y+trophyRoomBtn.h) state=ST.TROPHY;
         else if(lifeHomeBtn && p.x>=lifeHomeBtn.x && p.x<=lifeHomeBtn.x+lifeHomeBtn.w && p.y>=lifeHomeBtn.y && p.y<=lifeHomeBtn.y+lifeHomeBtn.h) openShop();
+        else if(workRateBtn && p.x>=workRateBtn.x && p.x<=workRateBtn.x+workRateBtn.w && p.y>=workRateBtn.y && p.y<=workRateBtn.y+workRateBtn.h) cycleWorkRate();
         else if(clinchBtn && p.x>=clinchBtn.x && p.x<=clinchBtn.x+clinchBtn.w && p.y>=clinchBtn.y && p.y<=clinchBtn.y+clinchBtn.h) endSeasonEarly();
         else pressSelect();
       }
@@ -4958,6 +4989,9 @@
       tipSim: function(t){ if (t===false){ hoverTip=null; return true; }   // stage/clear a hover tooltip (screenshots)
         hoverTip=t||"YOUR LEGS. EVERY MATCH DRAINS ENERGY. BELOW 60% THE COACH GIVES YOU FEWER BALLS FOR THE SAME TARGET."; hoverX=360; hoverY=120; return true; },
       setMonies: function(n){ CAR.monies=n|0; return CAR.monies; },
+      setWorkRate: function(n){ CAR.workRate=clamp(n|0,1,3); return { set:CAR.workRate, effective:effectiveWorkRate() }; },
+      workRateSim: function(){ return { chosen:CAR.workRate, effective:effectiveWorkRate(), max:maxWorkRate(CAR.energy),
+        plan:this.matchPlanSim() }; },
       buyShakeSim: function(i){ return buyShake(i|0); },
       shakePriceSim: function(i){ return shakePrice(SHAKES[i|0]); },
       hireTrainerSim: function(id){ return hireTrainer(id); },

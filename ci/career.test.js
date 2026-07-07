@@ -188,18 +188,22 @@ test("journey: wins earn the coach's trust — cameo -> super sub -> starter", a
   assert.equal(dbg.matchPlanSim().balls, 10, "a fresh starter gets the full 10 balls");
 });
 
-test("journey: tired legs mean fewer balls for the SAME target", async () => {
+test("journey (round 17): work rate trades balls for energy; tiredness forces you down", async () => {
   const { dbg } = await loadGame();
   dbg.newCareerSim("England", "ENG2", "Millwall");
-  dbg.setJourney({ trust: 100, energy: 50 });
-  let plan = dbg.matchPlanSim();
-  assert.equal(plan.targetBalls, 10, "the target still assumes 10 balls");
-  assert.equal(plan.balls, 8, "TIRED (40-59) costs two balls");
-  dbg.setJourney({ energy: 30 });
-  plan = dbg.matchPlanSim();
-  assert.equal(plan.balls, 6, "EXHAUSTED (<40) costs four balls");
-  dbg.setJourney({ energy: 95 });
-  assert.equal(dbg.matchPlanSim().balls, 10, "fresh legs = full quota");
+  dbg.setJourney({ trust: 100, energy: 100 });   // a fresh starter (target 10 balls)
+  dbg.setWorkRate(3); let plan = dbg.matchPlanSim();
+  assert.equal(plan.targetBalls, 10, "the target still assumes the role's 10 balls");
+  assert.equal(plan.balls, 12, "ALL OUT gives +2 balls");
+  dbg.setWorkRate(2); assert.equal(dbg.matchPlanSim().balls, 10, "NORMAL = the target");
+  dbg.setWorkRate(1); assert.equal(dbg.matchPlanSim().balls, 8, "CONSERVE = -2 balls");
+  // tiredness caps the work rate you can actually play
+  dbg.setJourney({ energy: 40 }); dbg.setWorkRate(3);
+  assert.equal(dbg.matchPlanSim().balls, 10, "under 60% you can't go ALL OUT (forced NORMAL)");
+  dbg.setJourney({ energy: 20 }); dbg.setWorkRate(3);
+  assert.equal(dbg.matchPlanSim().balls, 8, "under 28% you're forced to CONSERVE");
+  dbg.setJourney({ energy: 8 });
+  assert.equal(dbg.matchPlanSim().balls, 6, "running on fumes (<12%) costs a further two");
 });
 
 test("journey: winning the second tier brings top-flight offers but NO European spot", async () => {
@@ -243,20 +247,42 @@ test("journey: accepting a foreign offer moves the career abroad with trust to r
   assert.ok(c.L >= 38, "a full La Liga season plays out");
 });
 
+test("energy (round 17): a higher work rate burns more of the bar", async () => {
+  const { dbg } = await loadGame();
+  dbg.newCareerSim("England", "ENG2", "Millwall");
+  dbg.setJourney({ trust: 100, energy: 100 });
+  dbg.setWorkRate(1); dbg.playNext(true);
+  const conserve = -dbg.lifeInfo().lastEnergy.delta;
+  dbg.setJourney({ energy: 100 }); dbg.setWorkRate(2); dbg.playNext(true);
+  const normal = -dbg.lifeInfo().lastEnergy.delta;
+  assert.ok(normal > conserve, `NORMAL (${normal}) burns more than CONSERVE (${conserve})`);
+  assert.ok(normal >= 25, `a normal match takes a real chunk of the bar (${normal}%) - NSS-fast`);
+});
+
+test("contract (round 17): a debut unknown starts on about GBP 2 a game, win bonus only", async () => {
+  const { dbg } = await loadGame();
+  dbg.newCareerSim("England", "ENG2", "Millwall");
+  const c = dbg.lifeInfo().contract;
+  assert.ok(c.wage <= 4, "a nobody earns a pittance to start: GBP " + c.wage);
+  assert.ok(c.winB >= 2, "but there's a win bonus");
+  assert.equal(c.goalB, 0, "and no goal bonus");
+  assert.equal(dbg.lifeInfo().monies, 10, "and starts near-broke");
+});
+
 // ================= E8 "The Life": Monies, protein shakes, the trainer, lifestyle, sponsors =================
 
 test("life: a new career is skint, wages land minus Vic's cut, and the cut rises each season", async () => {
   const { dbg } = await loadGame();
   dbg.newCareerSim("England", "ENG2", "Millwall");
   let l = dbg.lifeInfo();
-  assert.equal(l.monies, 60, "an unknown kid starts skint");
+  assert.equal(l.monies, 10, "an unknown kid starts near-broke");
   assert.equal(l.vicCut, 10, "Vic opens at 10%");
   assert.ok(l.msgs.includes("vic"), "Vic's season brief (board expectation + his cut) is queued");
 
   dbg.setJourney({ trust: 100 });    // a full 10-ball match so the energy cost is visible
   dbg.playNext(true);
   l = dbg.lifeInfo();
-  assert.ok(l.monies > 60, "an appearance pays wages");
+  assert.ok(l.monies > 10, "an appearance pays wages");
   assert.ok(l.lastEarn && l.lastEarn.gross > 0);
   assert.equal(l.lastEarn.cut, Math.round(l.lastEarn.gross * 0.10), "Vic skims exactly his 10%");
   assert.equal(l.lastEarn.net, l.lastEarn.gross - l.lastEarn.cut);
@@ -276,10 +302,10 @@ test("life: protein shakes restore energy for monies, priced by your stars", asy
   dbg.setMonies(500);
   dbg.setJourney({ energy: 40 });
   const price = dbg.shakePriceSim(0);
-  assert.equal(price, 18, "HALF SCOOP at 1 star = 18 monies");
+  assert.equal(price, 16, "SINGLE SCOOP at 1 star = 16 monies");
   assert.equal(dbg.buyShakeSim(0), true);
   let l = dbg.lifeInfo();
-  assert.equal(l.energy, 65, "+25 NRG");
+  assert.equal(l.energy, 90, "single scoop = +50 energy (NSS standard can)");
   assert.equal(l.monies, 500 - price);
   dbg.setJourney({ energy: 100 });
   assert.equal(dbg.buyShakeSim(0), false, "no shake-hoarding at full energy");
@@ -291,8 +317,8 @@ test("life: a trainer is hired by the block, tops up recovery, and says goodbye 
   dbg.setMonies(500);
   assert.equal(dbg.hireTrainerSim("beef"), true);
   let l = dbg.lifeInfo();
-  assert.equal(l.monies, 430, "Beef costs 70 for the block");
-  assert.deepEqual({ id: l.trainer.id, games: l.trainer.games, rec: l.trainer.rec }, { id: "beef", games: 8, rec: 7 });
+  assert.equal(l.monies, 445, "Beef costs 55 for the block");
+  assert.deepEqual({ id: l.trainer.id, games: l.trainer.games, rec: l.trainer.rec }, { id: "beef", games: 8, rec: 10 });
   for (let i = 0; i < 8; i++) dbg.playNext(true);
   l = dbg.lifeInfo();
   assert.equal(l.trainer, null, "the 8-game block is used up");
@@ -372,12 +398,13 @@ test("life v2: a contract sets the pay; every pound lands in the season ledger",
   const { dbg } = await loadGame();
   dbg.newCareerSim("England", "ENG2", "Millwall");
   const c = dbg.lifeInfo().contract;
-  assert.ok(c && c.wage > 0 && c.winB > 0 && c.goalB > 0, "a contract is negotiated at signing: " + JSON.stringify(c));
-  dbg.playNext(true);   // a win with 2 goals (the autoplay standard)
+  assert.ok(c && c.wage >= 2 && c.winB > 0, "a contract is negotiated at signing: " + JSON.stringify(c));
+  assert.equal(c.goalB, 0, "owner round 17: a win bonus, but NO goal bonus");
+  dbg.playNext(true);   // a win (the autoplay standard)
   const l = dbg.lifeInfo();
-  assert.equal(l.lastEarn.gross, c.wage + c.winB + 2*c.goalB, "gross = wage + win bonus + 2 goal bonuses");
+  assert.equal(l.lastEarn.gross, c.wage + c.winB, "gross = wage + win bonus (no goal money)");
   assert.equal(l.ledger.wages, c.wage, "the ledger books the wage");
-  assert.equal(l.ledger.bonus, c.winB + 2*c.goalB, "and the bonuses");
+  assert.equal(l.ledger.bonus, c.winB, "and the win bonus");
   assert.equal(l.ledger.vic, l.lastEarn.cut, "and Vic's slice");
 });
 
@@ -389,7 +416,7 @@ test("life v2: a transfer brings a signing-on fee and a renegotiated contract", 
   const l = dbg.lifeInfo();
   assert.ok(l.ledger.signing > 0, "a signing-on fee is banked");
   assert.ok(l.monies > before, "the fee lands (after Vic)");
-  assert.ok(l.contract.wage > 100, "Real Madrid pay superstar wages: " + l.contract.wage);
+  assert.ok(l.contract.wage > 30, "Real Madrid pay superstar wages: " + l.contract.wage);
   assert.ok(l.msgs.includes("vic") || l.agentWho === "vic", "Vic announces the deal");
 });
 

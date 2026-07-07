@@ -11,9 +11,19 @@ The 3D-sprite pipeline (old §3) is **long DONE and deployed**. **Live site:**
 https://jbradgit.github.io/Volley-game/ (GitHub Pages serves `main`).
 
 **Git state right now (2026-07-02, second session):**
-- **IN FLIGHT: branch `claude/career-journey` (this working tree) — E7 "The Journey" + E8 "The
-  Life" career overhaul, UNDEPLOYED, awaiting the owner's eyeball** (visual + gameplay change →
-  owner review before landing on `main`). Full CI green (50/50 + smoke), layout audit clean
+- **Owner round 17 (COMMITTED on the branch) — faithful NSS energy state-machine + work rate,
+  £2 starting contract, deeper shop:** energy is now a **% state-machine** (a match burns the bar
+  by WORK RATE: CONSERVE 22 / NORMAL 48 / ALL OUT 78, scaled by role; weak weekly recovery
+  `RECOVER_BASE 14` × rest fraction; stacks = property +5/+15/+25/+35, trainer refund +10/+12/+15,
+  shakes +50/+100). **Work rate** (`CAR.workRate`, click the CONDITION panel or keys 1/2/3/W)
+  trades balls for energy (`roleTarget + (wr-2)*2`); tired legs cap the rate you can play.
+  **Contract**: debut ~£2/game, **win bonus but NO goal bonus**, start money £10. **Shop depth**:
+  4th lifestyle tier per category (rep up to +10), sponsor ladder now **6 rungs**. New: `ST.PAYDAY`
+  drops the goal line; `effectiveWorkRate`/`maxWorkRate`/`matchEnergyCost`/`matchRecovery` in
+  `applyJourney`. dbg: `setWorkRate`/`workRateSim`. Design: `docs/CAREER_DESIGN.md` §11e. Tuning:
+  `scratchpad/smart_probe.js` (smart player holds ~60% energy; helpless one spirals to 0 in ~3).
+- **Earlier this session: E7 "The Journey" + E8 "The Life" + rounds 14-16** (all on this branch,
+  UNDEPLOYED, awaiting the owner's eyeball before landing on `main`). Full CI green (52/52 + smoke), layout audit clean
   (~37 screens).
 - **Owner round 16 (COMMITTED on the branch) — economy depth + energy realism + PAY DAY:**
   (1) **bank balance consistent + labelled** — `bankRight()` stamps `BANK £x` top-right on every

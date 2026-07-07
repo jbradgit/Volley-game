@@ -54,6 +54,7 @@ const SCREENS = [
   { name: 'protein',         state: 'PROTEIN',     setup: "__dbg.newCareerSim('England','ENG2','Millwall');__dbg.setMonies(120);__dbg.setJourney({energy:47})" },
   { name: 'lifestyle_shop',  state: 'LIFESTYLE',   setup: "__dbg.newCareerSim('England','ENG2','Millwall');__dbg.setMonies(2000);__dbg.buyItemSim('trackie');__dbg.buyItemSim('hatch');__dbg.buyItemSim('flat')" },
   { name: 'sponsor_screen',  state: 'SPONSOR',     setup: "__dbg.newCareerSim('England','ENG2','Millwall');__dbg.setMonies(500);__dbg.setJourney({rep:32});__dbg.buyItemSim('trackie');__dbg.signSponsorSim()" },
+  { name: 'sponsor_ladder',  state: 'SPONSOR',     setup: "__dbg.forceUnlocksSim({freestart:true});__dbg.newCareerSim('Brazil','ENG','Liverpool');__dbg.setMonies(9000);__dbg.setJourney({rep:78});__dbg.buyItemSim('trackie');__dbg.buyItemSim('hatch')" },
   { name: 'contract',        state: 'CONTRACT',    setup: "__dbg.newCareerSim('England','ENG2','Millwall');__dbg.contractSim()" },
   { name: 'trophyroom_full', state: 'TROPHY',      setup: "__dbg.newCareerSim('England','ENG2','Millwall');__dbg.trophySim(9)" },
   { name: 'payday',          state: 'PAYDAY',      setup: "__dbg.newCareerSim('England','ENG2','Millwall');__dbg.setMonies(430);__dbg.paydaySim()" },

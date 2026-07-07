@@ -348,3 +348,27 @@ in the header, THE LIFE + THE GYM + ad-break screens, pay-day line on the match-
 - **PAY DAY screen** (`ST.PAYDAY`) after the result burst: an itemised wage slip
   (appearance fee, win bonus, goals × bonus, sponsor, gross, Vic's cut, in-the-bank, new
   balance) plus the match's energy toll and rest days. Real play only; autoplay skips it.
+
+### 11e. Owner round 17 (faithful NSS energy state-machine + work rate; £2 start; shop depth)
+
+- **Energy is now a % state-machine, lifted from New Star Soccer.** A match burns a chunk of
+  the 100% bar by **WORK RATE** (a 3-heart toggle): CONSERVE 22% / NORMAL 48% / ALL OUT 78%,
+  scaled by role minutes (`ROLE_ENERGY` cameo 0.4 / sub 0.6 / starter 1.0). Natural weekly
+  recovery is deliberately weak (`RECOVER_BASE 14`, scaled by `restFracFor`: league 1.0, cup
+  0.55, Europe 0.45, intl 0.7) so you spiral into the subs without buying recovery. Stacks:
+  **property** weekly % (`THE GAFF` +5/+15/+25/+35, NSS values), **trainer** post-match refund
+  (+10/+12/+15), **shakes** on-the-spot (SINGLE +50 / DOUBLE +100). A helpless starter is
+  spent in ~3 games; a smart one (CONSERVE when tired + a cheap trainer) holds ~60%+.
+- **Work rate** (`CAR.workRate`, click the CONDITION panel or keys 1/2/3/W on the home) trades
+  balls for energy: `balls = roleTarget + (wr-2)*2` (ALL OUT +2 chances, CONSERVE -2). Tired
+  legs **cap** the rate you can play (≥60% for ALL OUT, ≥28% for NORMAL, else CONSERVE);
+  under 12% costs a further -2. Replaces the old flat energy-ball-cut.
+- **Contract**: a debut unknown starts on **~£2 a game** with a **win bonus but NO goal bonus**
+  (owner: a 10-ball game scores too many goals for per-goal pay). Start money cut to **£10**.
+- **Shop/reputation depth**: lifestyle gains a 4th tier per category (Couture House / Hypercar /
+  Superyacht, rep up to +10) and the sponsor ladder grows to **six rungs** (Tony's Meat Van →
+  Scordacoin Crypto, gated on effective rep). Bigger lifestyle rep = a stronger reputation
+  lever feeding offers + sponsors.
+- Deferred (noted for a later round): NSS age/degradation fatigue multiplier (we don't track
+  age); training/relationship energy sinks (no such gameplay yet) — the work-rate toggle is the
+  creative substitute the owner asked for.
