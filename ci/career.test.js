@@ -176,15 +176,22 @@ test("journey: a new career starts as an unknown 3-ball cameo in the second tier
   assert.equal(plan.targetBalls, 3, "with the target scaled to match (a fair cameo)");
 });
 
-test("journey: wins earn the coach's trust — cameo -> super sub -> starter", async () => {
+test("journey: wins earn the coach's trust — cameo -> super sub -> starter (a real slog)", async () => {
   const { dbg } = await loadGame();
   dbg.newCareerSim("England", "ENG2", "Millwall");
+  assert.equal(dbg.journeyInfo().role, "cameo", "an unknown starts as a bench cameo");
   const roles = [];
-  for (let i = 0; i < 10; i++){ roles.push(dbg.journeyInfo().role); dbg.playNext(true); }
-  assert.equal(roles[0], "cameo");
-  assert.ok(roles.includes("sub"), "passes through the super-sub role: " + roles.join(","));
-  assert.equal(dbg.journeyInfo().role, "starter", "a winning run earns a starting spot");
-  dbg.setJourney({ energy: 100 });   // isolate the ROLE quota from tired legs (E8: matches drain energy)
+  let starterAt = -1;
+  for (let i = 0; i < 40; i++){
+    const role = dbg.journeyInfo().role; roles.push(role);
+    if (role === "starter" && starterAt < 0) starterAt = i;
+    dbg.setJourney({ energy: 100 });   // isolate trust from tired legs
+    dbg.playNext(true);
+  }
+  assert.ok(roles.includes("sub"), "passes through the super-sub role");
+  assert.ok(starterAt >= 15, "the starting XI is a genuine slog now (reached at match " + starterAt + ")");
+  assert.equal(dbg.journeyInfo().role, "starter", "a long winning run does eventually earn a starting spot");
+  dbg.setJourney({ energy: 100 });
   assert.equal(dbg.matchPlanSim().balls, 10, "a fresh starter gets the full 10 balls");
 });
 
@@ -245,6 +252,30 @@ test("journey: accepting a foreign offer moves the career abroad with trust to r
   // and the new season plays through without error
   const c = playSeason(dbg, true);
   assert.ok(c.L >= 38, "a full La Liga season plays out");
+});
+
+test("age (round 18): start at 17, age each season, legs decline, retire around 38", async () => {
+  const { dbg } = await loadGame();
+  dbg.newCareerSim("England", "ENG2", "Millwall");
+  assert.equal(dbg.journeyInfo().age, 17, "a debut is a 17-year-old");
+  assert.equal(dbg.journeyInfo().ageFatigue, 0.9, "youth burns less energy");
+  dbg.setJourney({ age: 25 }); assert.equal(dbg.journeyInfo().ageFatigue, 1.0, "prime = baseline");
+  dbg.setJourney({ age: 35 }); assert.equal(dbg.journeyInfo().ageFatigue, 1.25, "a veteran tires faster");
+  dbg.setJourney({ age: 37 }); assert.equal(dbg.journeyInfo().ageFatigue, 1.5, "twilight tires fastest");
+  // a season rollover ages you a year
+  dbg.setJourney({ age: 20 });
+  const before = dbg.journeyInfo().age;
+  dbg.nextSeasonSim();
+  assert.equal(dbg.journeyInfo().age, before + 1, "a year on the clock each season");
+});
+
+test("age (round 18): turning 38 retires the player to the testimonial", async () => {
+  const { dbg } = await loadGame();
+  dbg.newCareerSim("England", "ENG2", "Millwall");
+  dbg.setJourney({ age: 37 });
+  const roll = dbg.nextSeasonSim();
+  assert.equal(dbg.journeyInfo().retired, true, "38 = boots hung up");
+  assert.equal(roll.state, "retire", "the testimonial screen fires");
 });
 
 test("energy (round 17): a higher work rate burns more of the bar", async () => {

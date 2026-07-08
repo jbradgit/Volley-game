@@ -372,3 +372,25 @@ in the header, THE LIFE + THE GYM + ad-break screens, pay-day line on the match-
 - Deferred (noted for a later round): NSS age/degradation fatigue multiplier (we don't track
   age); training/relationship energy sinks (no such gameplay yet) — the work-rate toggle is the
   creative substitute the owner asked for.
+
+### 11f. Owner round 18 (player age + harder XI + decluttered home)
+
+- **Player age.** New careers start at **17** (`CAR.age`) and age a year every season. An age
+  fatigue multiplier feeds the energy cost (`ageFatigue`: ≤20 = 0.9 youthful stamina, 21-30 = 1.0
+  prime, 31-33 = 1.1, 34-36 = 1.25, 37+ = 1.5) so late-career legs tire fast (the NSS 34+ penalty).
+  Vic warns at 34; at **38** the boots come off → a **retirement testimonial** (`ST.RETIRE`): an
+  honours board (league titles, cups, Europe, world, caps, final reputation, career earnings) with
+  an accolade tier ("A bona fide legend" … "A grafter to the last") and Vic's proud sign-off.
+  Migrated saves get a plausible age (`19 + seasons`, capped 34). Home shows age + bracket
+  ("IN HIS PRIME", "VETERAN", "TWILIGHT").
+- **Harder starting XI** (owner: still too easy). Starter trust threshold 70→**80**, sub 30→35;
+  trust gains cut (appearance 0.4, win +1.5 starter / +2 else, loss −2.5 starter / 0 else,
+  "took his chance" +2, three straight losses −8), a teenager (≤18) earns trust 25% slower,
+  off-season drift +6→+4, transfer trust a touch lower. Probe: the XI now takes **~23-30 matches**
+  to crack at 55-80% wins (was ~10) — most of a debut season on the bench.
+- **Decluttered career home** (ui-ux-pro-max pass). The old crammed footer (a stats row + two
+  side panels + next-match + floating buttons + ticker) is replaced by **one consolidated STATUS
+  bar** of five evenly-spaced cells (POSITION w/ goal+odds caption · FORM · AGE · REPUTATION ·
+  CONDITION+work-rate), a clean full-width **NEXT MATCH** panel (fixture + role/balls badge + play
+  prompt), and a tidy centred **£ SHOP / TROPHIES** row, with the results ticker along the bottom.
+  Every cell keeps its hover tooltip; the CONDITION cell is the work-rate picker.

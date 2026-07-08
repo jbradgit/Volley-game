@@ -343,7 +343,7 @@
 
   // ---- Game state ----
   const ST = { MENU:"menu", NAME:"name", CLUBSEL:"clubsel", LEAGUESEL:"leaguesel", TABLE:"table", SEASONEND:"seasonend",
-               SHOP:"shop", PROTEIN:"protein", LIFESTYLE:"lifestyle", SPONSOR:"sponsor", LEDGER:"ledger", TRAINERSEL:"trainersel", ADBREAK:"adbreak", CONTRACT:"contract", PAYDAY:"payday",
+               SHOP:"shop", PROTEIN:"protein", LIFESTYLE:"lifestyle", SPONSOR:"sponsor", LEDGER:"ledger", TRAINERSEL:"trainersel", ADBREAK:"adbreak", CONTRACT:"contract", PAYDAY:"payday", RETIRE:"retire",
                INBOX:"inbox", EMAIL:"email", TROPHY:"trophy", NATSEL:"natsel", TRNHUB:"trnhub",
                TITLE:"title", COUNTDOWN:"countdown", SERVE:"serve", FLIGHT:"flight", RESULT:"result",
                MATCHEND:"matchend", OVER:"over",
@@ -396,6 +396,7 @@
         c.earned = 0; c.items = {}; c.trainer = null; c.sponsor = null; c.msgs = []; c.adSeen = false;
       }
       if (c && c.workRate==null) c.workRate = 2;                          // migrate pre-work-rate saves
+      if (c && c.age==null) c.age = clamp(19 + ((c.season||1)-1), 17, 34);  // migrate pre-age saves (older the longer the career has run)
 
       return c;
     } catch(e){ return null; }
@@ -466,7 +467,7 @@
   function repTier(r){ for (const [min,n] of REP_TIERS) if ((r||0)>=min) return n; return "UNKNOWN"; }
   function repStars(r){ return clamp(Math.round((r||0)/20), 0, 5); }
   function repStarStr(r){ const n=repStars(r); return "★".repeat(n)+"☆".repeat(5-n); }
-  function roleFor(trust){ return trust>=70 ? "starter" : (trust>=30 ? "sub" : "cameo"); }   // a starting spot is EARNED (owner: not too fast)
+  function roleFor(trust){ return trust>=80 ? "starter" : (trust>=35 ? "sub" : "cameo"); }   // a starting spot is EARNED (owner round 18: harder still)
   const ROLE_LABEL={ starter:"STARTER", sub:"SUPER SUB", cameo:"CAMEO" };
   function roleBalls(role, base){              // base = 10 (league) or 5 (cup/Europe/intl)
     if (role==="starter") return base;
@@ -488,7 +489,11 @@
   function restFracFor(ev){ return ev && ev.t==='L' ? 1.0 : (ev && ev.t==='C' ? 0.55 : (ev && ev.t==='E' ? 0.45 : 0.7)); }
   function maxWorkRate(e){ e=(e==null?100:e); return e>=60 ? 3 : (e>=28 ? 2 : 1); }   // can't sprint on empty
   function effectiveWorkRate(){ return Math.min(CAR.workRate||2, maxWorkRate(CAR.energy)); }
-  function matchEnergyCost(role, wr){ return Math.round(WR_COST[wr]*(ROLE_ENERGY[role]||1)); }
+  const RETIRE_AGE = 38;                                   // hang the boots up after the season you turn 38
+  function ageFatigue(){ const a=(CAR&&CAR.age)||24;      // late-career legs burn more (NSS 34+ penalty); youth burns less
+    return a<=20 ? 0.9 : (a<=30 ? 1.0 : (a<=33 ? 1.1 : (a<=36 ? 1.25 : 1.5))); }
+  function ageBracket(a){ a=a||24; return a<=20?"YOUNGSTER" : (a<=23?"UP AND COMING" : (a<=30?"IN HIS PRIME" : (a<=33?"SEASONED PRO" : (a<=36?"VETERAN" : "TWILIGHT")))); }
+  function matchEnergyCost(role, wr){ return Math.round(WR_COST[wr]*(ROLE_ENERGY[role]||1)*ageFatigue()); }
   function matchRecovery(ev){ return Math.round(restFracFor(ev)*(RECOVER_BASE+houseRec()) + trainerRec()); }
   // The plan for a career match: the ROLE scales the target with the balls (a fair cameo);
   // TIREDNESS removes balls without touching the target (the owner's fatigue rule).
@@ -550,11 +555,12 @@
     // win target "takes his chance"; a losing run as a starter costs it.
     if (ev.t!=='I'){
       const role=roleFor(CAR.trust), before=role;
-      let dT = 1;                                          // trust comes SLOWLY (owner: the XI must be earned)
-      if (res==="W") dT += (role==="starter" ? 2 : 3);
-      else if (res==="L") dT = (role==="starter" ? -2 : 1);
-      if (role!=="starter" && M.score>=M.winTarget) dT += 2;
-      if (role==="starter" && (CAR.form||[]).slice(0,2).join("")==="LL" && res==="L") dT -= 6;   // 3 straight losses
+      let dT = 0.4;                                        // an appearance is worth a little; trust comes SLOWLY
+      if (res==="W") dT += (role==="starter" ? 1.5 : 2);
+      else if (res==="L") dT = (role==="starter" ? -2.5 : 0);
+      if (role!=="starter" && M.score>=M.winTarget) dT += 2;   // a sub who takes his chance
+      if (role==="starter" && (CAR.form||[]).slice(0,2).join("")==="LL" && res==="L") dT -= 8;   // 3 straight losses
+      if ((CAR.age||24)<=18 && dT>0) dT *= 0.75;          // a raw teenager has to work harder for the gaffer's trust
       CAR.trust = clamp(CAR.trust + dT, 5, 100);
       const after=roleFor(CAR.trust);
       if (after!==before){   // Vic breaks the team news (E8: comms, not just a headline)
@@ -741,7 +747,7 @@
             nation:nation||"England", caps:0, intlGoals:0, trophies:[],
             cup:initCup(), euro:null, nextEuro:null, cal:buildCalendar(false, leagueMatchdays()), calIdx:0,
             trn:null, trnDone:false,
-            rep:5, energy:100, trust:20, verdict:null,     // the journey: an unknown kid fighting for minutes
+            rep:5, energy:100, trust:20, verdict:null, age:17,     // the journey: a 17-year-old fighting for minutes
             monies:10, earned:0, items:{}, trainer:null, sponsor:null, msgs:[], adSeen:false, workRate:2 };   // the life: near-skint
     CAR.objective = makeObjective();
     CAR.contract = negotiateContract(); CAR.ledger = freshLedger(); CAR.prize = null;
@@ -2530,113 +2536,103 @@
       ctx.textAlign="left";
       const tblBottom = top+10*rowH;
 
-      // ---- footer: two aligned rows — headings (FORM | POSITION | TITLE ODDS) then values
-      //      (W/D/L chips | 1ST | 34%) on a shared baseline, all centred on thirds ----
+      // ================= round 18: a decluttered career home =================
+      // ONE consolidated STATUS bar (5 evenly-spaced cells) replaces the old stats row + two
+      // cramped side panels; then a clean NEXT MATCH panel and a tidy actions row.
       const form = (CAR.form||[]).slice(0,5).reverse();
-      const c1=VW*0.25, c2=VW*0.50, c3=VW*0.75;
-      const hY=tblBottom+20, vY=hY+24;
-      ctx.fillStyle="rgba(255,255,255,0.12)";
-      ctx.fillRect(VW*0.375,hY-10,1,(vY-hY)+22); ctx.fillRect(VW*0.625,hY-10,1,(vY-hY)+22);
-      ctx.textBaseline="middle"; ctx.textAlign="center";
-      tip(20, hY-14, VW*0.375-30, (vY-hY)+30, "YOUR LAST FIVE RESULTS, NEWEST ON THE RIGHT.");
-      tip(VW*0.375+6, hY-14, VW*0.25-12, (vY-hY)+30, "WHERE YOU SIT IN THE TABLE. THE BOARD'S TARGET SITS NEXT TO IT - GREEN MEANS ON COURSE, RED MEANS THE SUITS ARE SHUFFLING PAPERS.");
-      tip(VW*0.625+6, hY-14, VW*0.375-30, (vY-hY)+30, "THE BOOKIES' LIVE CHANCE OF YOU WINNING THE LEAGUE, RECALCULATED AFTER EVERY MATCHDAY.");
-      const obj=CAR.objective;   // E7: the board's target frames your position
+      const obj = CAR.objective;
       const goalShort = obj ? (obj.pos===1 ? "WIN IT" : (obj.pos>=TEAMS.length-3 ? "STAY UP" : "TOP "+obj.pos)) : null;
-      ctx.font=ttFont(13); ctx.fillStyle=TTX.grey;
-      ctx.fillText("FORM", c1, hY); ctx.fillText(goalShort ? "POSITION · GOAL: "+goalShort : "POSITION", c2, hY);
-      ctx.fillText(titleClinched()?"STATUS":"TITLE ODDS", c3, hY);
-      // value row — roomy W/D/L chips with truly centred letters
-      const chipW=24, chipH=22, gap=6;
-      if (!form.length){ ctx.font=ttFont(16); ctx.fillStyle=TTX.dim; ctx.fillText("--", c1, vY); }
-      else { let fcx = c1 - (form.length*(chipW+gap)-gap)/2;
-        for (const rf of form){
-          ctx.fillStyle = rf==="W"?"#1f9d49":(rf==="D"?"#5a626b":"#c43a3a");
-          ctx.fillRect(fcx, vY-chipH/2, chipW, chipH);
-          ctx.font=ttFont(15); ctx.fillStyle="#ffffff"; ctx.fillText(rf, fcx+chipW/2, vY+1);
-          fcx += chipW+gap;
-        } }
-      ctx.font=ttFont(18);
-      ctx.fillStyle = obj ? (mypos<=obj.pos ? TTX.green : (mypos>=obj.pos+5 ? "#ff8888" : TTX.cyan)) : TTX.cyan;
-      ctx.fillText(ord(mypos).toUpperCase(), c2, vY);
-      if (titleClinched()){ ctx.font=ttFont(17); ctx.fillStyle=TTX.neon; ctx.fillText("★ CHAMPIONS", c3, vY); }
-      else { ctx.font=ttFont(18); ctx.fillStyle=TTX.yellow; ctx.fillText(CAR.titleOdds+"%", c3, vY); }
-      ctx.textBaseline="alphabetic"; ctx.textAlign="left";
+      const journey = CAR.rep!=null;
+      const plan = journey ? matchPlan(10) : null;
+      workRateBtn=null;
 
-      // NEXT MATCH — prominent centred panel
-      const nbW=600, nbX=VW/2-nbW/2, nbY=vY+16, nbH=48;
+      // ---- STATUS bar ----
+      const sbX=MARGIN, sbW=VW-2*MARGIN, sbY=tblBottom+SP, sbH=58;
+      ctx.fillStyle="#0a1224"; ctx.fillRect(sbX,sbY,sbW,sbH);
+      ctx.strokeStyle=TTX.blue; ctx.lineWidth=1.5; ctx.strokeRect(sbX+1,sbY+1,sbW-2,sbH-2);
+      const cells = journey ? 5 : 3;
+      const cw = sbW/cells;
+      for (let k=1;k<cells;k++){ ctx.fillStyle="rgba(255,255,255,0.10)"; ctx.fillRect(Math.round(sbX+k*cw), sbY+8, 1, sbH-16); }
+      const cellMid = k => sbX + (k+0.5)*cw;
+      const label = (k,t)=> pxText(t, cellMid(k), sbY+15, 10, TTX.grey, 'c','m');
+      let ci=0;
+      // POSITION (+ goal / odds caption)
+      label(ci,"POSITION");
+      ctx.font=ttFont(20);
+      ctx.fillStyle = obj ? (mypos<=obj.pos ? "#46e36b" : (mypos>=obj.pos+5 ? "#ff8888" : TTX.cyan)) : TTX.cyan;
+      pxText(ord(mypos).toUpperCase(), cellMid(ci), sbY+35, 20, ctx.fillStyle, 'c','m');
+      pxText(titleClinched() ? "★ CHAMPIONS" : ((goalShort?("GOAL "+goalShort):"")+(CAR.titleOdds!=null?"  ·  "+CAR.titleOdds+"%":"")),
+        cellMid(ci), sbY+50, 9, TTX.dim, 'c','m');
+      tip(sbX+ci*cw, sbY, cw, sbH, "WHERE YOU SIT, THE BOARD'S TARGET, AND THE BOOKIES' LIVE TITLE ODDS.");
+      ci++;
+      // FORM
+      label(ci,"FORM");
+      if (!form.length){ pxText("--", cellMid(ci), sbY+37, 14, TTX.dim, 'c','m'); }
+      else { const chipW=20, gap=5; let fcx=cellMid(ci)-(form.length*(chipW+gap)-gap)/2;
+        for (const rf of form){ ctx.fillStyle= rf==="W"?"#1f9d49":(rf==="D"?"#5a626b":"#c43a3a");
+          ctx.fillRect(fcx, sbY+30, chipW, 18); pxText(rf, fcx+chipW/2, sbY+40, 12, "#fff", 'c','m'); fcx+=chipW+gap; } }
+      tip(sbX+ci*cw, sbY, cw, sbH, "YOUR LAST FIVE RESULTS, NEWEST ON THE RIGHT.");
+      ci++;
+      if (journey){
+        // AGE
+        label(ci,"AGE");
+        pxText(""+(CAR.age||24), cellMid(ci), sbY+35, 20, TTX.white, 'c','m');
+        pxText(ageBracket(CAR.age), cellMid(ci), sbY+50, 9, TTX.dim, 'c','m');
+        tip(sbX+ci*cw, sbY, cw, sbH, "YOUR AGE. YOU START AT 17 AND AGE A YEAR EACH SEASON. PAST 33 YOUR LEGS TIRE FASTER; AROUND 38 IT'S TIME TO HANG THE BOOTS UP.");
+        ci++;
+        // REPUTATION
+        label(ci,"REPUTATION");
+        pxText(repStarStr(CAR.rep), cellMid(ci), sbY+34, 13, "#ffd700", 'c','m');
+        pxText(repTier(CAR.rep), cellMid(ci), sbY+49, 9, TTX.grey, 'c','m');
+        tip(sbX+ci*cw, sbY, cw, sbH, "YOUR NAME IN THE GAME, OUT OF FIVE STARS. GROWN BY RESULTS AND TROPHIES, TOPPED UP BY LIFESTYLE. BIG CLUBS, SPONSORS AND THE NATIONAL SIDE ONLY CALL WHEN IT'S BIG ENOUGH.");
+        ci++;
+        // CONDITION + work rate (clickable)
+        const e=CAR.energy, wr=effectiveWorkRate();
+        pxText("CONDITION", cellMid(ci)-16, sbY+15, 10, TTX.grey, 'c','m');
+        pxText(e+"%", cellMid(ci)+40, sbY+15, 10, e>=40?TTX.cyan:"#ff8888", 'c','m');
+        const bw=cw-44, bx2=cellMid(ci)-bw/2, by2=sbY+28;
+        ctx.fillStyle="rgba(255,255,255,0.12)"; ctx.fillRect(bx2,by2,bw,6);
+        ctx.fillStyle = e>=60?"#1f9d49":(e>=40?"#ff9f1c":"#c43a3a"); ctx.fillRect(bx2,by2,Math.round(bw*e/100),6);
+        pxText(WR_HEARTS[wr]+"  "+WR_LABEL[wr], cellMid(ci), sbY+48, 11, wr===3?"#7dff8a":(wr===1?"#ff9f1c":"#ff5d7a"), 'c','m');
+        workRateBtn={x:sbX+ci*cw, y:sbY, w:cw, h:sbH};
+        tip(sbX+ci*cw, sbY, cw, sbH, "YOUR LEGS AND YOUR WORK RATE. CLICK TO CYCLE CONSERVE / NORMAL / ALL OUT: HIGHER = MORE BALLS BUT BURNS MORE ENERGY. UNDER 60% YOU CAN'T GO ALL OUT, UNDER 28% ONLY CONSERVE. THE £ SHOP KEEPS YOU FRESH.");
+      }
+
+      // ---- NEXT MATCH panel ----
+      const nbW=sbW, nbX=MARGIN, nbY=sbY+sbH+SP, nbH=52;
       ctx.fillStyle="#0a1224"; ctx.fillRect(nbX,nbY,nbW,nbH);
-      ctx.strokeStyle=TTX.blue; ctx.lineWidth=2; ctx.strokeRect(nbX+1,nbY+1,nbW-2,nbH-2);
-      ttBar("NEXT MATCH", nbX, nbY, nbW, 18, TTX.blue, TTX.white, {center:true, size:13});
-      tip(nbX, nbY, nbW, nbH, "YOUR NEXT FIXTURE. THE BADGE TOP-RIGHT IS YOUR SQUAD ROLE AND HOW MANY BALLS THE GAFFER IS GIVING YOU.");
+      ctx.strokeStyle=TTX.neon; ctx.lineWidth=2; ctx.strokeRect(nbX+1,nbY+1,nbW-2,nbH-2);
+      ttBar("NEXT MATCH", nbX, nbY, nbW, 16, TTX.blue, TTX.white, {center:true, size:11});
       const tag = fx.home ? " (H)" : " (A)";
       const fixtureStr = fx.home ? (meName+tag+"  v  "+opp.name) : (opp.name+"  v  "+meName+tag);
       let fsz=22; ctx.textAlign="center"; ctx.font=ttFont(fsz);
-      while (ctx.measureText(fixtureStr).width > nbW-28 && fsz>12){ fsz--; ctx.font=ttFont(fsz); }
-      ctx.fillStyle=TTX.white; ctx.fillText(fixtureStr, VW/2, nbY+40);
-      // ---- E7 journey: your role in the NEXT MATCH bar + REPUTATION / CONDITION side panels ----
-      workRateBtn=null;
-      if (CAR.rep!=null){
-        const plan=matchPlan(10);
-        const reduced=plan.balls<plan.targetBalls, boosted=plan.balls>plan.targetBalls;
-        pxText(ROLE_LABEL[plan.role]+" · "+plan.balls+" BALLS", nbX+nbW-8, nbY+9, 11,
-          reduced?"#ff9f1c":(boosted?"#7dff8a":"#cfd6dd"), 'r', 'm');
-        const pnl=(px,title)=>{ ctx.fillStyle="#0a1224"; ctx.fillRect(px,nbY,142,nbH);
-          ctx.strokeStyle=TTX.blue; ctx.lineWidth=2; ctx.strokeRect(px+1,nbY+1,140,nbH-2);
-          ttBar(title, px, nbY, 142, 16, TTX.blue, TTX.white, {center:true, size:11}); };
-        // reputation: stars + tier
-        pnl(10, "REPUTATION");
-        tip(10, nbY, 142, nbH, "YOUR NAME IN THE GAME, OUT OF FIVE STARS. GROWN BY RESULTS AND TROPHIES, TOPPED UP BY LIFESTYLE. BIG CLUBS, SPONSORS AND THE NATIONAL SIDE ONLY CALL WHEN IT'S BIG ENOUGH.");
-        pxText(repStarStr(CAR.rep), 10+71, nbY+27, 14, "#ffd700", 'c', 'm');
-        pxText(repTier(CAR.rep), 10+71, nbY+41, 10, TTX.grey, 'c', 'm');
-        // condition + WORK RATE picker (round 17): click to cycle CONSERVE / NORMAL / ALL OUT
-        const ex=VW-152; pnl(ex, "CONDITION");
-        const e=CAR.energy, wr=effectiveWorkRate();
-        pxText(e+"%", ex+142-12, nbY+8, 10, e>=40?TTX.cyan:"#ff8888", 'r', 'm');   // % in the title bar
-        const bw=110, bx2=ex+16, by2=nbY+22;
-        ctx.fillStyle="rgba(255,255,255,0.12)"; ctx.fillRect(bx2,by2,bw,6);
-        ctx.fillStyle = e>=60?"#1f9d49":(e>=40?"#ff9f1c":"#c43a3a"); ctx.fillRect(bx2,by2,Math.round(bw*e/100),6);
-        pxText(WR_HEARTS[wr]+"  "+WR_LABEL[wr], ex+71, nbY+40, 11, wr===3?"#7dff8a":(wr===1?"#ff9f1c":"#ff5d7a"), 'c', 'm');
-        workRateBtn={x:ex, y:nbY, w:142, h:nbH};
-        tip(ex, nbY, 142, nbH, "YOUR LEGS ("+e+"%) AND YOUR WORK RATE. CLICK TO CYCLE CONSERVE / NORMAL / ALL OUT: HIGHER RATE = MORE BALLS BUT BURNS MORE ENERGY. UNDER 60% YOU CAN'T GO ALL OUT, UNDER 28% ONLY CONSERVE. SHAKES, A TRAINER AND A BETTER GAFF KEEP YOU FRESH.");
-      }
+      while (ctx.measureText(fixtureStr).width > nbW-260 && fsz>14){ fsz--; ctx.font=ttFont(fsz); }
+      ctx.fillStyle=TTX.white; ctx.fillText(fixtureStr, VW/2, nbY+38);
+      if (journey && plan){ const reduced=plan.balls<plan.targetBalls, boosted=plan.balls>plan.targetBalls;
+        pxText(ROLE_LABEL[plan.role]+" · "+plan.balls+" BALLS", nbX+14, nbY+38, 12, reduced?"#ff9f1c":(boosted?"#7dff8a":"#cfd6dd"), 'l','m'); }
+      if (ttCursorOn() && !titleClinched()) pxText(TOUCH?"▶ TAP TO PLAY":"▶ SPACE / CLICK TO PLAY", nbX+nbW-14, nbY+38, 12, TTX.neon, 'r','m');
+      tip(nbX, nbY, nbW-260, nbH, "YOUR NEXT FIXTURE. THE BADGE LEFT IS YOUR SQUAD ROLE AND HOW MANY BALLS THE GAFFER IS GIVING YOU. CLICK ANYWHERE TO PLAY.");
 
-      // call-to-action / clinch button — touch taps, desktop uses keyboard
-      clinchBtn=null;
+      // ---- actions row: clinch (if champions) OR the £ SHOP / TROPHIES buttons ----
+      const arY=nbY+nbH+SP, arH=26;
+      clinchBtn=null; trophyRoomBtn=null; lifeHomeBtn=null;
+      const btn=(bx,bw2,txt,col)=>{ ctx.fillStyle="rgba(0,0,10,0.55)"; ctx.fillRect(bx,arY,bw2,arH);
+        ctx.strokeStyle=col; ctx.lineWidth=1; ctx.strokeRect(bx+0.5,arY+0.5,bw2-1,arH-1);
+        pxText(txt, bx+bw2/2, arY+arH/2, 13, col, 'c','m'); return {x:bx,y:arY,w:bw2,h:arH}; };
       if (titleClinched()){
-        const bw=460,bh=26,bx=VW/2-bw/2,by=nbY+nbH+8;
-        ctx.fillStyle=TTX.neon; ctx.fillRect(bx,by,bw,bh);
-        ctx.fillStyle="#06070b"; ctx.font=ttFont(14); ctx.textAlign="center"; ctx.textBaseline="middle";
-        ctx.fillText(TOUCH?"★ CHAMPIONS · TAP TO END SEASON":"★ CHAMPIONS · CLICK / E TO END SEASON", VW/2, by+bh/2+1);
-        ctx.textBaseline="alphabetic"; clinchBtn={x:bx,y:by,w:bw,h:bh};
-      } else if (ttCursorOn()){
-        ctx.fillStyle=TTX.neon; ctx.font=ttFont(20); ctx.textAlign="center"; ctx.fillText(TOUCH?"TAP  TO  PLAY":"SPACE  /  CLICK  TO  PLAY", VW/2, nbY+nbH+22);
+        const bw2=420,bx=VW/2-bw2/2; ctx.fillStyle=TTX.neon; ctx.fillRect(bx,arY,bw2,arH);
+        pxText(TOUCH?"★ CHAMPIONS · TAP TO END SEASON":"★ CHAMPIONS · CLICK / E TO END SEASON", VW/2, arY+arH/2, 13, "#06070b", 'c','m');
+        clinchBtn={x:bx,y:arY,w:bw2,h:arH};
+        // champions: push the shop/trophies buttons to the far edges so nothing overlaps
+        if (CAR.monies!=null) lifeHomeBtn=btn(MARGIN, 100, "£ SHOP", TTX.neon);
+        trophyRoomBtn=btn(VW-MARGIN-116, 116, "★ TROPHIES", "#ffd700");
+      } else {
+        // normal: a centred SHOP / TROPHIES pair
+        if (CAR.monies!=null) lifeHomeBtn=btn(VW/2-124, 116, "£ SHOP", TTX.neon);
+        trophyRoomBtn=btn(VW/2+8, 116, "★ TROPHIES", "#ffd700");
       }
-      // ★ TROPHIES button — bottom-right (click/tap; desktop also key T)
-      { const tbW=116,tbH=26,tbX=VW-tbW-10,tbY=nbY+nbH+8;
-        ctx.fillStyle="rgba(0,0,10,0.55)"; ctx.fillRect(tbX,tbY,tbW,tbH);
-        ctx.strokeStyle="#ffd700"; ctx.lineWidth=1; ctx.strokeRect(tbX+0.5,tbY+0.5,tbW-1,tbH-1);
-        ctx.font=ttFont(13); ctx.fillStyle="#ffd700"; ctx.textAlign="center"; ctx.textBaseline="middle";
-        ctx.fillText("★ TROPHIES", tbX+tbW/2, tbY+tbH/2+1); ctx.textBaseline="alphabetic"; ctx.textAlign="left";
-        trophyRoomBtn={x:tbX,y:tbY,w:tbW,h:tbH};
-      }
-      // £ THE LIFE button — left of trophies (click/tap; desktop also key L) (E8)
-      lifeHomeBtn=null;
-      if (CAR.monies!=null){ const lbW=110,lbH=26,lbX=VW-116-10-lbW-8,lbY=nbY+nbH+8;
-        ctx.fillStyle="rgba(0,0,10,0.55)"; ctx.fillRect(lbX,lbY,lbW,lbH);
-        ctx.strokeStyle=TTX.neon; ctx.lineWidth=1; ctx.strokeRect(lbX+0.5,lbY+0.5,lbW-1,lbH-1);
-        ctx.font=ttFont(13); ctx.fillStyle=TTX.neon; ctx.textAlign="center"; ctx.textBaseline="middle";
-        ctx.fillText("£ SHOP", lbX+lbW/2, lbY+lbH/2+1); ctx.textBaseline="alphabetic"; ctx.textAlign="left";
-        lifeHomeBtn={x:lbX,y:lbY,w:lbW,h:lbH};
-      }
-      // ← MENU button (touch only) — bottom-left, clear of the centred CTA and ticker
-      if (TOUCH){ const bbW=92,bbH=26,bbX=10,bbY=nbY+nbH+8;
-        ctx.fillStyle="rgba(0,0,10,0.55)"; ctx.fillRect(bbX,bbY,bbW,bbH);
-        ctx.strokeStyle=TTX.yellow; ctx.lineWidth=1; ctx.strokeRect(bbX+0.5,bbY+0.5,bbW-1,bbH-1);
-        ctx.font=ttFont(13); ctx.fillStyle=TTX.yellow; ctx.textAlign="center"; ctx.textBaseline="middle";
-        ctx.fillText("← MENU",bbX+bbW/2,bbY+bbH/2+1); ctx.textBaseline="alphabetic"; ctx.textAlign="left";
-        touchBackBtn={x:bbX,y:bbY,w:bbW,h:bbH}; }
-      drawTicker(CAR.lastResults, 510);
+      if (TOUCH) touchBackBtn=btn(MARGIN, 92, "← MENU", TTX.yellow);
+      drawTicker(CAR.lastResults, 512);
       ctx.textAlign="left";
     }
   }
@@ -3637,6 +3633,11 @@
       CAR.titles++;
       (CAR.trophies=CAR.trophies||[]).push({t:"league", s:CAR.season, club:CAR.slug});
     }
+    if (CAR.age!=null){                                  // round 18: a year on the clock
+      CAR.age++;
+      if (CAR.age>=RETIRE_AGE){ retirePlayer(); return; } // time to hang the boots up
+      if (CAR.age===34) queueMsg('vic', "STRAIGHT TALK, MY SON. YOU'RE "+CAR.age+" NOW. THE LEGS WON'T LAST FOREVER, SO EVERY SEASON COUNTS. LET'S MAKE 'EM MEMORABLE, EH?");
+    }
     CAR.season++; CAR.idx=0;
     const moved = newSlug && newSlug!==CAR.slug;
     if (newLeagueId && newLeagueId!==CAR.leagueId){     // E7: a cross-league transfer — the headline move
@@ -3646,7 +3647,7 @@
     if (moved){ CAR.slug=newSlug; CAR.news.unshift(CAR.name+" joins "+TEAMBY[newSlug].name+"!"); }
     if (CAR.rep!=null){                                 // E7: fresh legs; a new gaffer's trust must be earned
       CAR.energy=100;
-      CAR.trust = moved ? clamp(25+Math.round(CAR.rep/2), 15, 75) : clamp((CAR.trust==null?70:CAR.trust)+6, 5, 100);
+      CAR.trust = moved ? clamp(20+Math.round(CAR.rep/2.5), 12, 70) : clamp((CAR.trust==null?70:CAR.trust)+4, 5, 100);
     }
     CAR.fixtures = makeFixtures(CAR.slug); CAR.table = freshTable(); CAR.titleOdds=null;
     CAR.offers=null; CAR.lastResults=null; CAR.verdict=null;
@@ -3678,6 +3679,53 @@
     saveCareer();
     if (moved && CAR.monies!=null) showContract(()=>flushMsgs(()=>{ state=ST.TABLE; }));   // new club, new paper
     else flushMsgs(()=>{ state=ST.TABLE; });
+  }
+  // ---- retirement (round 18): the boots come off; a testimonial celebrates the career ----
+  function retirePlayer(){
+    CAR.retired=true; CAR.retiredAge=CAR.age; saveCareer();
+    state=ST.RETIRE; stateEnterAt=performance.now();
+  }
+  function careerAccolade(){   // a one-line honour based on the haul
+    const tr=CAR.trophies||[], n=tr.length, titles=CAR.titles||0;
+    const intl=tr.filter(t=>t.t==='intl').length, euro=tr.filter(t=>t.t==='euro').length;
+    if (intl>0 && titles>=3) return "AN ALL-TIME GREAT";
+    if (n>=8) return "A BONA FIDE LEGEND";
+    if (n>=4) return "A MODERN GREAT";
+    if (n>=1) return "A TROPHY WINNER";
+    if ((CAR.rep||0)>=50) return "A HOUSEHOLD NAME";
+    return "A GRAFTER TO THE LAST";
+  }
+  function drawRetire(){
+    if (!CAR){ state=ST.MENU; return; }
+    ctx.fillStyle="#05060a"; ctx.fillRect(0,0,VW,SH);
+    ctx.fillStyle="rgba(0,0,0,0.18)"; for(let yy=0;yy<SH;yy+=3) ctx.fillRect(0,yy,VW,1);   // faint CRT lines
+    const tr=CAR.trophies||[];
+    const cnt=k=>tr.filter(t=>t.t===k).length;
+    pxText("HANGING UP THE BOOTS", VW/2, 44, 28, "#ffd700", 'c','m');
+    pxText((CAR.name||"YOU").toUpperCase(), VW/2, 82, 22, TTX.white, 'c','m');
+    pxText("RETIRES AT "+(CAR.retiredAge||CAR.age)+"  ·  "+careerAccolade(), VW/2, 106, 14, TTX.cyan, 'c','m');
+    // the honours board: a framed panel of career totals
+    const w=560, x=VW/2-w/2, y=132, h=248;
+    uiPanel(x, y, w, h, {title:"THE HONOURS BOARD", icon:'trophy', accent:"#ffd700",
+      right:(CAR.season||1)+" SEASONS", rightCol:TTX.grey});
+    const rows=[
+      ["LEAGUE TITLES", CAR.titles||0, "#ffd700"],
+      ["DOMESTIC CUPS", cnt('cup'), TTX.white],
+      ["EUROPEAN CUPS", cnt('euro'), TTX.white],
+      ["WORLD TITLES", cnt('intl'), TTX.white],
+      ["INTERNATIONAL CAPS", CAR.caps||0, TTX.cyan],
+      ["FINAL REPUTATION", repTier(CAR.rep)+"  "+repStarStr(CAR.rep), "#ffd700"],
+      ["CAREER EARNINGS", money(CAR.earned||0), TTX.green] ];
+    let ry=y+52; const lx=x+28, rx=x+w-28;
+    for (const [lbl,val,col] of rows){
+      ctx.font=ttFont(14); ctx.textAlign="left"; ctx.fillStyle=TTX.grey; ctx.fillText(lbl, lx, ry);
+      ctx.textAlign="right"; ctx.fillStyle=col||TTX.white; ctx.fillText(""+val, rx, ry);
+      ctx.textAlign="left"; ry+=27;
+    }
+    pxText("\"WHAT A RIDE, SUNSHINE. FROM A £2-A-GAME NOBODY TO "+careerAccolade()+". OL' VIC'S PROUD OF YOU.\"",
+      VW/2, y+h+26, 12, TTX.grey, 'c', 'm');
+    if (ttCursorOn()) pxText(TOUCH?"▶ TAP TO FINISH":"▶ SPACE TO FINISH", VW/2, SH-30, 16, TTX.neon, 'c','m');
+    ctx.textAlign="left";
   }
 
   // ================= AGENT COMMUNICATION SCREEN — "Slick Vic" =================
@@ -4530,6 +4578,7 @@
     else if (state===ST.ADBREAK) { drawAdBreak(); touchBackBtn=null; }
     else if (state===ST.CONTRACT) { drawContract(); touchBackBtn=null; }   // no escape from commerce (ESC still bails without the reward)
     else if (state===ST.PAYDAY) { drawPayday(); touchBackBtn=null; }
+    else if (state===ST.RETIRE) { drawRetire(); touchBackBtn=null; }
     else if (state===ST.EMAIL) { ttClear(); drawEmail(); drawTouchBack("← BACK"); }
     else if (state===ST.DAILYBOARD) { ttClear(); drawDailyBoard(); drawTouchBack("← MENU"); }
     else if (state===ST.HORSESETUP) { ttClear(); drawHorseSetup(); drawTouchBack("← MENU"); }
@@ -4606,7 +4655,8 @@
       if (o==="DAILY CHALLENGE"){ if(localStorage.getItem("vc_name")){ startDaily(); } else { pendingMode="daily"; nameBuf=""; state=ST.NAME; kbdOpen(""); } }
       else if (o==="MULTIPLAYER"){ menuSel=0; state=ST.MPMENU; }
       else if (o==="CONTINUE CAREER"){ CAR=loadCareer(); if(CAR){ GMODE="career"; setActiveLeague(CAR.leagueId); CAR.titleOdds=null; menuSel=0;
-        if (!peekEvent()) seasonOver(); else flushMsgs(()=>{ state=ST.TABLE; }); } }   // any unread comms greet you
+        if (CAR.retired){ state=ST.RETIRE; stateEnterAt=performance.now(); }   // a retired legend: relive the testimonial
+        else if (!peekEvent()) seasonOver(); else flushMsgs(()=>{ state=ST.TABLE; }); } }   // any unread comms greet you
       else { GMODE="career"; pendingMode="career"; nameBuf=""; state=ST.NAME; kbdOpen(""); }   // NEW CAREER
     }
     else if (state===ST.MPMENU){ if(!TEAMS.length) return;
@@ -4634,6 +4684,7 @@
     else if (state===ST.ADBREAK){ adBreakSelect(); }
     else if (state===ST.CONTRACT){ contractSign(); }
     else if (state===ST.PAYDAY){ paydayContinue(); }
+    else if (state===ST.RETIRE){ GMODE="career"; state=ST.MENU; menuSel=0; }   // testimonial done -> menu
     else if (state===ST.TROPHY){ state=careerHomeState(); }
     else if (state===ST.SEASONEND){ agentCallUp(); }   // State C: call-up check → transfer offers
     else if (state===ST.INBOX){ const n=(CAR.offers||[]).length; if(inboxSel<n) openEmail(inboxSel); else nextSeason(null); }
@@ -4650,7 +4701,7 @@
     if (state===ST.NAME){ confirmName(); }
     else if (state===ST.MENU||state===ST.TABLE||state===ST.SEASONEND||state===ST.INBOX||state===ST.CLUBSEL||state===ST.NATSEL||state===ST.LEAGUESEL||state===ST.TRNHUB||state===ST.OVER||
              state===ST.MATCHEND||state===ST.DAILYBOARD||state===ST.HORSEPASS||state===ST.HORSEEND||
-             state===ST.MPMENU||state===ST.CLASSICPASS||state===ST.CLASSICEND||state===ST.AGENT||state===ST.ADBREAK||state===ST.CONTRACT||state===ST.PAYDAY) pressSelect();
+             state===ST.MPMENU||state===ST.CLASSICPASS||state===ST.CLASSICEND||state===ST.AGENT||state===ST.ADBREAK||state===ST.CONTRACT||state===ST.PAYDAY||state===ST.RETIRE) pressSelect();
     else togglePause();                                   // in-match: ENTER = pause
   }
   function moveSel(dx,dy){
@@ -4968,10 +5019,12 @@
       // ---- E7 journey harness ----
       journeyInfo: function(){ return CAR ? { rep:CAR.rep, energy:CAR.energy, trust:CAR.trust,
         role:roleFor(CAR.trust==null?100:CAR.trust), tier:activeLeagueTier(), leagueId:CAR.leagueId,
+        age:CAR.age, ageFatigue:ageFatigue(), retired:!!CAR.retired,
         objective:CAR.objective, verdict:CAR.verdict,
         unlocks:{ leagues:Object.keys(UNLOCKS.leagues), freestart:UNLOCKS.freestart } }
         : { unlocks:{ leagues:Object.keys(UNLOCKS.leagues), freestart:UNLOCKS.freestart } }; },
       setJourney: function(o){ o=o||{}; if(o.rep!=null)CAR.rep=o.rep; if(o.energy!=null)CAR.energy=o.energy;
+        if(o.age!=null)CAR.age=o.age;
         if(o.trust!=null)CAR.trust=o.trust; return {rep:CAR.rep, energy:CAR.energy, trust:CAR.trust}; },
       matchPlanSim: function(){ const ev=peekEvent(); if(!ev) return null;
         const o=eventSetup(ev); return { ev:ev.t, balls:o.balls, targetBalls:o.targetBalls, role:o.role, note:o.note }; },
@@ -5008,6 +5061,8 @@
       trophySim: function(n){ CAR.trophies=[]; const kinds=["league","cup","euro","intl"];   // audit: fill the cabinet
         for (let i=0;i<(n||6);i++) CAR.trophies.push({t:kinds[i%4], s:i+1, club:CAR.slug});
         return CAR.trophies.length; },
+      retireSim: function(){ CAR.titles=5; CAR.caps=42; CAR.earned=184000; CAR.rep=88; CAR.age=38; CAR.season=21;
+        this.trophySim(9); retirePlayer(); return {state, age:CAR.age}; },   // audit: stage the testimonial
       resetUnlocksSim: function(){ UNLOCKS={leagues:{}, freestart:false}; saveUnlocks(); return true; },   // audit: stage the locked journey map
       forceUnlocksSim: function(o){ o=o||{}; if(o.freestart) UNLOCKS.freestart=true; for (const id of (o.leagues||[])) UNLOCKS.leagues[id]=true; saveUnlocks(); return true; },
       stageClubSelSim: function(league){ pendingMode="career"; pendingLeague=league||"ENG"; setActiveLeague(pendingLeague); menuSel=0; return TEAMS.length; },

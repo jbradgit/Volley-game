@@ -11,6 +11,16 @@ The 3D-sprite pipeline (old §3) is **long DONE and deployed**. **Live site:**
 https://jbradgit.github.io/Volley-game/ (GitHub Pages serves `main`).
 
 **Git state right now (2026-07-02, second session):**
+- **Owner round 18 (COMMITTED on the branch) — player age + harder XI + decluttered home:**
+  new careers start at **17** (`CAR.age`), age +1/season; `ageFatigue` multiplier on energy cost
+  (≤20 .9 / prime 1.0 / 31-33 1.1 / 34-36 1.25 / 37+ 1.5); Vic warns at 34; **retirement at 38** →
+  `ST.RETIRE` testimonial (honours board + accolade + Vic sign-off; CONTINUE CAREER on a retired
+  save replays it). **Harder starting XI**: starter threshold 70→80, sub 30→35, trust gains cut,
+  teenager (≤18) 25% slower, off-season drift +6→+4 — now ~23-30 matches to crack the XI (was ~10).
+  **Decluttered career home**: the crammed footer → one consolidated 5-cell STATUS bar
+  (POSITION/FORM/AGE/REPUTATION/CONDITION+work-rate) + a clean NEXT MATCH panel + a tidy £ SHOP /
+  TROPHIES row + ticker. dbg: `retireSim`, journeyInfo gains `age`/`ageFatigue`/`retired`,
+  setJourney gains `age`. Design `docs/CAREER_DESIGN.md` §11f. CI 54/54 + smoke, audit clean.
 - **Owner round 17 (COMMITTED on the branch) — faithful NSS energy state-machine + work rate,
   £2 starting contract, deeper shop:** energy is now a **% state-machine** (a match burns the bar
   by WORK RATE: CONSERVE 22 / NORMAL 48 / ALL OUT 78, scaled by role; weak weekly recovery
