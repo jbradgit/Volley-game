@@ -351,6 +351,10 @@ in the header, THE LIFE + THE GYM + ad-break screens, pay-day line on the match-
 
 ### 11e. Owner round 17 (faithful NSS energy state-machine + work rate; £2 start; shop depth)
 
+**⚠ SUPERSEDED by round 19 (§11g) — the work-rate toggle described below was REMOVED.** Condition
+now maps straight to balls with no player-chosen dial; kept here only as history of why the toggle
+existed and what it replaced.
+
 - **Energy is now a % state-machine, lifted from New Star Soccer.** A match burns a chunk of
   the 100% bar by **WORK RATE** (a 3-heart toggle): CONSERVE 22% / NORMAL 48% / ALL OUT 78%,
   scaled by role minutes (`ROLE_ENERGY` cameo 0.4 / sub 0.6 / starter 1.0). Natural weekly
@@ -388,9 +392,79 @@ in the header, THE LIFE + THE GYM + ad-break screens, pay-day line on the match-
   "took his chance" +2, three straight losses −8), a teenager (≤18) earns trust 25% slower,
   off-season drift +6→+4, transfer trust a touch lower. Probe: the XI now takes **~23-30 matches**
   to crack at 55-80% wins (was ~10) — most of a debut season on the bench.
-- **Decluttered career home** (ui-ux-pro-max pass). The old crammed footer (a stats row + two
+- **Decluttered career home** (ui-ux-pro-max pass; ⚠ the 5-cell STATUS bar below was itself
+  replaced in round 19, §11g — POSITION dropped, AGE/REPUTATION demoted to a discreet line, only
+  FORM+CONDITION remain in the bar). The old crammed footer (a stats row + two
   side panels + next-match + floating buttons + ticker) is replaced by **one consolidated STATUS
   bar** of five evenly-spaced cells (POSITION w/ goal+odds caption · FORM · AGE · REPUTATION ·
   CONDITION+work-rate), a clean full-width **NEXT MATCH** panel (fixture + role/balls badge + play
   prompt), and a tidy centred **£ SHOP / TROPHIES** row, with the results ticker along the bottom.
   Every cell keeps its hover tooltip; the CONDITION cell is the work-rate picker.
+
+### 11g. Owner round 19 (work-rate toggle removed, condition→balls tightened, rep gates role, career-home hierarchy)
+
+Owner brief: energy didn't feel like it affected anything, shakes weren't needed often enough,
+the CONSERVE/NORMAL/ALL-OUT toggle from round 17 "isn't really applicable here", the career home
+was still too busy (POSITION redundant, FORM icons off-centre, AGE/REPUTATION too prominent,
+rep/lifestyle felt trivial), and ball targets were too easy at low ball counts.
+
+- **Work-rate toggle REMOVED** (`CAR.workRate`/`cycleWorkRate`/`effectiveWorkRate`/`maxWorkRate`/
+  `WR_COST`/`WR_LABEL`/`WR_HEARTS`, keys 1/2/3/W, the clickable CONDITION panel). Condition now maps
+  **straight** to balls — no player-chosen dial in between.
+- **Condition → balls, continuous and steep** (owner: "less and less balls as it goes down, making
+  it very hard to win with low energy"). `energyFactor(e)`: ≥75% → ×1.0, ≥55% → ×0.8, ≥35% → ×0.6,
+  ≥18% → ×0.4, else → ×0.25, `balls = max(1, round(roleBalls × energyFactor))`. Replaces the old
+  toggle-gated cliffs (previously energy 28-100% barely moved the needle at all unless you chose to
+  CONSERVE).
+- **Faster drain, closer to NSS pace** (owner: "energy still seems to be used slowly"). Flat
+  `ENERGY_BASE_COST 42` (was work-rate-dependent 22/48/78) × `ROLE_ENERGY` × `ageFatigue`;
+  `RECOVER_BASE` 14→**9**. Tuned against a throwaway season sim (not by feel): an unmanaged starter
+  bottoms out and stays there; trainer alone isn't enough; trainer **+ a shake roughly every 2-3
+  games** keeps a starter in a healthy 50-90% band — shakes become a routine purchase, not an
+  occasional one.
+- **Shakes renamed** SINGLE/DOUBLE SCOOP → **1 SCOOP SHAKE / 2 SCOOP SHAKE** (owner: the word
+  "shake" didn't appear anywhere on the Protein Corner screen). Prices/energy values unchanged.
+- **Reputation now caps your ROLE, not just backend numbers** (owner: rep/lifestyle "seems very
+  trivial ... needs to actually have an impact"). `roleFor(trust, rep)`: trust still decides your
+  earned ceiling, but `rep<15` caps you out of "starter" and `rep<8` caps you out of "sub" —a
+  trust-90 nobody still only gets a bench role until the board believes in him too. Thresholds are
+  calibrated against rep's real (slow) growth rate so they bind briefly, not permanently (rep
+  crosses both bars at roughly the same match a trust-only career would have been promoted anyway
+  — verified by simulation, not assumption). The career-home discreet REPUTATION line's tooltip
+  spells this out.
+- **Ball progression retuned** (owner: targets too easy, cameo should ramp not jump). A **debut**
+  cameo (trust<25) now gets **ONE ball**, climbing to the old flat 3 once trust clears 25 (still
+  within the cameo band, well below the trust≥35 sub threshold) — `roleBalls(role, base, trust)`.
+  **Targets scale super-linearly above 1 ball** (owner: "targets should be higher once you reach 3
+  ball"): `targetK(tb) = tb<=1 ? tb/10 : (tb/10)^0.8` — a 3-ball cameo now needs proportionally more
+  per ball than a 10-ball starter. The 1-ball tier stays LINEAR on purpose: attempt-scarcity alone
+  already makes it brutal, and a single well-struck goal must stay within reach or trust can never
+  get started.
+- **Career-home re-prioritised** (owner: still too busy; "form, condition and next game most
+  important hierarchically"). POSITION dropped entirely (redundant — your row is already
+  highlighted in the table above). AGE, REPUTATION and the board's goal/odds move to a slim,
+  unboxed, hoverable **discreet line** above the STATUS bar. The STATUS bar itself now holds just
+  **FORM + CONDITION** as two wide cells (was 5 cramped ones) — CONDITION shows the raw stat, the
+  NEXT MATCH panel already shows the ball consequence, keeping the two panels complementary rather
+  than duplicating each other. League table row height 25→22 to reclaim the vertical space (layout
+  audit clean at 45 screens; a real Puppeteer mouse test confirmed FORM chips render centred).
+- Tuning: a throwaway season-energy sim + a 40-match all-wins trust/rep trace (not committed —
+  Node-only scratch scripts) were used to pick `ENERGY_BASE_COST`/`RECOVER_BASE`/the rep-cap
+  thresholds against real numbers rather than by feel.
+
+**Round 19b — career-home visual pass (owner: navy panels clash, spacing off, headings cryptic,
+NEXT MATCH frame incomplete).** Design planned with the advisor (Fable 5). The bottom of the
+career home is now **open teletext on black**, consistent with the black table + blue header above
+it — the `#0a1224` navy panel fills are gone from this screen (still used on the shop/HUD, out of
+scope). Structure comes from hairline rules only (`rgba(255,255,255,0.10)`, same as the table
+gutter/header underline), laid on a strict **SP=8 grid** from the table bottom (fields → rule →
+FORM/CONDITION row → NEXT MATCH → actions, ending y≈492 with the ticker clip at 497). The one
+framed box is **NEXT MATCH** (the CTA): a full neon frame with a **fieldset-style title** sitting
+in an erased gap in the top border (fixes "green border not all around" — the old blue title bar
+overpainted the top edge). The cryptic discreet line becomes **four clearly labelled two-tone
+fields** — `AGE: 17 · YOUNGSTER` / `REP: ★★☆☆☆ RISING STAR` / `BOARD: STAY UP` / `TITLE ODDS: 1%`
+(dim label + coloured value; board expectation and title odds now split into their own fields, per
+the owner) — each with its own hover tooltip. Colons kept (owner's explicit format, e.g. "Age: 17
+- Youngster") over the advisor's colon-less suggestion. Note for future: the layout linter checks
+horizontal overflow/offscreen but NOT vertical spill within a box — the section-bottom ≤496 budget
+is enforced by a code comment, not the linter.

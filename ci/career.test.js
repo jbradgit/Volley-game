@@ -158,7 +158,7 @@ test("three winning seasons: correct trophy haul, caps and season cadence", asyn
 
 // ================= E7 "The Journey": lower-league start, reputation, energy, squad role =================
 
-test("journey: a new career starts as an unknown 3-ball cameo in the second tier", async () => {
+test("journey: a new career starts as an unknown 1-ball debut cameo in the second tier", async () => {
   const { dbg } = await loadGame();
   const r = dbg.newCareerSim("England", "ENG2", "Millwall");
   assert.equal(r.leagueId, "ENG2");
@@ -171,9 +171,16 @@ test("journey: a new career starts as an unknown 3-ball cameo in the second tier
   assert.equal(j.role, "cameo", "the coach doesn't trust a trialist yet");
   assert.ok(j.objective && j.objective.pos >= 1, "the board sets a season objective");
 
+  // owner round 19: a debut cameo starts on ONE ball, not three
   const plan = dbg.matchPlanSim();
-  assert.equal(plan.balls, 3, "a cameo gets 3 balls");
-  assert.equal(plan.targetBalls, 3, "with the target scaled to match (a fair cameo)");
+  assert.equal(plan.balls, 1, "a debut cameo gets a single ball");
+  assert.equal(plan.targetBalls, 1, "with the target scaled to match (a fair cameo)");
+
+  // trust climbing past 25 (still a cameo) promotes the debut to three balls
+  dbg.setJourney({ trust: 28 });
+  const plan2 = dbg.matchPlanSim();
+  assert.equal(dbg.journeyInfo().role, "cameo", "still a cameo by trust");
+  assert.equal(plan2.balls, 3, "but a proven cameo now gets three balls");
 });
 
 test("journey: wins earn the coach's trust — cameo -> super sub -> starter (a real slog)", async () => {
@@ -195,22 +202,20 @@ test("journey: wins earn the coach's trust — cameo -> super sub -> starter (a 
   assert.equal(dbg.matchPlanSim().balls, 10, "a fresh starter gets the full 10 balls");
 });
 
-test("journey (round 17): work rate trades balls for energy; tiredness forces you down", async () => {
+test("energy (round 19): condition maps continuously to balls, no work-rate toggle", async () => {
   const { dbg } = await loadGame();
   dbg.newCareerSim("England", "ENG2", "Millwall");
-  dbg.setJourney({ trust: 100, energy: 100 });   // a fresh starter (target 10 balls)
-  dbg.setWorkRate(3); let plan = dbg.matchPlanSim();
-  assert.equal(plan.targetBalls, 10, "the target still assumes the role's 10 balls");
-  assert.equal(plan.balls, 12, "ALL OUT gives +2 balls");
-  dbg.setWorkRate(2); assert.equal(dbg.matchPlanSim().balls, 10, "NORMAL = the target");
-  dbg.setWorkRate(1); assert.equal(dbg.matchPlanSim().balls, 8, "CONSERVE = -2 balls");
-  // tiredness caps the work rate you can actually play
-  dbg.setJourney({ energy: 40 }); dbg.setWorkRate(3);
-  assert.equal(dbg.matchPlanSim().balls, 10, "under 60% you can't go ALL OUT (forced NORMAL)");
-  dbg.setJourney({ energy: 20 }); dbg.setWorkRate(3);
-  assert.equal(dbg.matchPlanSim().balls, 8, "under 28% you're forced to CONSERVE");
-  dbg.setJourney({ energy: 8 });
-  assert.equal(dbg.matchPlanSim().balls, 6, "running on fumes (<12%) costs a further two");
+  dbg.setJourney({ trust: 100, rep: 100, energy: 100 });   // a fresh, trusted, reputed starter (target 10 balls)
+  assert.equal(dbg.journeyInfo().role, "starter");
+  let plan = dbg.matchPlanSim();
+  assert.equal(plan.targetBalls, 10, "the target assumes the role's 10 balls");
+  assert.equal(plan.balls, 10, "full condition = the full target, no toggle to trade away");
+  // owner round 19: "less and less balls as it goes down, making it very hard to win with low energy"
+  dbg.setJourney({ energy: 70 }); assert.equal(dbg.matchPlanSim().balls, 8, "below 75% condition costs balls");
+  dbg.setJourney({ energy: 50 }); assert.equal(dbg.matchPlanSim().balls, 6, "below 55% costs more");
+  dbg.setJourney({ energy: 25 }); assert.equal(dbg.matchPlanSim().balls, 4, "below 35% more still");
+  dbg.setJourney({ energy: 5 });  assert.equal(dbg.matchPlanSim().balls, 3, "running on empty leaves barely a third of the target");
+  assert.equal(dbg.matchPlanSim().balls >= 1, true, "never drops below one ball");
 });
 
 test("journey: winning the second tier brings top-flight offers but NO European spot", async () => {
@@ -278,16 +283,17 @@ test("age (round 18): turning 38 retires the player to the testimonial", async (
   assert.equal(roll.state, "retire", "the testimonial screen fires");
 });
 
-test("energy (round 17): a higher work rate burns more of the bar", async () => {
+test("energy (round 19): a full-minutes starter burns a real chunk of the bar, more than a bench cameo", async () => {
   const { dbg } = await loadGame();
   dbg.newCareerSim("England", "ENG2", "Millwall");
-  dbg.setJourney({ trust: 100, energy: 100 });
-  dbg.setWorkRate(1); dbg.playNext(true);
-  const conserve = -dbg.lifeInfo().lastEnergy.delta;
-  dbg.setJourney({ energy: 100 }); dbg.setWorkRate(2); dbg.playNext(true);
-  const normal = -dbg.lifeInfo().lastEnergy.delta;
-  assert.ok(normal > conserve, `NORMAL (${normal}) burns more than CONSERVE (${conserve})`);
-  assert.ok(normal >= 25, `a normal match takes a real chunk of the bar (${normal}%) - NSS-fast`);
+  dbg.setJourney({ trust: 100, rep: 100, energy: 100 });
+  dbg.playNext(true);
+  const starterCost = -dbg.lifeInfo().lastEnergy.delta;
+  assert.ok(starterCost >= 25, `a full match takes a real chunk of the bar (${starterCost}%) - NSS-fast, no toggle to soften it`);
+  dbg.setJourney({ trust: 20, rep: 5, energy: 100 });   // back to an unknown bench cameo
+  dbg.playNext(true);
+  const cameoCost = -dbg.lifeInfo().lastEnergy.delta;
+  assert.ok(cameoCost < starterCost, `fewer minutes off the bench burn less (cameo ${cameoCost} vs starter ${starterCost})`);
 });
 
 test("contract (round 17): a debut unknown starts on about GBP 2 a game, win bonus only", async () => {
@@ -464,15 +470,19 @@ test("life v2: the season's prize money lands with the review", async () => {
 test("vic v2: speeches read out one sentence at a time", async () => {
   const { dbg } = await loadGame();
   const r = dbg.agentSim("intro");
-  assert.ok(r.pages >= 4, "the long intro paginates into sentences (got " + r.pages + " pages)");
+  assert.ok(r.pages >= 2, "a multi-sentence speech paginates into sentences (got " + r.pages + " pages)");
   assert.ok(r.len < 200, "each page is a sentence, not the whole wall of text");
 });
 
 test("journey v2: the tutorial queues at career start and the XI takes longer to crack", async () => {
   const { dbg } = await loadGame();
   dbg.newCareerSim("England", "ENG2", "Millwall");
-  const msgs = dbg.lifeInfo().msgs;
-  assert.ok(msgs.filter(w => w === "vic").length >= 6, "Vic's tutorial + season brief are queued (" + msgs.length + " msgs)");
+  const life = dbg.lifeInfo(), msgs = life.msgs;
+  // owner round 19: the welcome tour was trimmed from 6 messages to 3 (too much chat) + 1 season brief
+  assert.ok(msgs.filter(w => w === "vic").length >= 4, "Vic's tutorial + season brief are queued (" + msgs.length + " msgs)");
+  // touch devices have no hover help, so the trim must not silently drop the facts they depend on
+  for (const word of ["BENCH", "ENERGY", "£ SHOP", "FINANCES"])
+    assert.ok(life.msgText.includes(word), "tutorial still explains " + word + ": " + life.msgText);
   // 5 straight wins used to be enough for the XI; not any more
   for (let i = 0; i < 5; i++) dbg.playNext(true);
   assert.notEqual(dbg.journeyInfo().role, "starter", "five good games no longer walk into the starting eleven");

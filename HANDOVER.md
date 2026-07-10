@@ -1,16 +1,58 @@
 # SCORDAGOL — Handover / State of Play
 
 **Read this first.** Single source of truth for picking the project up on a new
-device or a fresh session. Last updated: 2026-06-30.
+device or a fresh session. Last updated: 2026-07-10.
 
 ---
 
-## 0. CURRENT STATE (2026-07-02) — READ THIS FIRST (supersedes §3 below)
+## 0. CURRENT STATE (2026-07-10) — READ THIS FIRST (supersedes §3 below)
 
 The 3D-sprite pipeline (old §3) is **long DONE and deployed**. **Live site:**
 https://jbradgit.github.io/Volley-game/ (GitHub Pages serves `main`).
 
-**Git state right now (2026-07-02, second session):**
+### ⇄ PICKING UP ON ANOTHER DEVICE (2026-07-10)
+**Everything below (rounds 12–19b — the whole `claude/career-journey` line) is now MERGED TO `main`
+and deployed.** `main` is the single current truth; there is no undeployed work in flight. On a
+fresh/other machine just:
+```
+git fetch origin && git checkout main && git reset --hard origin/main
+```
+(If you have a stale local `claude/career-journey` branch on that device, it is behind — delete it
+or reset it; do NOT merge it back in.) Then reinstall the ephemeral dev deps:
+`pip install numpy pillow` (artgen) and `npm install puppeteer-core --no-save` (layout audit). Run
+locally with `play.bat` → http://localhost:5578/index.html. Next tasks are in **§0 "Open / next"**
+below (unchanged: C.3 history rewrite is the top Claude-doable item).
+
+**Git state right now (2026-07-10, deploy session):**
+- **Owner round 19 + 19b (DEPLOYED to `main`) — work-rate toggle REMOVED,
+  condition→balls tightened, reputation gates role, career-home re-prioritised:** the round-17
+  CONSERVE/NORMAL/ALL-OUT toggle (`CAR.workRate`, keys 1/2/3/W, the clickable CONDITION panel) is
+  **gone** — condition now maps straight to balls via a continuous `energyFactor(e)` curve (≥75%
+  ×1.0 … <18% ×0.25), no player choice in between. Drain is faster (`ENERGY_BASE_COST 42` flat,
+  `RECOVER_BASE` 14→9, tuned against a throwaway sim so a starter needs a shake every 2-3 games).
+  **Reputation now caps your role** (`roleFor(trust, rep)`: rep<15 blocks starter, rep<8 blocks
+  sub) — a nobody with maxed trust still only gets a bench role, thresholds calibrated against
+  rep's real growth rate so it binds briefly not permanently. **Debut cameo starts on ONE ball**
+  (was flat 3), climbing to 3 once trust≥25. **Targets scale super-linearly** above 1 ball
+  (`targetK(tb) = tb<=1 ? tb/10 : (tb/10)^0.8`). **Shakes renamed** SINGLE/DOUBLE SCOOP → 1/2
+  SCOOP SHAKE. **Career home**: POSITION cell dropped (redundant with the table above), AGE/
+  REPUTATION/board-goal demoted to a slim discreet line, STATUS bar now just FORM+CONDITION (was
+  5 cramped cells); league table row height 25→22 to fit. Design: `docs/CAREER_DESIGN.md` §11g
+  (§11e/§11f marked superseded where they describe the removed toggle). dbg: `setWorkRate`/
+  `workRateSim` REMOVED; `lifeInfo()` gained `msgText`. CI 54/54 + smoke, layout audit clean (45
+  screens, verified with real Puppeteer mouse-hover + screenshot tests, not just the linter).
+  **Round 19b (visual pass, advisor-planned):** the career-home bottom is now **open teletext on
+  black** (the `#0a1224` navy panels are gone from this screen — they clashed with the black table
+  + blue header) on a strict SP=8 grid; the one framed box is NEXT MATCH with a **fieldset title**
+  (neon frame now complete all round — the old blue title bar overpainted the top edge); the
+  cryptic discreet line is now **four labelled two-tone fields** — `AGE: · REP: · BOARD: · TITLE
+  ODDS:`. Design: `docs/CAREER_DESIGN.md` §11g "Round 19b". ⚠ the layout linter does NOT catch
+  vertical spill inside a box — the section-bottom ≤496 budget (ticker clip 497) is guarded by a
+  code comment only.
+  **Not yet done by this round**: no full stochastic multi-season sim (validated via an isolated
+  energy sim + a deterministic 40-match trace + the existing CI season-autoplay tests instead) —
+  flagged as an acceptable risk, not a gap to silently ignore if a future session sees weird
+  trust/rep/role behaviour over many real (non-forced) seasons.
 - **Owner round 18 (COMMITTED on the branch) — player age + harder XI + decluttered home:**
   new careers start at **17** (`CAR.age`), age +1/season; `ageFatigue` multiplier on energy cost
   (≤20 .9 / prime 1.0 / 31-33 1.1 / 34-36 1.25 / 37+ 1.5); Vic warns at 34; **retirement at 38** →
@@ -32,9 +74,8 @@ https://jbradgit.github.io/Volley-game/ (GitHub Pages serves `main`).
   drops the goal line; `effectiveWorkRate`/`maxWorkRate`/`matchEnergyCost`/`matchRecovery` in
   `applyJourney`. dbg: `setWorkRate`/`workRateSim`. Design: `docs/CAREER_DESIGN.md` §11e. Tuning:
   `scratchpad/smart_probe.js` (smart player holds ~60% energy; helpless one spirals to 0 in ~3).
-- **Earlier this session: E7 "The Journey" + E8 "The Life" + rounds 14-16** (all on this branch,
-  UNDEPLOYED, awaiting the owner's eyeball before landing on `main`). Full CI green (52/52 + smoke), layout audit clean
-  (~37 screens).
+- **E7 "The Journey" + E8 "The Life" + rounds 14-16** (now on `main` as part of this deploy).
+  Full CI green, layout audit clean.
 - **Owner round 16 (COMMITTED on the branch) — economy depth + energy realism + PAY DAY:**
   (1) **bank balance consistent + labelled** — `bankRight()` stamps `BANK £x` top-right on every
   career header (home top-bar is now `CAREER · SEASON N` centred, bank right); exceptions: S-MAIL
@@ -110,7 +151,7 @@ https://jbradgit.github.io/Volley-game/ (GitHub Pages serves `main`).
   Everything deleted is still recoverable from Git history until the ROADMAP C.3 `git filter-repo`
   history rewrite — which is now THE remaining IP step (plus club names, fonts, the 6 SFX).
 
-**What the 2026-06-30 session shipped (this branch, UNDEPLOYED):**
+**What the 2026-06-30 session shipped (now on `main` as part of this deploy):**
 - **Homescreen logo redesigned** — bold chunky italic 3D-extruded "Lardiland"-style wordmark
   (`drawSportyLogo()`, Press Start 2P + red→gold gradient). HOMESCREEN ONLY.
 - **`drawHeadline()` REVERTED to standardised teletext** (upright VT323, solid colour — NO rainbow/italic;

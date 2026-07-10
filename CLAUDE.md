@@ -28,3 +28,18 @@ truth for current state and the next tasks.** ("Keep going" = its Open/next prio
 
 Docs map: `HANDOVER.md` (state) → `ROADMAP.md` (plan/decisions) → `docs/*` (binding specs) →
 `PROJECT_HEALTH_AUDIT.md` (2026-07-01 audit) → `AUDIT.md` (historical, do not treat as current).
+
+## Advisor consultations (this project)
+This extends the global advisor rule in `~/.claude/CLAUDE.md` — it does not replace it.
+For SCORDAGOL, the owner wants the `advisor` subagent (Fable 5) consulted on **every big
+decision that shapes gameplay or the career journey**, not only when something is broken or risky.
+Consult it — after enough orientation to give it real context — before committing to:
+- Gameplay-feel or balance changes: match difficulty/AI, scoring, physics-adjacent tuning
+  (within the sacred-physics constraint above), match pacing/length.
+- Career-journey structure: season/league/cup/Europe progression, promotion-relegation,
+  transfers/squad progression, save-state schema changes, rewards and unlock pacing.
+- New player-facing systems or mechanics, or reworks of an existing one.
+- Engagement/retention or monetization design that touches how the career plays out.
+Treat these as decisions worth a second opinion by default. Routine bug fixes, copy tweaks,
+and pure layout nudges do NOT need it (the global UI/UX-judgment trigger still covers genuine
+design-feel calls). If unsure whether a change is "big," consult — the owner has set a low bar here.
