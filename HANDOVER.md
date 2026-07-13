@@ -5,10 +5,17 @@ device or a fresh session. Last updated: 2026-07-13.
 
 ---
 
-## 0. CURRENT STATE (2026-07-10) — READ THIS FIRST (supersedes §3 below)
+## 0. CURRENT STATE (2026-07-13) — READ THIS FIRST (supersedes §3 below)
 
 The 3D-sprite pipeline (old §3) is **long DONE and deployed**. **Live site:**
 https://jbradgit.github.io/Volley-game/ (GitHub Pages serves `main`).
+
+**Latest session (2026-07-13):** (1) **C.3 IP history rewrite — DONE & deployed** — all original-Flash
+material purged from public Git history; every commit hash changed, so **any clone from before
+2026-07-13 is stale** (see the re-clone warning below and `docs/IP_HISTORY_PURGE.md`). (2) **VOLLEY
+TIMING pause control — DONE & deployed** (owner + advisor; details in Open/next §3). Next Claude-doable
+items: the **club-name rebrand** (top IP blocker) and optional pause-menu tidy-ups; audio remains
+owner-gated. CI is now **59/59** (added `ci/timing.test.js`).
 
 ### ⇄ PICKING UP ON ANOTHER DEVICE (2026-07-10)
 **Everything below (rounds 12–19b — the whole `claude/career-journey` line) is now MERGED TO `main`
@@ -228,8 +235,15 @@ Chrome; PNGs to `%TEMP%/volley_audit`). The in-match HUD isn't auto-audited — 
    `?v=hr5` cache tag; (b) add a looping **jazzy-chiptune menu track**. The audio system
    (`SND` / `sfx.*` / `play()` / `audio()` unlock / `muted`) is at `index.html` ~302–326 and is clean —
    SFX swap needs NO code (same filenames). Owner offered: generate an original loop if sourcing stalls.
-3. **Pause-menu kick controls (owner asked):** a KICK-TIMING slider (±1 frame steps, default 0 = NO change
-   to the sacred contact timing) PLUS a wind-up-speed control — like the existing DRAG SPEED / RELEASE GLIDE rows.
+3. ✅ **Pause-menu kick controls — DONE 2026-07-13 (shipped as VOLLEY TIMING).** The owner's two asks
+   (kick-timing slider + wind-up-speed) were merged into ONE control on the advisor's rec — they're the
+   same lever, and a separate wind-up control can't be made honest. Pause menu now has a third row
+   **VOLLEY TIMING: EARLIER / STANDARD / LATER** (`volleyTimingMod` -1/0/+1, localStorage `vc_vtiming`),
+   shifting contact via `kickFramesEff()` = `KICK_FRAMES + mod`. STANDARD (0) === the sacred KICK_FRAMES
+   so goldens are byte-identical; the striker wind-up retimes with it (drawStriker uses `kickFramesEff`).
+   Seeded matches (daily/HORSE/classic, `matchSeeded`) lock it to STANDARD (greyed + note) for fair
+   leaderboards. Tests: `ci/timing.test.js` (5 non-golden, wired into the gate → 59/59). ⚠ If a kick ever
+   "felt late" it may be the dev box's 4K@29Hz display, not the timing — STANDARD is the true original.
 4. **App / store:** already an installable PWA (use that for app-feel testing). A Capacitor store wrap is
    ~1 day and best done LAST, once IP/audio/content are settled — NOT an engine blocker.
 5. IP/launch blockers unchanged: real club/league names (trademark), traced striker/defender art (the 3D
