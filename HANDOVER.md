@@ -240,7 +240,7 @@ Chrome; PNGs to `%TEMP%/volley_audit`). The in-match HUD isn't auto-audited — 
    `slick_vic.png`). Also still open: per-player team select in HORSE; foreign per-team kits; PWA real-phone test.
 
 **CI is the FULL suite — run ALL before pushing** (a subset once spammed the owner CI emails):
-`node ci/smoke.js && node --test ci/physics.test.js ci/career.test.js ci/horse.test.js ci/leagues.test.js`.
+`node ci/smoke.js && node --test ci/physics.test.js ci/career.test.js ci/horse.test.js ci/leagues.test.js ci/timing.test.js`.
 Deploy = commit on a short-lived `claude/<topic>` branch → push → `git push origin <branch>:main` →
 delete the branch (local + remote) once landed. Don't commit `node_modules/` or `tools/` (both
 gitignored). Don't add new large binaries; `striker_base_v01.blend` (55 MB, tracked) is the 3D-pipeline

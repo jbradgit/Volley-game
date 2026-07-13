@@ -1084,6 +1084,7 @@
   let touchPauseResumeRect=null, touchPauseForfeitRect=null;
   let touchSpeedDecRect=null, touchSpeedIncRect=null;   // speed-adjust tap zones in pause overlay
   let touchGlideDecRect=null, touchGlideIncRect=null;   // release-glide tap zones in pause overlay
+  let touchVTimeDecRect=null, touchVTimeIncRect=null;   // volley-timing tap zones in pause overlay
   let touchBackBtn=null;
   let tableMenuBtns=[];
   let tableScrollY=0, tableSwipeAnchorY=null, tableSwipeAnchorScroll=0;
@@ -1096,6 +1097,10 @@
   let firstShotShown=false; // true after first kick, hides drag-prompt on subsequent shots
   let dragSpeedMod = clamp(parseInt(localStorage.getItem("vc_speed")||"0"), -10, 10);
   let dragGlideMod = clamp(parseInt(localStorage.getItem("vc_glide")||"0"), -8, 10);   // release glide: -80%..+100% momentum
+  let volleyTimingMod = clamp(parseInt(localStorage.getItem("vc_vtiming")||"0"), -1, 1);  // VOLLEY TIMING: -1 EARLIER / 0 STANDARD / +1 LATER — opt-in contact-tick calibration; forced to STANDARD in seeded matches
+  let matchSeeded = false;   // set per match in startMatch(): true for daily/HORSE/classic seeded deliveries -> locks VOLLEY TIMING so shared leaderboards stay fair
+  // Effective input->contact ticks. STANDARD (mod 0) === the sacred KICK_FRAMES, so CI goldens are byte-identical; only a player who opts into EARLIER/LATER in a non-seeded match shifts contact +/-1 tick.
+  function kickFramesEff(){ return KICK_FRAMES + (matchSeeded ? 0 : volleyTimingMod); }
   let manKicking=false, manKickT=0;
   let ballSpin=0;                 // rotating-ball frame counter (advances while ball is live)
   let defenders = [], defVariants = [0,1,2];
@@ -1119,6 +1124,7 @@
 
   function startMatch(opts) {
     opts = opts || {};
+    matchSeeded = (opts.seed!=null);   // seeded (daily / HORSE / classic) matches lock VOLLEY TIMING to STANDARD
     matchBalls=opts.balls||10; matchTargetBalls=opts.targetBalls||matchBalls; matchNote=opts.note||"";
     matchKO=!!opts.ko; M.score=0; M.attempts=matchBalls; M.goals=0; manX=MAN_START_X; mouseTargetX=null; firstShotShown=false;
     { const a=[0,1,2,3]; for(let i=3;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]];} defVariants=a.slice(0,3); }   // 3 distinct defender poses from the 4-pose sheet (no two alike), randomised per match
@@ -1472,7 +1478,7 @@
     ballSpin++;                  // rotating Tango ball spins while in play (SERVE/FLIGHT)
     // kick animation advances at 28 Hz; contact (man.finished) lands on anim frame 7
     if (manKicking) manKickT++;
-    if (kicked && !cchecked) { kickTick++; if (kickTick>=KICK_FRAMES) manFinished=true; }
+    if (kicked && !cchecked) { kickTick++; if (kickTick>=kickFramesEff()) manFinished=true; }
     // keeper dive animation plays at the SWF frame rate (one source frame per 28 Hz tick)
     if (dive && !no_dive) {
       const a = KEEPER_ANIMS[keeperPose.anim] || KEEPER_ANIMS.dive_left;
@@ -1666,9 +1672,10 @@
     // frame (never index past the sheet, so the striker never vanishes after the kick).
     let f = 0;
     if (manKicking) {
-      f = (manKickT <= KICK_FRAMES)
-        ? Math.round(manKickT / KICK_FRAMES * STRIKER_CONTACT)
-        : Math.min(STRIKER_CONTACT + (manKickT - KICK_FRAMES), STRIKER_FRAMES - 1);
+      const kf = kickFramesEff();   // wind-up retimes with VOLLEY TIMING so the strike pose (STRIKER_CONTACT) always lands on the true contact tick
+      f = (manKickT <= kf)
+        ? Math.round(manKickT / kf * STRIKER_CONTACT)
+        : Math.min(STRIKER_CONTACT + (manKickT - kf), STRIKER_FRAMES - 1);
     }
     ctx.drawImage(sh, f*STRIKER_FW, 0, STRIKER_FW, STRIKER_FH,
                   manX - STRIKER_OX, MAN_Y - STRIKER_OY, STRIKER_W, STRIKER_H);
@@ -4546,47 +4553,56 @@
         ctx.fillStyle="rgba(0,0,0,0.85)"; ctx.font=ttFont(40); ctx.fillText("PAUSED", SW/2+3, 192);
         ctx.fillStyle=TTX.yellow; ctx.fillText("PAUSED", SW/2, 190);
         // ---- tuning rows (touch + desktop): drag speed, then release glide ----
-        const ctlRow=(label, scY, val, pctStr)=>{          // one −/value/+ row; returns tap rects (view coords)
+        const ctlRow=(label, scY, val, valStr, locked)=>{  // one −/value/+ row; returns tap rects (view coords)
           const btnW=50,btnH=34, valW=130, totalW=btnW+8+valW+8+btnW, scX=SW/2-totalW/2;
+          const glyph = locked ? "rgba(255,255,255,0.16)" : TTX.white;   // dim the −/+ when the row is locked
           ctx.font=ttFont(11); ctx.fillStyle=TTX.grey; ctx.fillText(label, SW/2, scY-4);
           ctx.fillStyle="#1a1a2e"; ctx.fillRect(scX,scY,btnW,btnH);
           ctx.strokeStyle="rgba(255,255,255,0.35)"; ctx.lineWidth=1; ctx.strokeRect(scX+0.5,scY+0.5,btnW-1,btnH-1);
-          ctx.font=ttFont(18); ctx.fillStyle=TTX.white; ctx.fillText("−", scX+btnW/2, scY+24);
+          ctx.font=ttFont(18); ctx.fillStyle=glyph; ctx.fillText("−", scX+btnW/2, scY+24);
           ctx.fillStyle="#0d1525"; ctx.fillRect(scX+btnW+8,scY,valW,btnH);
           ctx.strokeStyle="rgba(255,255,255,0.2)"; ctx.strokeRect(scX+btnW+8+0.5,scY+0.5,valW-1,btnH-1);
-          ctx.font=ttFont(16); ctx.fillStyle=val===0?TTX.grey:TTX.cyan;
-          ctx.fillText(pctStr, scX+btnW+8+valW/2, scY+23);
+          ctx.font=ttFont(16); ctx.fillStyle=locked?TTX.grey:(val===0?TTX.grey:TTX.cyan);
+          ctx.fillText(valStr, scX+btnW+8+valW/2, scY+23);
           const ibx=scX+btnW+8+valW+8;
           ctx.fillStyle="#1a1a2e"; ctx.fillRect(ibx,scY,btnW,btnH);
           ctx.strokeStyle="rgba(255,255,255,0.35)"; ctx.strokeRect(ibx+0.5,scY+0.5,btnW-1,btnH-1);
-          ctx.font=ttFont(18); ctx.fillStyle=TTX.white; ctx.fillText("+", ibx+btnW/2, scY+24);
+          ctx.font=ttFont(18); ctx.fillStyle=glyph; ctx.fillText("+", ibx+btnW/2, scY+24);
           return { dec:{x:OX+scX,y:scY,w:btnW,h:btnH}, inc:{x:OX+ibx,y:scY,w:btnW,h:btnH} };
         };
         { const p=dragSpeedMod*5, r=ctlRow("DRAG SPEED", 212, dragSpeedMod, (p>0?"+":"")+p+"%");
           touchSpeedDecRect=r.dec; touchSpeedIncRect=r.inc; }
         { const p=dragGlideMod*10, r=ctlRow("RELEASE GLIDE: SLIDE AFTER YOU LET GO", 266, dragGlideMod, (p>0?"+":"")+p+"%");
           touchGlideDecRect=r.dec; touchGlideIncRect=r.inc; }
+        { const words=["EARLIER","STANDARD","LATER"];   // VOLLEY TIMING: one lever = when the boot meets the ball after you press
+          const r=ctlRow("VOLLEY TIMING: WHEN THE BOOT MEETS THE BALL", 320, volleyTimingMod, matchSeeded?"STANDARD":words[volleyTimingMod+1], matchSeeded);
+          touchVTimeDecRect=matchSeeded?null:r.dec; touchVTimeIncRect=matchSeeded?null:r.inc;
+          ctx.textAlign="center"; ctx.font=ttFont(10); ctx.fillStyle=TTX.grey;
+          if (matchSeeded) ctx.fillText("LOCKED — DAILIES & 2-PLAYER USE STANDARD FOR A FAIR TABLE", SW/2, 368);
+          else { ctx.fillText("STANDARD IS THE ORIGINAL TIMING.", SW/2, 362);
+                 ctx.fillText("KICKS LANDING LATE ON YOUR SCREEN? TRY EARLIER.", SW/2, 376); } }
         if (TOUCH){
           // RESUME button
-          const rbw=240,rbh=44,rbx=SW/2-rbw/2,rby=316;
+          const rbw=240,rbh=44,rbx=SW/2-rbw/2,rby=396;
           ctx.fillStyle="#162d1a"; ctx.fillRect(rbx,rby,rbw,rbh);
           ctx.strokeStyle=TTX.neon; ctx.lineWidth=1.5; ctx.strokeRect(rbx+0.5,rby+0.5,rbw-1,rbh-1);
           ctx.font=ttFont(16); ctx.fillStyle=TTX.neon; ctx.fillText("▶  RESUME", SW/2, rby+29);
           touchPauseResumeRect={x:OX+rbx,y:rby,w:rbw,h:rbh};   // view coords
           // FORFEIT button
-          const fbw=240,fbh=44,fbx=SW/2-fbw/2,fby=368;
+          const fbw=240,fbh=44,fbx=SW/2-fbw/2,fby=448;
           ctx.fillStyle="#2d1616"; ctx.fillRect(fbx,fby,fbw,fbh);
           ctx.strokeStyle=TTX.red; ctx.lineWidth=1.5; ctx.strokeRect(fbx+0.5,fby+0.5,fbw-1,fbh-1);
           ctx.font=ttFont(14); ctx.fillStyle=TTX.red; ctx.fillText("✕  FORFEIT & QUIT", SW/2, fby+29);
           touchPauseForfeitRect={x:OX+fbx,y:fby,w:fbw,h:fbh};   // view coords
         } else {
-          ctx.font=ttFont(13); ctx.fillStyle=TTX.white; ctx.fillText("ENTER TO RESUME", SW/2, 322);
-          ctx.fillStyle=TTX.red; ctx.fillText("ESC TO FORFEIT & QUIT TO MENU", SW/2, 344);
+          ctx.font=ttFont(13); ctx.fillStyle=TTX.white; ctx.fillText("ENTER TO RESUME", SW/2, 404);
+          ctx.fillStyle=TTX.red; ctx.fillText("ESC TO FORFEIT & QUIT TO MENU", SW/2, 426);
           touchPauseResumeRect=null; touchPauseForfeitRect=null;
         }
         ctx.textAlign="left";
       } else { touchPauseResumeRect=null; touchPauseForfeitRect=null;
-               touchSpeedDecRect=null; touchSpeedIncRect=null; touchGlideDecRect=null; touchGlideIncRect=null; }
+               touchSpeedDecRect=null; touchSpeedIncRect=null; touchGlideDecRect=null; touchGlideIncRect=null;
+               touchVTimeDecRect=null; touchVTimeIncRect=null; }
       ctx.restore();   // end field-centring translate
     } else if (state===ST.OVER) { ttClear(); drawOver(); drawTouchBack("← MENU"); }
     else if (state===ST.MENU) { ttClear(); drawMenu(); touchBackBtn=null; }
@@ -4902,6 +4918,8 @@
       if(touchSpeedIncRect){ const r=touchSpeedIncRect; if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h){ dragSpeedMod=Math.min(10,dragSpeedMod+1); localStorage.setItem("vc_speed",dragSpeedMod); return; } }
       if(touchGlideDecRect){ const r=touchGlideDecRect; if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h){ dragGlideMod=Math.max(-8,dragGlideMod-1); localStorage.setItem("vc_glide",dragGlideMod); return; } }
       if(touchGlideIncRect){ const r=touchGlideIncRect; if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h){ dragGlideMod=Math.min(10,dragGlideMod+1); localStorage.setItem("vc_glide",dragGlideMod); return; } }
+      if(touchVTimeDecRect){ const r=touchVTimeDecRect; if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h){ volleyTimingMod=Math.max(-1,volleyTimingMod-1); localStorage.setItem("vc_vtiming",volleyTimingMod); return; } }
+      if(touchVTimeIncRect){ const r=touchVTimeIncRect; if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h){ volleyTimingMod=Math.min(1,volleyTimingMod+1); localStorage.setItem("vc_vtiming",volleyTimingMod); return; } }
       if(touchPauseResumeRect){ const r=touchPauseResumeRect; if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h){ togglePause(); return; } }
       if(touchPauseForfeitRect){ const r=touchPauseForfeitRect; if(p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h){ forfeit(); return; } }
       return;
@@ -5150,6 +5168,9 @@
         leftFooted, matchEndText, score:M.score }; },
       forcePause: function(){ paused=!paused; return paused; },
       setLeft: function(b){ leftFooted=!!b; return leftFooted; },
+      setVolleyTiming: function(m){ volleyTimingMod = clamp(m|0, -1, 1); return volleyTimingMod; },   // dev: EARLIER(-1)/STANDARD(0)/LATER(+1)
+      setSeeded: function(b){ matchSeeded = !!b; return matchSeeded; },   // dev: simulate a seeded (daily/HORSE) match that locks VOLLEY TIMING
+      kickFrames: function(){ return kickFramesEff(); },   // dev: effective input->contact ticks under the current setting
       // Measure the keeper sprite's exact pixel bbox as savedCheck() sees it (logical coords).
       keeperExtent: function(frameNum, kx){
         keeperPose.frame=frameNum; if(kx!=null) keeperPose.x=kx;

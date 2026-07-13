@@ -7,8 +7,8 @@ truth for current state and the next tasks.** ("Keep going" = its Open/next prio
 - **Sacred physics:** `logicStep()`, `savedCheck()` and the constants block in `index.html` are
   transcribed from the original game. NEVER change them without the CI goldens proving outcomes identical.
 - **Full CI gate before ANY push** (subsets spam the owner with CI emails):
-  `node ci/smoke.js && node --test ci/physics.test.js ci/career.test.js ci/horse.test.js ci/leagues.test.js`
-  — must print `SMOKE PASS` and 28/28 pass.
+  `node ci/smoke.js && node --test ci/physics.test.js ci/career.test.js ci/horse.test.js ci/leagues.test.js ci/timing.test.js`
+  — must print `SMOKE PASS` and 59/59 pass.
 - **`main` deploys automatically** (GitHub Pages = the live game). Work on a short-lived
   `claude/<topic>` branch; land with `git push origin <branch>:main`; delete the branch after.
   Visual changes need the owner's eyeball before landing on `main`.
