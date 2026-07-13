@@ -1,7 +1,7 @@
 # SCORDAGOL — Handover / State of Play
 
 **Read this first.** Single source of truth for picking the project up on a new
-device or a fresh session. Last updated: 2026-07-10.
+device or a fresh session. Last updated: 2026-07-13.
 
 ---
 
@@ -17,6 +17,11 @@ fresh/other machine just:
 ```
 git fetch origin && git checkout main && git reset --hard origin/main
 ```
+**⚠️ 2026-07-13 — the Git history was REWRITTEN (ROADMAP C.3 IP purge), so the `reset --hard` above
+is now mandatory (an old clone can't fast-forward). Never merge a pre-2026-07-13 clone back in — it
+would drag the removed Flash material back. Exactly what was removed and why:**
+[`docs/IP_HISTORY_PURGE.md`](docs/IP_HISTORY_PURGE.md).
+
 (If you have a stale local `claude/career-journey` branch on that device, it is behind — delete it
 or reset it; do NOT merge it back in.) Then reinstall the ephemeral dev deps:
 `pip install numpy pillow` (artgen) and `npm install puppeteer-core --no-save` (layout audit). Run
@@ -205,16 +210,18 @@ Chrome; PNGs to `%TEMP%/volley_audit`). The in-match HUD isn't auto-audited — 
 (`__dbg.newCareerSim` → Space → Space) and screenshot the canvas.
 
 **Open / next (priority):**
-1. **C.3 history rewrite — the remaining IP purge (Claude-doable, no owner input needed).** The
-   2026-07-02 working-tree purge deleted the Flash material, but it all still exists in public Git
-   HISTORY. Steps: (a) `git clone --mirror` backup somewhere safe FIRST; (b) `pip install git-filter-repo`;
-   (c) purge the historical paths — `original.swf`, `game2.zip`, `gamezip/`, `ruffle/`, `ruffle.html`,
-   `decomp/` (the current `docs/original_mechanics/` files survive — they moved there at `45bb6c3`),
-   `scordagol_web/`, `page_*.html`, `ref_gameplay.png`, `ref_logo.png`, `Gemini_Generated_Image_*`;
-   (d) force-push; Pages rebuilds itself. ⚠ AFTER the rewrite every other clone (the office box, the
-   original dev box) is stale — re-clone or hard-reset them; don't merge old clones back in. Repo
-   should drop from ~137 MB to well under 40 (Phase 0 exit criterion; `striker_base_v01.blend` 55 MB
-   stays unless the owner decides otherwise — provenance still unconfirmed, see PROJECT_HEALTH_AUDIT).
+1. ✅ **C.3 history rewrite — DONE 2026-07-13.** Public Git history rewritten with `git-filter-repo`
+   to purge ALL original-Flash-game / workshop material (`original.swf`, `game2.zip`, `gamezip/`,
+   `ruffle/` + `ruffle.html`, `decomp/`, `scordagol_web/`, `page_*.html`, `ref_gameplay.png`,
+   `ref_logo.png`, the Gemini image). Full manifest + verification:
+   [`docs/IP_HISTORY_PURGE.md`](docs/IP_HISTORY_PURGE.md). Tip content unchanged (tree `642c2fba…`),
+   CI 54/54, pack 138→105 MiB. ⚠ Note the old "~137 MB → under 40" target was NOT met and is not
+   reachable while `striker_base_v01.blend` (55 MB, provenance unconfirmed) + ~30 MB of legit
+   3D-sprite history stay — both separate calls. `original.swf` was NOT in the doc's original list —
+   it was hidden behind a duplicate-content blob and caught on cross-check; the enumeration lesson is
+   in the manifest. `assets/*_Liverpool*.png` left in place (live assets → the separate **club-name
+   rebrand** step). Every clone made before 2026-07-13 is stale: `git reset --hard origin/main`,
+   never merge one back in.
 2. **Audio (owner-gated) — shortlist is PREPPED in `docs/AUDIO_SHORTLIST.md`** (sources, links, licences,
    wiring notes). Owner auditions + picks, then a session does: (a) **replace the 6 SWF-decompiled SFX**
    in `assets/snd/` (whistle/goal/boos/ooh/kick/post — an IP blocker) with CC0/Pixabay ones + bump the
